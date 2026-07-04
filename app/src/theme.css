@@ -1,0 +1,164 @@
+/* ============================================================
+   Sandies design system — dark-first marine UI
+   ============================================================ */
+
+:root {
+  /* palette */
+  --c-bg: #0a1522;
+  --c-bg-raised: #101e2e;
+  --c-surface: rgba(14, 27, 42, 0.78);
+  --c-surface-heavy: rgba(12, 23, 36, 0.92);
+  --c-border: rgba(126, 178, 224, 0.14);
+  --c-border-strong: rgba(126, 178, 224, 0.28);
+  --c-text: #eaf3fb;
+  --c-text-dim: #8fa9bf;
+  --c-text-faint: #5c7a89;
+  --c-accent: #3fc8ff;
+  --c-accent-dim: rgba(63, 200, 255, 0.16);
+  --c-track: #59e0b8;
+  --c-warn: #ffb454;
+  --c-danger: #ff6b6b;
+
+  /* depth ramp reference (matches map raster) */
+  --c-shallow: #7fd4e8;
+  --c-deep: #08263e;
+
+  /* shape + depth */
+  --r-lg: 22px;
+  --r-md: 16px;
+  --r-sm: 10px;
+  --blur: 20px;
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(126, 178, 224, 0.08) inset;
+  --shadow-fab: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  /* safe areas */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
+    sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* ---------- shared primitives ---------- */
+
+.glass {
+  background: var(--c-surface);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.4);
+  backdrop-filter: blur(var(--blur)) saturate(1.4);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-panel);
+}
+
+.numeral {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+.fab {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--c-surface);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.4);
+  backdrop-filter: blur(var(--blur)) saturate(1.4);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-fab);
+  color: var(--c-text);
+  transition: transform 0.15s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.fab.active {
+  background: var(--c-accent-dim);
+  color: var(--c-accent);
+  border-color: rgba(63, 200, 255, 0.4);
+}
+
+.fab svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- maplibre overrides ---------- */
+
+.maplibregl-map {
+  font: inherit;
+}
+
+.maplibregl-ctrl-attrib {
+  background: rgba(10, 21, 34, 0.6) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-radius: 8px 0 0 0;
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--c-text-dim) !important;
+  font-size: 10px;
+}
+
+.maplibregl-ctrl-scale {
+  background: rgba(10, 21, 34, 0.55) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: none !important;
+  border-bottom: 2px solid var(--c-accent) !important;
+  color: var(--c-text) !important;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  border-radius: 2px;
+}
+
+/* subtle entrance for panels */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
