@@ -20,6 +20,7 @@ let wakeLock: WakeLockSentinel | null = null
 let activeTrackId: number | null = null
 let lastRecorded: Fix | null = null
 let maxSog = 0
+let liveCoords: [number, number][] = []
 
 function vesselElement(): HTMLDivElement {
   const el = document.createElement('div')
@@ -139,6 +140,32 @@ export function locateAndFollow() {
 const MIN_DIST_NM = 0.003 // ~5.5 m
 const MIN_INTERVAL_MS = 2000
 
+const LIVE_SOURCE = 'track-live'
+
+function updateLiveTrail() {
+  const map = getMap()
+  if (!map || !map.loaded()) return
+  if (!map.getSource(LIVE_SOURCE)) {
+    map.addSource(LIVE_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    })
+    map.addLayer({
+      id: 'track-live-line',
+      type: 'line',
+      source: LIVE_SOURCE,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#59e0b8', 'line-width': 3.5, 'line-opacity': 0.85 },
+    })
+  }
+  const src = map.getSource(LIVE_SOURCE) as maplibregl.GeoJSONSource
+  src.setData(
+    liveCoords.length > 1
+      ? { type: 'Feature', geometry: { type: 'LineString', coordinates: liveCoords }, properties: {} }
+      : { type: 'FeatureCollection', features: [] },
+  )
+}
+
 async function recordPoint(fix: Fix) {
   if (activeTrackId == null) return
   if (lastRecorded) {
@@ -148,6 +175,8 @@ async function recordPoint(fix: Fix) {
   }
   lastRecorded = fix
   if (fix.sogKn != null && fix.sogKn > maxSog) maxSog = fix.sogKn
+  liveCoords.push([fix.lon, fix.lat])
+  updateLiveTrail()
   await db.points.add({
     trackId: activeTrackId,
     ts: fix.ts,
@@ -169,6 +198,8 @@ export async function startRecording() {
   })
   maxSog = 0
   lastRecorded = null
+  liveCoords = []
+  updateLiveTrail()
   activeTrackId = (await db.tracks.add({
     name: `Track — ${name}`,
     startedAt,
