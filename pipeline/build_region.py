@@ -4,6 +4,12 @@ Build all chart data for a region from NOAA NCEI's DEM_global_mosaic ImageServer
 3 arc-second bathymetry, values in metres relative to low water datum,
 negative = below water).
 
+Where CHS NONNA survey tiles exist (external/nonna/Bathymetry/NONNA*.tiff,
+downloaded from https://data.chs-shc.ca/ — elevation vs chart datum, same sign
+convention, nodata = float32 max), they override the NOAA mosaic. Finer tiles
+override coarser ones, and sub-cell samples aggregate shoal-biased so shallow
+spots survive the downsample instead of being averaged away.
+
 Outputs (into app/public/data):
   depth-<region>.pmtiles      raster tiles z6–z12, hillshaded depth ramp, PNG
   contours-<region>.json      GeoJSON: contour lines (kind=contour) + spot
@@ -46,6 +52,7 @@ REGION = {
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "app" / "public" / "data"
 CACHE_DIR = Path(__file__).resolve().parent / "raw"
+NONNA_DIR = Path(__file__).resolve().parent.parent / "external" / "nonna" / "Bathymetry"
 
 EXPORT_URL = (
     "https://gis.ngdc.noaa.gov/arcgis/rest/services/DEM_mosaics/DEM_global_mosaic/"
@@ -131,6 +138,80 @@ def fetch_dem(west, south, east, north, arcsec):
     lons = west + (np.arange(width) + 0.5) / px_per_deg
     lats = north - (np.arange(height) + 0.5) / px_per_deg  # descending
     return elev, lons, lats
+
+
+# ----------------------------------------------------------------------------
+# CHS NONNA overlay
+# ----------------------------------------------------------------------------
+
+
+def load_nonna_tiff(path):
+    """Return (elev row0=north with NaN nodata, lons ascending, lats descending)."""
+    import tifffile
+
+    with tifffile.TiffFile(path) as tf:
+        page = tf.pages[0]
+        sx, sy = page.tags["ModelPixelScaleTag"].value[:2]
+        tie = page.tags["ModelTiepointTag"].value  # (0,0,0, west, north, 0)
+        a = page.asarray()
+    a = np.where(a > 1e37, np.nan, a).astype(np.float32)
+    ny, nx = a.shape
+    lons = tie[3] + np.arange(nx) * sx
+    lats = tie[4] - np.arange(ny) * sy
+    return a, lons, lats
+
+
+def overlay_nonna(elev, region):
+    """Overwrite NOAA mosaic cells with CHS NONNA survey data where it exists.
+
+    Coarser tiles are applied first so finer ones win. Each tile contributes
+    two estimates per base cell: the shoalest (max-elevation) source sample
+    falling inside the cell — mariner-conservative when the source is finer
+    than the base grid — and a bilinear sample at the cell centre to cover
+    cells a coarser source leaves without any direct hit. NONNA nodata
+    (unsurveyed) leaves the base value untouched.
+    """
+    tiffs = sorted(
+        NONNA_DIR.glob("NONNA*_*.tiff"),
+        key=lambda p: -int(p.name[5:].split("_")[0]),
+    )
+    if not tiffs:
+        print("no NONNA tiles found — NOAA mosaic only")
+        return elev
+
+    ppd = 3600 // region["arcsec"]
+    hgt, wid = elev.shape
+    base_lons = region["west"] + (np.arange(wid) + 0.5) / ppd
+    base_lats = region["north"] - (np.arange(hgt) + 0.5) / ppd
+
+    for path in tiffs:
+        src, slons, slats = load_nonna_tiff(path)
+
+        # shoal-biased binning: max elevation of source samples per base cell
+        SL, ST = np.meshgrid(slons, slats)
+        m = np.isfinite(src)
+        jx = np.floor((SL[m] - region["west"]) * ppd).astype(int)
+        jy = np.floor((region["north"] - ST[m]) * ppd).astype(int)
+        inb = (jx >= 0) & (jx < wid) & (jy >= 0) & (jy < hgt)
+        binned = np.full(elev.shape, -np.inf, dtype=np.float32)
+        np.maximum.at(binned, (jy[inb], jx[inb]), src[m][inb])
+
+        # bilinear at cell centres fills cells a coarse source skips over
+        qlon, qlat = np.meshgrid(base_lons, base_lats)
+        smooth = bilinear(src, slons, slats, qlon, qlat)
+
+        new = np.where(binned > -np.inf, binned, smooth)
+        take = np.isfinite(new)
+        prev = elev[take]
+        elev = np.where(take, new, elev)
+        delta = elev[take] - prev
+        both = np.isfinite(prev) & np.isfinite(delta)
+        print(
+            f"{path.stem}: replaced {take.sum()} cells, "
+            f"mean shift {np.nanmean(delta[both]):+.2f} m, "
+            f"max shoaling {np.nanmax(delta[both]):+.1f} m"
+        )
+    return elev
 
 
 # ----------------------------------------------------------------------------
@@ -298,7 +379,10 @@ def write_depth_pmtiles(path, depth, shade, lons, lats, region):
                 "center_lon_e7": int((region["west"] + region["east"]) / 2 * 1e7),
                 "center_lat_e7": int((region["south"] + region["north"]) / 2 * 1e7),
             },
-            {"name": f"depth-{region['name']}", "attribution": "NOAA NCEI Great Lakes Bathymetry"},
+            {
+                "name": f"depth-{region['name']}",
+                "attribution": "NOAA NCEI Great Lakes Bathymetry · CHS NONNA (non-navigational)",
+            },
         )
     print(f"wrote {path.name} ({path.stat().st_size / 1e6:.1f} MB, {count} tiles)")
 
@@ -368,6 +452,7 @@ def main():
     elev, lons, lats = fetch_dem(
         region["west"], region["south"], region["east"], region["north"], region["arcsec"]
     )
+    elev = overlay_nonna(elev, region)
     depth = np.where(elev < LAND_THRESHOLD, -elev, np.nan).astype(np.float32)
     water_frac = float(np.mean(~np.isnan(depth)))
     print(f"water fraction: {water_frac:.2%}, max depth {np.nanmax(depth):.0f} m")

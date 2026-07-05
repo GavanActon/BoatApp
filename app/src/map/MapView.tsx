@@ -8,6 +8,8 @@ import { depthAt, formatDepth, loadDepthGrid } from './depthGrid'
 import { applyLayerVisibility, getMap, setMap } from './mapController'
 import { buildMapStyle, depthLabelExpr } from './mapStyle'
 import { registerAllDataFiles } from './pmtilesRegistry'
+import { sampleDotAt } from '../routing/routeLayer'
+import { useRouteStore } from '../routing/routeStore'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 
@@ -31,7 +33,7 @@ export default function MapView() {
         .setOfflineReady(BUNDLES[0].files.every((f) => storedNames.has(f)))
       if (disposed || !containerRef.current) return
 
-      const { layers, depthUnit } = useAppStore.getState()
+      const { layers, depthUnit, satOpacity } = useAppStore.getState()
       map = new maplibregl.Map({
         container: containerRef.current,
         style: buildMapStyle({
@@ -39,6 +41,8 @@ export default function MapView() {
           showDepth: layers.depth,
           showContours: layers.contours,
           showSeamarks: layers.seamarks,
+          showSatellite: layers.satellite,
+          satOpacity,
           available,
           contoursData,
           depthUnit,
@@ -56,8 +60,16 @@ export default function MapView() {
       )
       map.touchZoomRotate.enableRotation()
 
-      // tap water → depth readout popup
+      // tap water → depth readout popup (or set route destination in pick mode)
       map.on('click', (e) => {
+        const routeState = useRouteStore.getState()
+        if (routeState.picking) {
+          routeState.setDestination({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
+          useAppStore.getState().setSheetTab('route')
+          return
+        }
+        // taps near route leg dots focus the leg forecast, not the depth popup
+        if (sampleDotAt(map!, e.point)) return
         const { depthUnit } = useAppStore.getState()
         const d = depthAt(e.lngLat.lng, e.lngLat.lat)
         popup?.remove()
@@ -79,6 +91,8 @@ export default function MapView() {
       map.on('dragstart', () => useAppStore.getState().setFollow(false))
 
       setMap(map)
+      // dev-only handle for driving the map in automated verification
+      if (import.meta.env.DEV) (window as unknown as { __map?: unknown }).__map = map
     })()
 
     return () => {
@@ -94,8 +108,14 @@ export default function MapView() {
     () =>
       useAppStore.subscribe((s, prev) => {
         if (s.layers !== prev.layers) {
-          for (const k of ['depth', 'contours', 'seamarks'] as const) {
+          for (const k of ['depth', 'contours', 'seamarks', 'satellite'] as const) {
             if (s.layers[k] !== prev.layers[k]) applyLayerVisibility(k, s.layers[k])
+          }
+        }
+        if (s.satOpacity !== prev.satOpacity) {
+          const map = getMap()
+          if (map?.getLayer('satellite')) {
+            map.setPaintProperty('satellite', 'raster-opacity', s.satOpacity)
           }
         }
         if (s.depthUnit !== prev.depthUnit) {

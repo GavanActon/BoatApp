@@ -48,6 +48,40 @@ export const IconTrack = (p: IconProps) => (
   </svg>
 )
 
+export const IconRoute = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="5" cy="19" r="2.2" />
+    <path d="M7 17.5 C 11 14.5, 8 10, 12.5 8 L 15 6.9" strokeDasharray="0.1 3.2" />
+    <path d="M17.5 2.5 v9" />
+    <path d="M17.5 3 h4 l-1.4 2 1.4 2 h-4" fill="currentColor" stroke="none" />
+  </svg>
+)
+
+export const IconStar = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M12 2.5 L14.8 8.9 L21.5 9.6 L16.5 14.2 L18 21 L12 17.5 L6 21 L7.5 14.2 L2.5 9.6 L9.2 8.9 Z" />
+  </svg>
+)
+
+export const IconMinus = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+    <path d="M5 12h14" />
+  </svg>
+)
+
+export const IconPlus = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+
+export const IconPin = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 21.5 C 12 21.5, 5 14.8, 5 9.8 A 7 7 0 0 1 19 9.8 C 19 14.8, 12 21.5, 12 21.5 Z" />
+    <circle cx="12" cy="9.8" r="2.6" />
+  </svg>
+)
+
 export const IconDownload = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5" />
@@ -78,6 +112,18 @@ export const IconClose = (p: IconProps) => (
 export const IconCheck = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4.5 12.5 10 18 19.5 7" />
+  </svg>
+)
+
+/** Arrow pointing where the wind blows toward (pass Open-Meteo "from" dir + 180). */
+export const IconWindArrow = (p: IconProps & { deg: number }) => (
+  <svg
+    width={S(p)}
+    height={S(p)}
+    viewBox="0 0 14 14"
+    style={{ transform: `rotate(${p.deg}deg)`, flexShrink: 0 }}
+  >
+    <path d="M7 1.5 L10 10 L7 8 L4 10 Z" fill="currentColor" />
   </svg>
 )
 

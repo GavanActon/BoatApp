@@ -5,3 +5,5 @@ __pycache__/
 pipeline/raw/
 pipeline/tools/
 *.log
+# Raw CHS NONNA bathymetry (login-gated download, non-navigational license — keep out of the public repo)
+external/

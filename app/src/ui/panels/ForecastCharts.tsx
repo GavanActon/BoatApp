@@ -1,14 +1,16 @@
 import { useMemo, useRef, useState } from 'react'
+import { useAppStore } from '../../state/appStore'
 import type { PointForecast } from '../../weather/openMeteo'
 
 /**
- * Wind + wave forecast charts. One SVG, two stacked plots sharing an x axis
- * and a touch-scrub crosshair with a readout row (mobile "tooltip").
+ * Wind + wave forecast charts across the full 7 days. One SVG, two stacked
+ * plots sharing an x axis and a touch-scrub crosshair with a readout row
+ * (mobile "tooltip"). The crosshair starts on the app-wide planning time.
  * Series colors validated for the dark navy surface:
  *   wind #2b9fdb · gust #c98500 · wave #1fae7c
  */
 
-const HOURS = 72
+const HOURS = 168
 const W = 360
 const PAD_L = 34
 const PAD_R = 10
@@ -97,7 +99,24 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
 
   const [scrub, setScrub] = useState<number | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
-  const idx = scrub ?? nowIdx - i0
+
+  // crosshair defaults to the app-wide planning time when one is picked
+  const planTimeMs = useAppStore((s) => s.planTimeMs)
+  const planIdx = useMemo(() => {
+    if (planTimeMs == null) return null
+    let best: number | null = null
+    let bestDiff = 90 * 60_000 // must land within the plotted range
+    for (let i = 0; i < times.length; i++) {
+      const diff = Math.abs(Date.parse(times[i]) - planTimeMs)
+      if (diff < bestDiff) {
+        bestDiff = diff
+        best = i
+      }
+    }
+    return best
+  }, [planTimeMs, times])
+
+  const idx = scrub ?? planIdx ?? nowIdx - i0
 
   const windMax = niceCeil(Math.max(...gust.map((v) => v ?? 0), 10) * 1.1, 5)
   const waveMax = Math.max(0.5, Math.ceil(Math.max(...wave.map((v) => v ?? 0)) * 1.25 * 2) / 2)

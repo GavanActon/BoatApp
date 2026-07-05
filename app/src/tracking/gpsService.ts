@@ -15,6 +15,7 @@ let watchId: number | null = null
 let marker: maplibregl.Marker | null = null
 let markerAdded = false
 let wakeLock: WakeLockSentinel | null = null
+let cameraHoldUntil = 0 // fixes don't steer the camera while a locate zoom-in runs
 
 // recording state
 let activeTrackId: number | null = null
@@ -71,8 +72,11 @@ function onFix(pos: GeolocationPosition) {
   gps.setFix(fix)
   if (gps.status !== 'on') gps.setStatus('on')
 
-  const map = getMap()
-  if (map) {
+  // the first fix can arrive before the map instance exists now that GPS
+  // starts at app launch — queue it; later fixes take the direct path
+  // without waiting for the style to finish loading
+  const liveMap = getMap()
+  const update = (map: maplibregl.Map) => {
     const m = ensureMarker()
     m.setLngLat([fix.lon, fix.lat])
     if (fix.cog != null) m.setRotation(fix.cog)
@@ -82,7 +86,7 @@ function onFix(pos: GeolocationPosition) {
     }
 
     const { follow, headingUp } = useAppStore.getState()
-    if (follow) {
+    if (follow && Date.now() >= cameraHoldUntil) {
       map.easeTo({
         center: [fix.lon, fix.lat],
         bearing: headingUp && fix.cog != null ? fix.cog : map.getBearing(),
@@ -91,6 +95,8 @@ function onFix(pos: GeolocationPosition) {
       })
     }
   }
+  if (liveMap) update(liveMap)
+  else withMap(update)
 
   void recordPoint(fix)
 }
@@ -131,7 +137,15 @@ export function locateAndFollow() {
   useAppStore.getState().setFollow(true)
   const fix = useGpsStore.getState().fix
   if (fix) {
-    withMap((map) => map.easeTo({ center: [fix.lon, fix.lat], zoom: Math.max(map.getZoom(), 12) }))
+    const ease = (map: maplibregl.Map) => {
+      cameraHoldUntil = Date.now() + 1200
+      map.easeTo({ center: [fix.lon, fix.lat], zoom: Math.max(map.getZoom(), 12) })
+    }
+    // direct when possible — withMap's loaded() gate would swallow the tap
+    // if some camera animation happens to be running
+    const map = getMap()
+    if (map) ease(map)
+    else withMap(ease)
   }
 }
 

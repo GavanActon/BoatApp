@@ -5,7 +5,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from 'maplibre-gl'
-import { SEAMARKS_URL } from '../config'
+import { SATELLITE_URL, SEAMARKS_URL } from '../config'
 import type { DepthUnit } from '../state/appStore'
 
 /** Depth label expression: contour levels / soundings are metres; format per unit. */
@@ -46,6 +46,8 @@ export interface StyleOpts {
   showDepth: boolean
   showContours: boolean
   showSeamarks: boolean
+  showSatellite: boolean
+  satOpacity: number
   /** which pmtiles sources are reachable (from registerAllDataFiles) */
   available: Set<string>
   /** contour + sounding GeoJSON, if loaded */
@@ -140,6 +142,20 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
     },
   ]
 
+  // Satellite sits above every vector fill (real imagery of land and water) but
+  // below contours, soundings, basemap labels and seamarks, so chart info stays
+  // readable on top. Opacity is user-adjustable to blend imagery with the chart.
+  const satelliteLayer: LayerSpecification = {
+    id: 'satellite',
+    type: 'raster',
+    source: 'satellite',
+    layout: { visibility: opts.showSatellite ? 'visible' : 'none' },
+    paint: {
+      'raster-opacity': opts.satOpacity,
+      'raster-resampling': 'linear',
+    },
+  }
+
   const seamarkLayer: LayerSpecification = {
     id: 'seamarks',
     type: 'raster',
@@ -149,11 +165,14 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
     paint: { 'raster-opacity': 1 },
   }
 
+  const symbolsAt = firstSymbolIdx === -1 ? base.length : Math.max(firstSymbolIdx, insertAt)
   const allLayers = [
     ...base.slice(0, insertAt),
     ...(opts.available.has('depth') ? [depthLayers[0]] : []),
+    ...base.slice(insertAt, symbolsAt),
+    satelliteLayer,
     ...(opts.contoursData ? depthLayers.slice(1) : []),
-    ...base.slice(insertAt),
+    ...base.slice(symbolsAt),
     seamarkLayer,
     // track + weather layers are added at runtime on top
   ]
@@ -165,6 +184,21 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
       tileSize: 256,
       attribution: 'Seamarks © OpenSeaMap',
     },
+    // baked regional archive when reachable (offline-capable), else live Esri tiles
+    satellite: opts.available.has('satellite')
+      ? {
+          type: 'raster',
+          url: 'pmtiles://satellite',
+          tileSize: 256,
+          attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+        }
+      : {
+          type: 'raster',
+          tiles: [SATELLITE_URL],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+        },
   }
   if (opts.available.has('basemap')) {
     sources.basemap = {

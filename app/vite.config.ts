@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // BASE_PATH lets the same build target GitHub Pages project sites (e.g. /BoatApp/)
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
+  // allow phone/tunnel access to the local servers
+  server: { host: true, allowedHosts: true },
+  preview: { host: true, allowedHosts: true },
   plugins: [
+    // HTTPS_DEV=1 serves over self-signed HTTPS so an iPhone on the same
+    // Wi-Fi gets a secure context (required for geolocation)
+    ...(process.env.HTTPS_DEV ? [basicSsl()] : []),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

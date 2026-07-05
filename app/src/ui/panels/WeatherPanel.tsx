@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getMap } from '../../map/mapController'
 import { useAppStore } from '../../state/appStore'
+import { dayLabel, isToday, startOfDayMs } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
-import { refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
+import { refreshWeatherGrid } from '../../weather/weatherLayer'
 import { IconLocate, IconRefresh } from '../icons'
 import ForecastCharts from './ForecastCharts'
+import HourlyDetail from './HourlyDetail'
+
+/**
+ * Pure forecast reference — the hourly table for the selected day and the
+ * 7-day charts, nothing else. Time is picked on the outlook strip (the
+ * app-wide planning time); map-overlay toggles live in Layers.
+ */
 
 function ageLabel(fetchedAt: number): string {
   const min = Math.round((Date.now() - fetchedAt) / 60000)
@@ -16,18 +24,13 @@ function ageLabel(fetchedAt: number): string {
 }
 
 export default function WeatherPanel() {
-  const layers = useAppStore((s) => s.layers)
-  const setLayer = useAppStore((s) => s.setLayer)
-  const weatherHour = useAppStore((s) => s.weatherHour)
-  const setWeatherHour = useAppStore((s) => s.setWeatherHour)
-  const online = useAppStore((s) => s.online)
+  const planTimeMs = useAppStore((s) => s.planTimeMs)
   const fix = useGpsStore((s) => s.fix)
 
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [gridInfo, setGridInfo] = useState(weatherGridInfo())
 
   const load = useCallback(async (lon: number, lat: number) => {
     setLoading(true)
@@ -50,52 +53,21 @@ export default function WeatherPanel() {
     const lat = fix?.lat ?? c?.lat
     if (lon != null && lat != null) void load(lon, lat)
     // also refresh the map layer grid when the panel opens (cheap, cached)
-    void refreshWeatherGrid().then(() => setGridInfo(weatherGridInfo()))
+    void refreshWeatherGrid()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const scrubTime = new Date(Date.now() + weatherHour * 3600_000)
+  const selDayMs = startOfDayMs(planTimeMs ?? Date.now())
 
   return (
     <div className="panel">
-      <label className="row">
-        <div className="row-text">
-          <span className="row-title">Wind & waves on map</span>
-          <span className="row-desc">
-            {gridInfo
-              ? `Forecast fetched ${ageLabel(gridInfo.fetchedAt)}${gridInfo.stale ? ' · offline copy' : ''}`
-              : online
-                ? 'Fetches a forecast grid for the whole bay'
-                : 'Offline — no cached forecast yet'}
-          </span>
-        </div>
-        <input
-          type="checkbox"
-          className="switch"
-          checked={layers.weather}
-          onChange={(e) => setLayer('weather', e.target.checked)}
-        />
-      </label>
-
-      {layers.weather && (
-        <div className="scrubber">
-          <div className="scrubber-label">
-            <span>Map time</span>
-            <b className="numeral">
-              {weatherHour === 0
-                ? 'Now'
-                : scrubTime.toLocaleString(undefined, { weekday: 'short', hour: 'numeric' })}
-            </b>
+      {forecast && (
+        <>
+          <div className="panel-section">
+            {isToday(selDayMs) ? 'Next 12 hours' : `${dayLabel(selDayMs)} hour by hour`}
           </div>
-          <input
-            type="range"
-            min={0}
-            max={48}
-            step={1}
-            value={weatherHour}
-            onChange={(e) => setWeatherHour(Number(e.target.value))}
-          />
-        </div>
+          <HourlyDetail forecast={forecast} dayStartMs={selDayMs} />
+        </>
       )}
 
       <div className="panel-section fc-header">

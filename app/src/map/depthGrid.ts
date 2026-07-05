@@ -24,7 +24,20 @@ const NODATA = 32767
 let header: GridHeader | null = null
 let data: Int16Array | null = null
 
-export async function loadDepthGrid(): Promise<boolean> {
+let loadPromise: Promise<boolean> | null = null
+
+/** Idempotent: concurrent callers (map boot, route planner) share one load. */
+export function loadDepthGrid(): Promise<boolean> {
+  if (!loadPromise) {
+    loadPromise = doLoad().then((ok) => {
+      if (!ok) loadPromise = null // allow a retry once files/network appear
+      return ok
+    })
+  }
+  return loadPromise
+}
+
+async function doLoad(): Promise<boolean> {
   try {
     let blob = await getStoredFile(DEPTH_GRID_FILE)
     if (!blob) {
@@ -46,6 +59,11 @@ export async function loadDepthGrid(): Promise<boolean> {
 
 export function depthGridLoaded(): boolean {
   return data !== null
+}
+
+/** Raw grid access for the water router. */
+export function getDepthGridRaw(): { header: GridHeader; data: Int16Array } | null {
+  return header && data ? { header, data } : null
 }
 
 function sample(ix: number, iy: number): number {

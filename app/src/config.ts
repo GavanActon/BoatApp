@@ -20,6 +20,7 @@ export interface DataFileDef {
 export const DATA_FILES: DataFileDef[] = [
   { key: 'basemap', file: 'basemap-superior-east.pmtiles', kind: 'vector', label: 'Base map' },
   { key: 'depth', file: 'depth-superior-east.pmtiles', kind: 'raster', label: 'Depth shading' },
+  { key: 'satellite', file: 'satellite-superior-east.pmtiles', kind: 'raster', label: 'Satellite' },
 ]
 
 /** Depth contours + spot soundings (GeoJSON, loaded whole). */
@@ -41,7 +42,7 @@ export const BUNDLES: BundleDef[] = [
     id: 'superior-east',
     name: 'Whitefish Bay & the Sandies',
     description:
-      'Base map, depth shading and contours for eastern Lake Superior — Île Parisienne, Goulais Bay, Batchawana Bay and the Soo.',
+      'Base map, satellite imagery, depth shading and contours for eastern Lake Superior — Île Parisienne, Goulais Bay, Batchawana Bay and the Soo.',
     files: [
       ...DATA_FILES.map((d) => d.file),
       'contours-superior-east.json',
@@ -59,3 +60,18 @@ export const REGION_BBOX = {
 }
 
 export const SEAMARKS_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
+
+/** Esri World Imagery — online fallback when the baked satellite PMTiles is
+ *  unreachable (note z/y/x tile order). */
+export const SATELLITE_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+
+/** Preset day-trip destinations. Points get snapped to navigable water by the router. */
+export const DESTINATIONS: { name: string; lon: number; lat: number }[] = [
+  { name: 'Île Parisienne', lon: -84.755, lat: 46.685 },
+  { name: 'Batchawana Bay', lon: -84.52, lat: 46.93 },
+  { name: 'Goulais Bay', lon: -84.44, lat: 46.7 },
+  { name: 'Gros Cap', lon: -84.62, lat: 46.53 },
+  { name: 'Pancake Bay', lon: -84.7, lat: 46.97 },
+  { name: 'Whitefish Point', lon: -84.95, lat: 46.77 },
+]

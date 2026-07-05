@@ -2,17 +2,21 @@ import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
-import { fetchGridForecast, timeIndexFor, type GridForecast } from './openMeteo'
+import { floorHourMs } from '../time'
+import { fetchGridForecast, hourIndexAt, type GridForecast } from './openMeteo'
 
 /**
  * Wind + wave map layer. One fixed forecast grid over the cruising region,
- * rendered as soft wave-height blobs with wind arrows on top, stepped through
- * time by the scrubber in the Weather panel.
+ * rendered as soft wave-height blobs with wind arrows on top. Always shows
+ * the app-wide planning time (appStore.planTimeMs; null = now) — the same
+ * moment the outlook strip has selected and the trip planner departs at.
  */
 
 let grid: GridForecast | null = null
 let gridStale = false
 let layersAdded = false
+
+const GRID_MAX_AGE_MS = 30 * 60_000
 
 const ARROW_BUCKETS = [
   { id: 'wx-arrow-0', color: '#7fd4e8', max: 8 }, // light
@@ -124,8 +128,8 @@ function emptyFc(): FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
 }
 
-function fcForHour(g: GridForecast, hourOffset: number): FeatureCollection {
-  const i = timeIndexFor(g, hourOffset)
+function fcAt(g: GridForecast, targetMs: number): FeatureCollection {
+  const i = hourIndexAt(g.time, targetMs)
   return {
     type: 'FeatureCollection',
     features: g.cells.map((c) => ({
@@ -144,46 +148,64 @@ function fcForHour(g: GridForecast, hourOffset: number): FeatureCollection {
 
 function render(map: MlMap) {
   if (!layersAdded) return
-  const { layers, weatherHour } = useAppStore.getState()
+  const { layers, planTimeMs } = useAppStore.getState()
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
-  src.setData(grid && layers.weather ? fcForHour(grid, weatherHour) : emptyFc())
+  src.setData(grid && layers.weather ? fcAt(grid, planTimeMs ?? floorHourMs()) : emptyFc())
   const vis = layers.weather ? 'visible' : 'none'
   map.setLayoutProperty('wx-wave', 'visibility', vis)
   map.setLayoutProperty('wx-wind', 'visibility', vis)
 }
 
-export async function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolean } | null> {
-  try {
-    const { grid: g, stale } = await fetchGridForecast()
-    grid = g
-    gridStale = stale
-    withMap((map) => {
-      addLayers(map)
-      render(map)
-    })
-    return { fetchedAt: g.fetchedAt, stale }
-  } catch {
-    return null
-  }
+let refreshing: Promise<{ fetchedAt: number; stale: boolean } | null> | null = null
+
+export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolean } | null> {
+  // share one in-flight fetch across callers (strip taps, panel open)
+  refreshing ??= (async () => {
+    try {
+      const { grid: g, stale } = await fetchGridForecast()
+      grid = g
+      gridStale = stale
+      withMap((map) => {
+        addLayers(map)
+        render(map)
+      })
+      return { fetchedAt: g.fetchedAt, stale }
+    } catch {
+      return null
+    } finally {
+      refreshing = null
+    }
+  })()
+  return refreshing
 }
 
 export function weatherGridInfo(): { fetchedAt: number; stale: boolean } | null {
   return grid ? { fetchedAt: grid.fetchedAt, stale: gridStale } : null
 }
 
+let inited = false
+
 /** Wire the layer into the map + store. Call once at startup. */
 export function initWeatherLayer() {
+  if (inited) return // React StrictMode double effect-run in dev
+  inited = true
+
   withMap((map) => {
     addLayers(map)
     render(map)
   })
 
+  // layer persisted on from a previous session → fetch without waiting for a toggle
+  if (useAppStore.getState().layers.weather) void refreshWeatherGrid()
+
   useAppStore.subscribe((s, prev) => {
-    if (s.layers.weather !== prev.layers.weather || s.weatherHour !== prev.weatherHour) {
+    if (s.layers.weather !== prev.layers.weather || s.planTimeMs !== prev.planTimeMs) {
       withMap(render)
-      // first enable → fetch if we have nothing yet
-      if (s.layers.weather && !grid) void refreshWeatherGrid()
+      // fetch on first enable, refresh a stale grid on interaction
+      if (s.layers.weather && (!grid || Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS)) {
+        void refreshWeatherGrid()
+      }
     }
   })
 }
