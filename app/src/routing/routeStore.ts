@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { DESTINATIONS } from '../config'
+import type { SavedTrip } from '../tracking/db'
 import type { RouteResult } from './waterRouter'
 import type { TripPlan } from './tripPlan'
 
@@ -13,6 +15,19 @@ interface RouteState {
   // trip inputs
   destination: Destination | null
   setDestination: (d: Destination | null) => void
+  /** Nudge the pin without resetting the rest of the trip (map drag). */
+  moveDestination: (lon: number, lat: number) => void
+  // fixed start point (launch ramp, marina); null = current location (GPS / home waters)
+  startPoint: Destination | null
+  setStartPoint: (p: Destination | null) => void
+  /** Nudge the start marker without resetting anything else (map drag). */
+  moveStartPoint: (lon: number, lat: number) => void
+  // user-placed course points the route is steered through, in travel order
+  viaPoints: [number, number][]
+  setViaPoints: (pts: [number, number][]) => void
+  insertVia: (idx: number, pt: [number, number]) => void
+  moveVia: (idx: number, pt: [number, number]) => void
+  removeVia: (idx: number) => void
   roundTrip: boolean
   setRoundTrip: (v: boolean) => void
   cruiseKn: number // planning speed
@@ -24,9 +39,15 @@ interface RouteState {
   backByHour: number | null // latest hour-of-day to be home / off the water; null = no limit
   setBackBy: (h: number | null) => void
 
-  // "tap the map to set destination" mode
-  picking: boolean
-  setPicking: (v: boolean) => void
+  // "tap the map to set…" mode — what the next map tap places
+  picking: 'dest' | 'start' | null
+  setPicking: (v: 'dest' | 'start' | null) => void
+
+  // map-facing trip builder card: pick start/destination ('choose') and
+  // preview the run ('preview') with the map visible; the full options panel
+  // is a button away. null = hidden.
+  builder: 'choose' | 'preview' | null
+  setBuilder: (v: 'choose' | 'preview' | null) => void
 
   // trip under way (persisted so an iOS PWA reload mid-trip resumes monitoring)
   tripStartedAt: number | null
@@ -56,11 +77,34 @@ interface RouteState {
 export const useRouteStore = create<RouteState>()(
   persist(
     (set) => ({
-      destination: null,
+      // the Sandies out of the box; a persisted trip (or a cleared one) wins on reload
+      destination: { ...DESTINATIONS[0] },
       // one trip at a time: a new destination replaces the old trip wholesale,
-      // including the focused strip dot and any adopted stay time
+      // including course points, the focused strip dot and any adopted stay time
       setDestination: (destination) =>
-        set({ destination, picking: false, focusPoint: null, expandedIdx: null, plannedStayMin: null }),
+        set({
+          destination,
+          viaPoints: [],
+          picking: null,
+          focusPoint: null,
+          expandedIdx: null,
+          plannedStayMin: null,
+        }),
+      moveDestination: (lon, lat) =>
+        set((s) => (s.destination ? { destination: { ...s.destination, lon, lat } } : {})),
+      // the start survives destination changes — where you launch from rarely
+      // changes trip to trip
+      startPoint: null,
+      setStartPoint: (startPoint) => set({ startPoint, picking: null }),
+      moveStartPoint: (lon, lat) =>
+        set((s) => (s.startPoint ? { startPoint: { ...s.startPoint, lon, lat } } : {})),
+      viaPoints: [],
+      setViaPoints: (viaPoints) => set({ viaPoints }),
+      insertVia: (idx, pt) =>
+        set((s) => ({ viaPoints: [...s.viaPoints.slice(0, idx), pt, ...s.viaPoints.slice(idx)] })),
+      moveVia: (idx, pt) =>
+        set((s) => ({ viaPoints: s.viaPoints.map((p, i) => (i === idx ? pt : p)) })),
+      removeVia: (idx) => set((s) => ({ viaPoints: s.viaPoints.filter((_, i) => i !== idx) })),
       roundTrip: true,
       setRoundTrip: (roundTrip) => set({ roundTrip, plannedStayMin: null }),
       cruiseKn: 15,
@@ -71,11 +115,14 @@ export const useRouteStore = create<RouteState>()(
       setStayMin: (stayMin) => set({ stayMin, plannedStayMin: null }),
       plannedStayMin: null,
       setPlannedStay: (plannedStayMin) => set({ plannedStayMin }),
-      backByHour: 20, // home by 8 pm unless told otherwise
+      backByHour: 17, // home by 5 pm unless told otherwise
       setBackBy: (backByHour) => set({ backByHour }),
 
-      picking: false,
+      picking: null,
       setPicking: (picking) => set({ picking }),
+
+      builder: null,
+      setBuilder: (builder) => set({ builder }),
 
       tripStartedAt: null,
       tripOrigin: null,
@@ -108,9 +155,26 @@ export const useRouteStore = create<RouteState>()(
         plannedStayMin: s.plannedStayMin,
         backByHour: s.backByHour,
         destination: s.destination,
+        startPoint: s.startPoint,
+        viaPoints: s.viaPoints,
         tripStartedAt: s.tripStartedAt,
         tripOrigin: s.tripOrigin,
       }),
     },
   ),
 )
+
+/** Load a saved trip: its settings, its start point and — last, because it
+ *  resets course points — its destination, then the saved course back on top.
+ *  The saved trip's (possibly renamed) label becomes the trip's name
+ *  everywhere: the map chip, the plan headline and the destination marker. */
+export function applySavedTrip(t: SavedTrip) {
+  const s = useRouteStore.getState()
+  s.setRoundTrip(t.roundTrip)
+  s.setCruiseKn(t.cruiseKn)
+  s.setStayMin(t.stayMin)
+  if (t.backBy !== undefined) s.setBackBy(t.backBy)
+  s.setStartPoint(t.start ?? null) // trips remember where they launch from
+  s.setDestination({ name: t.name, lon: t.lon, lat: t.lat })
+  if (t.vias?.length) s.setViaPoints(t.vias)
+}

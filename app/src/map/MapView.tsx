@@ -8,10 +8,49 @@ import { depthAt, formatDepth, loadDepthGrid } from './depthGrid'
 import { applyLayerVisibility, getMap, setMap } from './mapController'
 import { buildMapStyle, depthLabelExpr } from './mapStyle'
 import { registerAllDataFiles } from './pmtilesRegistry'
-import { sampleDotAt } from '../routing/routeLayer'
+import { routeEditedRecently, sampleDotAt } from '../routing/routeLayer'
 import { useRouteStore } from '../routing/routeStore'
+import { compass } from '../routing/tripPlan'
+import { floorHourMs } from '../time'
+import { ensureWeatherGrid, gridConditionsAt, type GridConditions } from '../weather/weatherLayer'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+// last camera view, persisted so a refresh resumes exactly where you left off
+const VIEW_KEY = 'sandies.lastView'
+
+interface SavedView {
+  center: [number, number]
+  zoom: number
+  bearing: number
+}
+
+/** Depth readout plus wind/waves at the tapped point ('–' until the grid arrives). */
+function tapPopupHtml(depth: number, unit: 'm' | 'ft', wx: GridConditions | null): string {
+  const arrow = wx
+    ? `<svg width="12" height="12" viewBox="0 0 14 14" style="transform:rotate(${Math.round(wx.windDir + 180) % 360}deg)"><path d="M7 1.5 L10 10 L7 8 L4 10 Z" fill="currentColor"/></svg>`
+    : ''
+  const wind = wx ? `${Math.round(wx.windKn)}<span>kn ${compass(wx.windDir)}</span>` : '–<span>kn</span>'
+  const wave = wx?.waveM != null ? `${wx.waveM.toFixed(1)}<span>m</span>` : '–<span>m</span>'
+  return (
+    `<div class="depth-popup-value">${formatDepth(depth, unit)}<span>${unit}</span></div>` +
+    `<div class="depth-popup-wx"><span class="wx-item">${arrow}${wind}</span><span class="wx-item">${wave}</span></div>`
+  )
+}
+
+function loadSavedView(): SavedView | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '') as SavedView
+    const ok =
+      Array.isArray(v.center) &&
+      typeof v.center[0] === 'number' &&
+      typeof v.center[1] === 'number' &&
+      typeof v.zoom === 'number'
+    return ok ? v : null
+  } catch {
+    return null
+  }
+}
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -34,6 +73,7 @@ export default function MapView() {
       if (disposed || !containerRef.current) return
 
       const { layers, depthUnit, satOpacity } = useAppStore.getState()
+      const saved = loadSavedView()
       map = new maplibregl.Map({
         container: containerRef.current,
         style: buildMapStyle({
@@ -47,8 +87,9 @@ export default function MapView() {
           contoursData,
           depthUnit,
         }),
-        center: HOME.center,
-        zoom: HOME.zoom,
+        center: saved?.center ?? HOME.center,
+        zoom: saved?.zoom ?? HOME.zoom,
+        bearing: saved?.bearing ?? 0,
         maxPitch: 60,
         attributionControl: { compact: true },
         fadeDuration: 150,
@@ -60,35 +101,58 @@ export default function MapView() {
       )
       map.touchZoomRotate.enableRotation()
 
-      // tap water → depth readout popup (or set route destination in pick mode)
+      // tap water → depth + wind/waves popup (or set route destination in pick mode)
       map.on('click', (e) => {
+        if (routeEditedRecently()) return // the click that ends a route edit
         const routeState = useRouteStore.getState()
         if (routeState.picking) {
-          routeState.setDestination({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
-          useAppStore.getState().setSheetTab('route')
+          if (routeState.picking === 'start') {
+            routeState.setStartPoint({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
+          } else {
+            routeState.setDestination({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
+          }
+          // back to the builder card, not the sheet — the whole point of
+          // picking on the map is seeing the run drawn on it
+          routeState.setBuilder('preview')
           return
         }
         // taps near route leg dots focus the leg forecast, not the depth popup
         if (sampleDotAt(map!, e.point)) return
-        const { depthUnit } = useAppStore.getState()
+        const { depthUnit, planTimeMs } = useAppStore.getState()
         const d = depthAt(e.lngLat.lng, e.lngLat.lat)
         popup?.remove()
         if (d == null) return
-        popup = new maplibregl.Popup({
+        const { lng, lat } = e.lngLat
+        // same app-wide moment the weather layer and outlook strip show
+        const wxTime = planTimeMs ?? floorHourMs()
+        const p = new maplibregl.Popup({
           closeButton: false,
           className: 'depth-popup',
           offset: 10,
           maxWidth: 'none',
         })
           .setLngLat(e.lngLat)
-          .setHTML(
-            `<div class="depth-popup-value">${formatDepth(d, depthUnit)}<span>${depthUnit}</span></div>`,
-          )
+          .setHTML(tapPopupHtml(d, depthUnit, gridConditionsAt(lng, lat, wxTime)))
           .addTo(map!)
+        popup = p
+        // grid may be absent (weather layer off) or stale — fill in once it lands
+        void ensureWeatherGrid().then(() => {
+          if (popup !== p || !p.isOpen()) return
+          const wx = gridConditionsAt(lng, lat, wxTime)
+          if (wx) p.setHTML(tapPopupHtml(d, depthUnit, wx))
+        })
       })
 
       // user gesture breaks follow mode
       map.on('dragstart', () => useAppStore.getState().setFollow(false))
+
+      map.on('moveend', () => {
+        const c = map!.getCenter()
+        localStorage.setItem(
+          VIEW_KEY,
+          JSON.stringify({ center: [c.lng, c.lat], zoom: map!.getZoom(), bearing: map!.getBearing() }),
+        )
+      })
 
       setMap(map)
       // dev-only handle for driving the map in automated verification

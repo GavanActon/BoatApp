@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useAppStore } from '../../state/appStore'
 import { floorHourMs, isToday, startOfDayMs } from '../../time'
-import { conditionFor, dayHours, nextHours, type PointForecast } from '../../weather/openMeteo'
+import { conditionFor, dayHours, nextHours, skyLabel, type PointForecast } from '../../weather/openMeteo'
 import { IconWindArrow } from '../icons'
 
 /**
@@ -19,21 +19,6 @@ const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', '
 
 function compass(deg: number): string {
   return COMPASS[Math.round(deg / 22.5) % 16]
-}
-
-function skyLabel(code: number): string {
-  if (code === 0) return 'Clear'
-  if (code === 1) return 'Mostly clear'
-  if (code === 2) return 'Part cloudy'
-  if (code === 3) return 'Overcast'
-  if (code === 45 || code === 48) return 'Fog'
-  if (code >= 51 && code <= 57) return 'Drizzle'
-  if (code >= 61 && code <= 67) return 'Rain'
-  if (code >= 71 && code <= 77) return 'Snow'
-  if (code >= 80 && code <= 82) return 'Showers'
-  if (code === 85 || code === 86) return 'Snow shwrs'
-  if (code >= 95) return 'Thunder'
-  return '—'
 }
 
 export default function HourlyDetail({

@@ -4,7 +4,7 @@ import { startRecording, stopRecording } from '../tracking/gpsService'
 import { useGpsStore } from '../tracking/gpsStore'
 import { computeRoute } from './router'
 import { useRouteStore } from './routeStore'
-import { planTrip } from './tripPlan'
+import { planTrip, type TripPlan } from './tripPlan'
 import { haversineNm } from './waterRouter'
 
 /**
@@ -26,8 +26,68 @@ const PLAN_WX_CACHE_MS = 5 * 60_000 // planning tweaks (time, speed, stay) reuse
 const TICK_MS = 2 * 60_000
 const ARRIVED_NM = 0.5 // within this of the destination = "we're there"
 const TRIP_EXPIRY_MS = 12 * 3600_000 // a persisted "under way" older than this is over
+const DEFAULT_DEPART_H = 10 // no departure picked = "we leave at 10"
 
 let replanToken = 0
+let suggestedFor: string | null = null // destination we already auto-suggested a departure for
+
+/** The house default departure — 10 am on the day of `ms`. */
+function defaultDepartMs(ms: number): number {
+  const d = new Date(ms)
+  d.setHours(DEFAULT_DEPART_H, 0, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * First impressions assume the house habit: no departure chosen means "we
+ * leave at 10", so adopt today's 10 am while it's still ahead and inside a
+ * go window. Failing that, lead with the best time, not a warning: if right
+ * now is either not good or not a sanctioned departure at all (late evening,
+ * past back-by), adopt the week's best option — departing at 10 when that
+ * day's window covers it. One-shot per destination — after that the user's
+ * chosen time is always respected.
+ */
+function maybeSuggestDeparture(plan: TripPlan) {
+  const rs = useRouteStore.getState()
+  if (rs.tripStartedAt != null || !rs.destination || plan.days.length === 0) return
+  const key = `${rs.destination.lon},${rs.destination.lat}`
+  if (suggestedFor === key) return
+  suggestedFor = key
+  if (useAppStore.getState().planTimeMs != null) return // a time was already picked
+
+  const now = Date.now()
+  const all = plan.days.flatMap((d) => d.options)
+
+  const todayTen = defaultDepartMs(now)
+  if (todayTen > now) {
+    const win = all.find(
+      (o) => o.verdict === 'go' && o.windowStartMs <= todayTen && todayTen <= o.windowEndMs,
+    )
+    if (win) {
+      useAppStore.getState().setPlanTime(todayTen)
+      // an option's stay was maximized for its own departure hour — only
+      // adopt it when that hour is 10 itself
+      if (win.departMs === todayTen) useRouteStore.getState().setPlannedStay(win.stayMin)
+      return
+    }
+  }
+
+  const sanctioned = all.some((o) => o.windowStartMs <= now && now <= o.windowEndMs + 3_599_000)
+  if (plan.verdict === 'go' && sanctioned) return // leaving now IS the best answer
+
+  const future = all.filter((o) => o.departMs > now)
+  const pick = future.find((o) => o.verdict === 'go') ?? (sanctioned ? undefined : future[0])
+  if (!pick) return
+  const ten = defaultDepartMs(pick.departMs)
+  if (ten !== pick.departMs && ten > now && pick.windowStartMs <= ten && ten <= pick.windowEndMs) {
+    // that day's window covers the house 10 am — leave then, stay left at
+    // the minimum (the option's stay only fit its own departure hour)
+    useAppStore.getState().setPlanTime(ten)
+    return
+  }
+  useAppStore.getState().setPlanTime(pick.departMs)
+  useRouteStore.getState().setPlannedStay(pick.stayMin)
+}
 
 function inRegion(lon: number, lat: number): boolean {
   const b = REGION_BBOX
@@ -35,9 +95,17 @@ function inRegion(lon: number, lat: number): boolean {
 }
 
 /** GPS fix when it's inside the charted region, otherwise home waters. */
-function startPoint(): [number, number] {
+function boatPosition(): [number, number] {
   const fix = useGpsStore.getState().fix
   return fix && inRegion(fix.lon, fix.lat) ? [fix.lon, fix.lat] : HOME.center
+}
+
+/** Where the trip is planned from: the chosen start point while planning,
+ *  the boat's live position once under way. */
+function planStart(underWay: boolean): [number, number] {
+  const sp = useRouteStore.getState().startPoint
+  if (!underWay && sp) return [sp.lon, sp.lat]
+  return boatPosition()
 }
 
 /** Recompute route + trip weather. `quiet` keeps the current verdict visible
@@ -50,16 +118,19 @@ export async function replan(quiet = false): Promise<void> {
   if (!dest) {
     s.setRoute(null)
     s.setPlan(null)
+    suggestedFor = null // next destination gets a fresh suggestion
     return
   }
 
   const underWay = s.tripStartedAt != null
-  const start = startPoint()
+  const fixedStart = !underWay && s.startPoint != null
+  const start = planStart(underWay)
 
   // round trip + boat has reached the destination → plan the ride home
   let target: [number, number] = [dest.lon, dest.lat]
   let roundTrip = s.roundTrip
   let destName = dest.name
+  let vias = s.viaPoints
   if (
     underWay &&
     s.roundTrip &&
@@ -69,17 +140,32 @@ export async function replan(quiet = false): Promise<void> {
     target = s.tripOrigin
     roundTrip = false
     destName = 'Home'
+    // the ride home retraces the plotted course through the same points
+    vias = [...s.viaPoints].reverse()
   }
 
-  let result = await computeRoute(start, target)
-  if ('error' in result && (start[0] !== HOME.center[0] || start[1] !== HOME.center[1])) {
+  let result = await computeRoute(start, target, vias)
+  if (
+    'error' in result &&
+    !fixedStart &&
+    (start[0] !== HOME.center[0] || start[1] !== HOME.center[1])
+  ) {
     // the fix exists but can't reach water (marina slip, on the road, GPS
-    // drift ashore) — plan the trip from home waters instead of failing
-    result = await computeRoute(HOME.center, target)
+    // drift ashore) — plan the trip from home waters instead of failing.
+    // A user-chosen start point is never second-guessed like this: the error
+    // tells them to move it instead.
+    result = await computeRoute(HOME.center, target, vias)
   }
   if (token !== replanToken) return
   if ('error' in result) {
-    s.setRoute(null, result.error)
+    s.setRoute(
+      null,
+      // with a fixed start and no course points the failure could be either
+      // end — say so instead of blaming the destination alone
+      fixedStart && vias.length === 0
+        ? 'No water route — make sure the start point and destination sit on open water.'
+        : result.error,
+    )
     s.setPlan(null)
     return
   }
@@ -106,6 +192,7 @@ export async function replan(quiet = false): Promise<void> {
     })
     if (token !== replanToken) return
     useRouteStore.getState().setPlan(plan)
+    maybeSuggestDeparture(plan)
   } catch {
     if (token !== replanToken) return
     if (!quiet) {
@@ -120,8 +207,15 @@ export async function replan(quiet = false): Promise<void> {
  *  and re-time everything from the boat's live position. */
 export function startTrip() {
   const fix = useGpsStore.getState().fix
+  const sp = useRouteStore.getState().startPoint
+  // the ride home aims for the actual cast-off spot; without a fix, the
+  // chosen start point beats the home-waters default
   const origin: [number, number] =
-    fix && inRegion(fix.lon, fix.lat) ? [fix.lon, fix.lat] : HOME.center
+    fix && inRegion(fix.lon, fix.lat)
+      ? [fix.lon, fix.lat]
+      : sp
+        ? [sp.lon, sp.lat]
+        : HOME.center
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
   if (!useGpsStore.getState().recording) void startRecording()
@@ -159,6 +253,8 @@ export function initRoutePlanner() {
   useRouteStore.subscribe((s, prev) => {
     if (
       s.destination !== prev.destination ||
+      s.startPoint !== prev.startPoint ||
+      s.viaPoints !== prev.viaPoints ||
       s.roundTrip !== prev.roundTrip ||
       s.cruiseKn !== prev.cruiseKn ||
       s.stayMin !== prev.stayMin ||
@@ -174,9 +270,13 @@ export function initRoutePlanner() {
     if (s.planTimeMs !== prev.planTimeMs && useRouteStore.getState().destination) void replan()
   })
 
-  // first GPS fix moves the start point from home waters to the boat
+  // first GPS fix moves the start from home waters to the boat — unless a
+  // fixed start point is set, which doesn't care where the phone is
   useGpsStore.subscribe((s, prev) => {
-    if (s.fix && !prev.fix && useRouteStore.getState().destination) void replan()
+    const rs = useRouteStore.getState()
+    if (s.fix && !prev.fix && rs.destination && (!rs.startPoint || rs.tripStartedAt != null)) {
+      void replan(rs.tripStartedAt != null)
+    }
   })
 
   // under way: quiet progress update every 2 min (weather refetches after

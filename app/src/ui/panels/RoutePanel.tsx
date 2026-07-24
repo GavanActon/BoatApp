@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
-import { DESTINATIONS } from '../../config'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { endTrip, replan, startTrip } from '../../routing/planner'
 import { useRouteStore } from '../../routing/routeStore'
 import {
@@ -16,16 +15,17 @@ import {
   dayTimeLabel,
   durationLabel,
   floorHourMs,
+  hourOfDayLabel,
   hourShort,
   isToday,
   startOfDayMs,
   timeLabel,
 } from '../../time'
-import { db, type SavedTrip } from '../../tracking/db'
+import { db, type SavedStart, type SavedTrip } from '../../tracking/db'
 import { knToUnit, speedUnitLabel, unitToKn } from '../../units'
 import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
 import Disclosure from '../Disclosure'
-import { IconCheck, IconMinus, IconPin, IconPlus, IconRefresh, IconStar, IconTrash, IconWindArrow } from '../icons'
+import { IconCheck, IconMinus, IconPlus, IconRefresh, IconTrash, IconWindArrow } from '../icons'
 import HourlyDetail from './HourlyDetail'
 
 /**
@@ -54,12 +54,8 @@ const STAY_CHOICES = [
   { min: 180, label: '3h' },
 ]
 
-const BACKBY_CHOICES: { h: number | null; label: string }[] = [
-  { h: 14, label: '2 PM' },
-  { h: 17, label: '5 PM' },
-  { h: 20, label: '8 PM' },
-  { h: null, label: 'Any' },
-]
+const BACKBY_MIN_H = 11 // stepping below 11 AM makes no trip; above 11 PM means "any"
+const BACKBY_MAX_H = 23
 
 const VERDICT_TEXT = {
   go: 'Good to go',
@@ -91,17 +87,20 @@ function optionLabel(o: TripOption): string {
 }
 
 /** One verdict card — shared by planning and under-way views. While planning,
- *  the departure fact carries ± nudgers: the answer is also the control. */
+ *  the departure fact carries ± nudgers (the answer is also the control) and
+ *  a non-green card points at the week's best alternative. */
 function VerdictCard({
   plan,
   underWay,
   tripStartedAt,
   onNudge,
+  better,
 }: {
   plan: TripPlan
   underWay: boolean
   tripStartedAt: number | null
   onNudge?: (deltaHours: number) => void
+  better?: { text: string; onUse: () => void }
 }) {
   return (
     <div className={`verdict verdict-${plan.verdict}`}>
@@ -119,6 +118,11 @@ function VerdictCard({
       <p>{plan.headline}</p>
       {plan.verdict !== 'nogo' && plan.turnsBadText && (
         <p className="verdict-warn">⚠ {plan.turnsBadText}</p>
+      )}
+      {better && (
+        <button className="verdict-better" onClick={better.onUse}>
+          Better: {better.text} →
+        </button>
       )}
       <div className="verdict-facts numeral">
         {!underWay && (
@@ -287,7 +291,9 @@ function DepartureWindows({ days }: { days: DayWindows[] }) {
             <span className={`win-dayname cond-${d.best ?? 'na'}`}>{dayLabel(d.dayStartMs)}</span>
             <span className="win-list">
               {d.best == null ? (
-                <em className="win-none">beyond the forecast</em>
+                <em className="win-none">
+                  {isToday(d.dayStartMs) ? 'done for today' : 'beyond the forecast'}
+                </em>
               ) : d.options.length === 0 ? (
                 <em className="win-none">no window — stay in</em>
               ) : (
@@ -324,6 +330,10 @@ export default function RoutePanel() {
   const {
     destination,
     setDestination,
+    startPoint,
+    setStartPoint,
+    viaPoints,
+    setViaPoints,
     roundTrip,
     setRoundTrip,
     cruiseKn,
@@ -331,9 +341,10 @@ export default function RoutePanel() {
     stayMin,
     setStayMin,
     plannedStayMin,
+    setPlannedStay,
     backByHour,
     setBackBy,
-    setPicking,
+    setBuilder,
     route,
     routeError,
     plan,
@@ -353,6 +364,15 @@ export default function RoutePanel() {
   }, [])
   useEffect(() => reloadSaved(), [reloadSaved])
 
+  // saved start points (launch ramps, marina slips)
+  const [starts, setStarts] = useState<SavedStart[]>([])
+  const [editingStartId, setEditingStartId] = useState<number | null>(null)
+  const [editStartName, setEditStartName] = useState('')
+  const reloadStarts = useCallback(() => {
+    void db.starts.orderBy('createdAt').toArray().then(setStarts)
+  }, [])
+  useEffect(() => reloadStarts(), [reloadStarts])
+
   async function saveTrip() {
     if (!destination) return
     await db.trips.add({
@@ -364,6 +384,8 @@ export default function RoutePanel() {
       cruiseKn,
       stayMin,
       backBy: backByHour,
+      vias: viaPoints,
+      start: startPoint ? { ...startPoint } : null,
       createdAt: Date.now(),
     })
     reloadSaved()
@@ -371,14 +393,30 @@ export default function RoutePanel() {
     setTimeout(() => setJustSaved(false), 1600)
   }
 
-  function loadTrip(t: SavedTrip) {
-    setRoundTrip(t.roundTrip)
-    setCruiseKn(t.cruiseKn)
-    setStayMin(t.stayMin)
-    if (t.backBy !== undefined) setBackBy(t.backBy)
-    // the saved trip's (possibly renamed) label is the trip's name everywhere:
-    // the map chip, the plan headline and the destination marker
-    setDestination({ name: t.name, lon: t.lon, lat: t.lat })
+  /** Hand where-from/where-to back to the map-facing builder card. */
+  function openBuilder() {
+    setSheetTab(null)
+    setBuilder('choose')
+  }
+
+  async function commitStartName(sp: SavedStart) {
+    const name = editStartName.trim()
+    setEditingStartId(null)
+    if (name && name !== sp.name) {
+      await db.starts.update(sp.id!, { name })
+      // if it's the start in use, rename it on the map too
+      if (startPoint && startPoint.lon === sp.lon && startPoint.lat === sp.lat) {
+        setStartPoint({ name, lon: sp.lon, lat: sp.lat })
+      }
+      reloadStarts()
+    }
+  }
+
+  async function deleteStart(sp: SavedStart) {
+    await db.starts.delete(sp.id!)
+    // deleting the start in use falls back to current location
+    if (startPoint && startPoint.lon === sp.lon && startPoint.lat === sp.lat) setStartPoint(null)
+    reloadStarts()
   }
 
   async function commitName(t: SavedTrip) {
@@ -393,6 +431,22 @@ export default function RoutePanel() {
       reloadSaved()
     }
   }
+
+  // the week's best alternative, offered whenever the current pick isn't green
+  const better = useMemo(() => {
+    if (!plan || plan.verdict === 'go' || underWay) return undefined
+    const o = plan.days
+      .flatMap((d) => d.options)
+      .find((x) => x.verdict === 'go' && x.departMs > Date.now() && x.departMs !== plan.departMs)
+    if (!o) return undefined
+    return {
+      text: `${dayLabel(o.departMs)} ${optionLabel(o)}`,
+      onUse: () => {
+        setPlanTime(o.departMs)
+        setPlannedStay(o.stayMin)
+      },
+    }
+  }, [plan, underWay, setPlanTime, setPlannedStay])
 
   // ---------- under way: the live trip view, nothing else ----------
   if (underWay) {
@@ -427,7 +481,15 @@ export default function RoutePanel() {
     setPlanTime(next <= Date.now() ? null : next)
   }
 
-  const backByLabel = BACKBY_CHOICES.find((c) => c.h === backByHour)?.label ?? 'Any'
+  // step the back-by hour; past 11 PM it means "no limit" ("Any" sits one
+  // notch above the max, so − from Any lands back on 11 PM)
+  const stepBackBy = (delta: number) => {
+    const base = backByHour ?? BACKBY_MAX_H + 1
+    const next = base + delta
+    setBackBy(next > BACKBY_MAX_H ? null : Math.max(BACKBY_MIN_H, next))
+  }
+
+  const backByLabel = backByHour == null ? 'Any' : hourOfDayLabel(backByHour)
   const setupSummary =
     `${roundTrip ? 'round trip' : 'one way'} · ${shownSpeed} ${speedUnitLabel(speedUnit)}` +
     (roundTrip ? ` · ≥${durationLabel(stayMin)} there` : '') +
@@ -435,57 +497,55 @@ export default function RoutePanel() {
 
   return (
     <div className="panel">
-      {/* ---------- decision 1: where ---------- */}
-      <div className="dest-grid">
-        {saved.map((t) => {
-          const active = destination?.lon === t.lon && destination?.lat === t.lat
-          return (
-            <button
-              key={`saved-${t.id}`}
-              className={`dest-chip dest-saved ${active ? 'dest-on' : ''}`}
-              onClick={() => (active ? setDestination(null) : loadTrip(t))}
-            >
-              <IconStar size={12} /> {t.name}
-            </button>
-          )
-        })}
-        {DESTINATIONS.filter((d) => !saved.some((t) => t.destName === d.name)).map((d) => {
-          const active = destination?.name === d.name
-          return (
-            <button
-              key={d.name}
-              className={`dest-chip ${active ? 'dest-on' : ''}`}
-              onClick={() => (active ? setDestination(null) : setDestination({ ...d }))}
-            >
-              {d.name}
-            </button>
-          )
-        })}
-        <button
-          className={`dest-chip dest-pick ${destination && !destination.name ? 'dest-on' : ''}`}
-          onClick={() => {
-            setPicking(true)
-            setSheetTab(null) // get the sheet out of the way to tap the map
-          }}
-        >
-          <IconPin size={14} /> Pick on map
-        </button>
-      </div>
-
-      {/* ---------- the answer ---------- */}
-      {!destination && (
-        <div className="empty">
-          Pick a destination — the route gets plotted through safe water, the weather checked for
-          every leg, and the whole week swept for the best times to go.
+      {/* ---------- the trip: chosen via the map builder, changed there too ---------- */}
+      {destination ? (
+        <div className="trip-route-head">
+          <span className="trip-route-names">
+            <span>{startPoint ? (startPoint.name ?? 'Pinned start') : 'Current location'}</span>
+            {' → '}
+            <b>{destination.name ?? 'Pinned spot'}</b>
+          </span>
+          <button className="linklike" onClick={openBuilder}>
+            Change
+          </button>
         </div>
+      ) : (
+        <>
+          <div className="empty">
+            No trip yet — pick a destination and the route gets plotted through safe water, the
+            weather checked for every leg, and the whole week swept for the best times to go.
+          </div>
+          <button className="btn-ghost" onClick={openBuilder}>
+            Choose a destination
+          </button>
+        </>
       )}
 
       {destination && routeError && <div className="empty">{routeError}</div>}
 
       {destination && route && (
         <>
+          <div className="route-edit-note">
+            {viaPoints.length > 0 ? (
+              <>
+                Steered through {viaPoints.length} point{viaPoints.length === 1 ? '' : 's'} — drag
+                to adjust, tap one to remove.{' '}
+                <button className="linklike" onClick={() => setViaPoints([])}>
+                  Reset course
+                </button>
+              </>
+            ) : (
+              'Drag the route line on the map to steer it around islands or shoals.'
+            )}
+          </div>
           {plan && (
-            <VerdictCard plan={plan} underWay={false} tripStartedAt={null} onNudge={stepHour} />
+            <VerdictCard
+              plan={plan}
+              underWay={false}
+              tripStartedAt={null}
+              onNudge={stepHour}
+              better={better}
+            />
           )}
 
           {planning && !plan && <div className="empty">Checking the weather along the route…</div>}
@@ -576,16 +636,19 @@ export default function RoutePanel() {
               {roundTrip ? 'Latest you want to be home' : 'Latest you want to arrive'}
             </span>
           </div>
-          <div className="seg">
-            {BACKBY_CHOICES.map((c) => (
-              <button
-                key={c.label}
-                className={backByHour === c.h ? 'seg-on' : ''}
-                onClick={() => setBackBy(c.h)}
-              >
-                {c.label}
-              </button>
-            ))}
+          <div className="stepper">
+            <button className="icon-btn" onClick={() => stepBackBy(-1)} aria-label="Back an hour earlier">
+              <IconMinus size={16} />
+            </button>
+            <b className="numeral">{backByLabel}</b>
+            <button
+              className="icon-btn"
+              onClick={() => stepBackBy(1)}
+              disabled={backByHour == null}
+              aria-label="Back an hour later"
+            >
+              <IconPlus size={16} />
+            </button>
           </div>
         </div>
       </Disclosure>
@@ -601,11 +664,12 @@ export default function RoutePanel() {
       )}
 
       {/* ---------- admin ---------- */}
-      {(destination || saved.length > 0) && (
+      {(destination || saved.length > 0 || starts.length > 0) && (
         <Disclosure
           title="Saved trips"
           summary={
             (saved.length > 0 ? `${saved.length} saved` : 'none yet') +
+            (starts.length > 0 ? ` · ${starts.length} start${starts.length === 1 ? '' : 's'}` : '') +
             (destination ? ' · save this one' : '')
           }
         >
@@ -656,6 +720,7 @@ export default function RoutePanel() {
                   {t.roundTrip ? 'Round trip' : 'One way'} ·{' '}
                   {Math.round(knToUnit(speedUnit, t.cruiseKn))} {speedUnitLabel(speedUnit)}
                   {t.roundTrip ? ` · ≥${durationLabel(t.stayMin)} there` : ''}
+                  {t.start ? ` · from ${t.start.name ?? 'a pinned start'}` : ''}
                   {' · tap name to rename'}
                 </span>
               </div>
@@ -663,6 +728,50 @@ export default function RoutePanel() {
                 className="icon-btn danger"
                 onClick={() => void db.trips.delete(t.id!).then(reloadSaved)}
                 aria-label={`Delete ${t.name}`}
+              >
+                <IconTrash size={16} />
+              </button>
+            </div>
+          ))}
+
+          {starts.length > 0 && <div className="panel-section">Start points</div>}
+          {starts.map((sp) => (
+            <div key={`start-row-${sp.id}`} className="row">
+              <div className="row-text">
+                {editingStartId === sp.id ? (
+                  <input
+                    className="trip-name-input"
+                    value={editStartName}
+                    autoFocus
+                    onChange={(e) => setEditStartName(e.target.value)}
+                    onBlur={() => void commitStartName(sp)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      if (e.key === 'Escape') setEditingStartId(null)
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="row-title trip-name"
+                    onClick={() => {
+                      setEditingStartId(sp.id!)
+                      setEditStartName(sp.name)
+                    }}
+                    aria-label={`Rename ${sp.name}`}
+                  >
+                    {sp.name}
+                  </button>
+                )}
+                <span className="row-desc">
+                  {Math.abs(sp.lat).toFixed(3)}°{sp.lat >= 0 ? 'N' : 'S'}{' '}
+                  {Math.abs(sp.lon).toFixed(3)}°{sp.lon >= 0 ? 'E' : 'W'}
+                  {' · tap name to rename'}
+                </span>
+              </div>
+              <button
+                className="icon-btn danger"
+                onClick={() => void deleteStart(sp)}
+                aria-label={`Delete ${sp.name}`}
               >
                 <IconTrash size={16} />
               </button>

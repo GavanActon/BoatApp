@@ -8,12 +8,13 @@ description: Build, launch and drive the Sandies chartplotter PWA to verify chan
 ## Build / launch
 - `cd app && npm run build` — runs `tsc -b` (typecheck) + vite build.
 - `cd app && npm run dev` — dev server; port 5173 is often taken by the user's own instance, vite falls back to 5174. Read the printed URL.
+- Drive via `http://127.0.0.1:<port>/`, not `localhost` — other dev servers on this machine bind IPv6 loopback (`::1`), which `localhost` resolves to first, so `localhost:<port>` can serve a *different* project than the vite instance you just started.
 - `npm run lint` — oxlint.
 
 ## Drive (Playwright)
 - Playwright browsers live in `%LOCALAPPDATA%\ms-playwright`. Install the `playwright` npm package in a scratch dir (not the repo) and `npx playwright install chromium --only-shell` if the build revision mismatches.
 - Use an iPhone-ish context: `{ viewport: {width: 390, height: 844}, deviceScaleFactor: 2, isMobile: true, hasTouch: true }`.
-- In dev builds the MapLibre map is exposed as `window.__map` (see MapView.tsx). Wait for `window.__map && window.__map.loaded()`, then drive geography deterministically:
+- In dev builds the MapLibre map is exposed as `window.__map` (see MapView.tsx). Wait for `window.__map && window.__map.isStyleLoaded()` — not `loaded()`, which never settles true when spoofed GPS is streaming because auto-follow keeps the camera easing. Then drive geography deterministically:
   `window.__map.jumpTo({center, zoom})` + `window.__map.project([lon, lat])` → `page.mouse.click(x, y)`.
 - Tab dock buttons match `getByRole('button', {name: '<Tab>', exact: true})` — `exact` matters because top-bar chips can contain the same word.
 - Weather comes from live Open-Meteo (no key). `context.setOffline(true)` exercises the IndexedDB forecast-cache fallback (look for the `offline ·` age badge).

@@ -56,6 +56,11 @@ export function floorHourMs(ms = Date.now()): number {
   return d.getTime()
 }
 
+/** Hour-of-day label: 17 → "5 PM", 12 → "12 PM". */
+export function hourOfDayLabel(h: number): string {
+  return `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}`
+}
+
 /** Compact duration: "30m", "1h", "1½h", "2h". */
 export function durationLabel(min: number): string {
   if (min < 60) return `${min}m`

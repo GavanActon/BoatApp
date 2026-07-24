@@ -41,8 +41,17 @@
 
 .topbar {
   display: flex;
+  flex-wrap: wrap; /* location chip + picking chip together overflow a phone */
+  justify-content: center;
   gap: 8px;
+  max-width: 100%;
   pointer-events: none;
+}
+
+/* the bar itself lets map gestures through; the chips riding it do not —
+   without this a tap on "· cancel" falls through and drops a point */
+.topbar > * {
+  pointer-events: auto;
 }
 
 /* two-level outlook strip: 7 day chips over 12 hour cells */
@@ -72,8 +81,10 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
   padding: 3px 0 4px;
   border-radius: 7px;
   border-top: 3px solid transparent;
@@ -84,6 +95,29 @@
   color: var(--c-text-dim);
   white-space: nowrap;
   overflow: hidden;
+}
+
+.wxday-wx {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
+}
+
+.wxday-wx svg {
+  color: var(--c-text-faint);
+}
+
+.wxday-wx b {
+  color: var(--c-text);
+  font-weight: 700;
+}
+
+.wxday-on .wxday-wx svg,
+.wxday-on .wxday-wx b {
+  color: var(--c-accent);
 }
 
 .wxday.wx-na {
@@ -408,6 +442,56 @@
   font-weight: 500;
   color: var(--c-text-dim);
   margin-left: 3px;
+}
+
+.depth-popup-wx {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 3px;
+  padding-top: 4px;
+  border-top: 1px solid var(--c-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.depth-popup-wx .wx-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.depth-popup-wx .wx-item span {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-dim);
+}
+
+/* tap a course point → offer to remove it */
+
+.via-popup .maplibregl-popup-content {
+  background: var(--c-surface-heavy);
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  padding: 0;
+  box-shadow: var(--shadow-fab);
+}
+
+.via-popup .maplibregl-popup-tip {
+  border-top-color: var(--c-surface-heavy) !important;
+  border-bottom-color: var(--c-surface-heavy) !important;
+}
+
+.via-remove-btn {
+  display: block;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-danger);
 }
 
 /* ---------- bottom sheet ---------- */
@@ -947,6 +1031,17 @@
   border-bottom: 1px solid rgba(126, 178, 224, 0.08);
 }
 
+.panel-section-first {
+  margin-top: 2px;
+}
+
+/* invitation to keep a map-picked start around */
+.dest-save-start {
+  color: var(--cond-good);
+  border-style: dashed;
+  border-color: rgba(89, 224, 184, 0.45);
+}
+
 .dest-chip {
   display: inline-flex;
   align-items: center;
@@ -1333,6 +1428,24 @@
   color: var(--c-text-dim);
 }
 
+/* course-editing hint under the destination chips */
+
+.route-edit-note {
+  padding: 0 0 10px;
+  font-size: 12px;
+  color: var(--c-text-faint);
+}
+
+.linklike {
+  display: inline;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--c-accent);
+}
+
 /* the hourly-table row matching the app-wide planning time */
 
 .hd-row.hd-selected {
@@ -1412,4 +1525,169 @@
   color: var(--c-text-dim);
   background: rgba(126, 178, 224, 0.14);
   flex-shrink: 0;
+}
+
+/* a non-green verdict card points at the week's best alternative */
+
+.verdict-better {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(89, 224, 184, 0.12);
+  border: 1px solid rgba(89, 224, 184, 0.35);
+  color: var(--cond-good);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+}
+
+/* ---------- trip builder: the map-facing where-from/where-to card ---------- */
+
+.tripbuilder {
+  align-self: stretch;
+  border-radius: var(--r-md);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: rise-in 0.25s ease;
+}
+
+.tb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tb-head .icon-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tb-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.tb-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.tb-names span {
+  color: var(--c-text-dim);
+  font-weight: 600;
+}
+
+.tb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tb-label {
+  width: 38px;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+/* one swipeable line of chips per question — the map stays in view */
+.tb-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.tb-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.tb-chips .dest-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tb-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12.5px;
+  color: var(--c-text-dim);
+}
+
+.tb-facts b {
+  color: var(--c-text);
+}
+
+.tb-verdict {
+  font-weight: 700;
+}
+
+.tb-go {
+  color: var(--cond-good);
+}
+
+.tb-caution {
+  color: var(--cond-mod);
+}
+
+.tb-nogo {
+  color: var(--cond-rough);
+}
+
+.tb-dim {
+  color: var(--c-text-faint);
+}
+
+.tb-hint {
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+}
+
+.tb-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* the panel's route header: where the trip runs, changed on the map */
+
+.trip-route-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+}
+
+.trip-route-names {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.trip-route-names span {
+  color: var(--c-text-dim);
+  font-weight: 600;
 }

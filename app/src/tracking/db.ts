@@ -35,6 +35,17 @@ export interface SavedTrip {
   cruiseKn: number
   stayMin: number // minimum time at the destination
   backBy?: number | null // latest hour-of-day to be home (absent on old rows)
+  vias?: [number, number][] // course points the route is steered through (absent on old rows)
+  start?: { name: string | null; lon: number; lat: number } | null // fixed start point; null/absent = current location
+  createdAt: number
+}
+
+/** A reusable trip start point (launch ramp, marina slip, cottage dock). */
+export interface SavedStart {
+  id?: number
+  name: string
+  lon: number
+  lat: number
   createdAt: number
 }
 
@@ -43,6 +54,7 @@ const db = new Dexie('sandies') as Dexie & {
   points: EntityTable<TrackPoint, 'id'>
   forecasts: EntityTable<CachedForecast, 'key'>
   trips: EntityTable<SavedTrip, 'id'>
+  starts: EntityTable<SavedStart, 'id'>
 }
 
 db.version(1).stores({
@@ -53,6 +65,10 @@ db.version(1).stores({
 
 db.version(2).stores({
   trips: '++id, createdAt',
+})
+
+db.version(3).stores({
+  starts: '++id, createdAt',
 })
 
 export { db }

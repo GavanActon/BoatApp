@@ -3,7 +3,7 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { floorHourMs } from '../time'
-import { fetchGridForecast, hourIndexAt, type GridForecast } from './openMeteo'
+import { fetchGridForecast, hourIndexAt, type GridCell, type GridForecast } from './openMeteo'
 
 /**
  * Wind + wave map layer. One fixed forecast grid over the cruising region,
@@ -182,6 +182,45 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
 
 export function weatherGridInfo(): { fetchedAt: number; stale: boolean } | null {
   return grid ? { fetchedAt: grid.fetchedAt, stale: gridStale } : null
+}
+
+export interface GridConditions {
+  windKn: number
+  gustKn: number
+  windDir: number
+  waveM: number | null
+}
+
+/** Wind + waves at the grid cell nearest a point, at the hour containing `ms`.
+ *  Null until the grid has loaded — ensureWeatherGrid() populates it. */
+export function gridConditionsAt(lon: number, lat: number, ms: number): GridConditions | null {
+  if (!grid || grid.time.length === 0) return null
+  const kx = Math.cos((lat * Math.PI) / 180) // a degree of lon is shorter than one of lat
+  let best: GridCell | null = null
+  let bestD = Infinity
+  for (const c of grid.cells) {
+    const d = ((c.lon - lon) * kx) ** 2 + (c.lat - lat) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = c
+    }
+  }
+  if (!best) return null
+  const i = hourIndexAt(grid.time, ms)
+  const windKn = best.windKn[i]
+  if (windKn == null) return null
+  return {
+    windKn,
+    gustKn: best.gustKn[i] ?? windKn,
+    windDir: best.windDir[i] ?? 0,
+    waveM: best.waveM[i] ?? null,
+  }
+}
+
+/** Resolves immediately when the grid is already fresh, otherwise (re)fetches it. */
+export function ensureWeatherGrid(): Promise<unknown> {
+  if (grid && Date.now() - grid.fetchedAt <= GRID_MAX_AGE_MS) return Promise.resolve(null)
+  return refreshWeatherGrid()
 }
 
 let inited = false

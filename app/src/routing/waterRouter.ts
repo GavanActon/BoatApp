@@ -279,6 +279,8 @@ export interface RouteResult {
   /** Waypoints start→dest, [lon, lat]. First/last are the exact requested points. */
   coords: [number, number][]
   distanceNm: number
+  /** Index into coords of each user-placed via point, in order (absent = none). */
+  viaIdx?: number[]
 }
 
 /**

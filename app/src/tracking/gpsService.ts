@@ -16,6 +16,14 @@ let marker: maplibregl.Marker | null = null
 let markerAdded = false
 let wakeLock: WakeLockSentinel | null = null
 let cameraHoldUntil = 0 // fixes don't steer the camera while a locate zoom-in runs
+let lastFixAt = 0
+let watchdogId: number | null = null
+
+// iOS Safari silently kills a geolocation watch while the page is hidden or the
+// screen is locked, and a dead watch fires no error callback — the only remedy
+// is tearing it down and starting a fresh one
+const STALE_RESTART_MS = 15000
+const STALE_ERROR_MS = 30000
 
 // recording state
 let activeTrackId: number | null = null
@@ -55,7 +63,10 @@ async function acquireWakeLock() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && watchId != null) void acquireWakeLock()
+  if (document.visibilityState === 'visible' && watchId != null) {
+    void acquireWakeLock()
+    restartWatch()
+  }
 })
 
 function onFix(pos: GeolocationPosition) {
@@ -68,6 +79,7 @@ function onFix(pos: GeolocationPosition) {
     cog: c.heading != null && !Number.isNaN(c.heading) ? c.heading : null,
     ts: pos.timestamp,
   }
+  lastFixAt = Date.now()
   const gps = useGpsStore.getState()
   gps.setFix(fix)
   if (gps.status !== 'on') gps.setStatus('on')
@@ -103,17 +115,45 @@ function onFix(pos: GeolocationPosition) {
 
 function onError(err: GeolocationPositionError) {
   const gps = useGpsStore.getState()
-  gps.setStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'error')
+  if (err.code === err.PERMISSION_DENIED) {
+    gps.setStatus('denied')
+    return
+  }
+  // a watch keeps trying after TIMEOUT/POSITION_UNAVAILABLE; if we already
+  // have a fix, keep showing it instead of flashing a warning every 30 s
+  if (err.code === err.TIMEOUT && gps.fix) return
+  gps.setStatus('error')
 }
 
-export function startGps() {
-  if (watchId != null || !('geolocation' in navigator)) return
-  useGpsStore.getState().setStatus('acquiring')
+function beginWatch() {
   watchId = navigator.geolocation.watchPosition(onFix, onError, {
     enableHighAccuracy: true,
     maximumAge: 1000,
     timeout: 30000,
   })
+}
+
+function restartWatch() {
+  if (watchId == null) return
+  navigator.geolocation.clearWatch(watchId)
+  beginWatch()
+}
+
+export function startGps() {
+  if (watchId != null || !('geolocation' in navigator)) return
+  useGpsStore.getState().setStatus('acquiring')
+  beginWatch()
+  // a dead watch is indistinguishable from a slow one from the outside, so
+  // watch the fix age ourselves: restart when stale, and stop pretending the
+  // instruments are live once the fix is old enough to be dangerous
+  watchdogId = window.setInterval(() => {
+    if (watchId == null || lastFixAt === 0 || document.visibilityState !== 'visible') return
+    const age = Date.now() - lastFixAt
+    if (age > STALE_RESTART_MS) restartWatch()
+    if (age > STALE_ERROR_MS && useGpsStore.getState().status === 'on') {
+      useGpsStore.getState().setStatus('error')
+    }
+  }, 10000)
   void acquireWakeLock()
 }
 
@@ -122,6 +162,11 @@ export function stopGps() {
     navigator.geolocation.clearWatch(watchId)
     watchId = null
   }
+  if (watchdogId != null) {
+    clearInterval(watchdogId)
+    watchdogId = null
+  }
+  lastFixAt = 0
   marker?.remove()
   marker = null
   markerAdded = false
@@ -156,9 +201,13 @@ const MIN_INTERVAL_MS = 2000
 
 const LIVE_SOURCE = 'track-live'
 
+// withMap, not map.loaded() — loaded() is false during any camera animation,
+// and follow mode animates on every fix, which would freeze the trail under way
 function updateLiveTrail() {
-  const map = getMap()
-  if (!map || !map.loaded()) return
+  withMap(updateLiveTrailOn)
+}
+
+function updateLiveTrailOn(map: maplibregl.Map) {
   if (!map.getSource(LIVE_SOURCE)) {
     map.addSource(LIVE_SOURCE, {
       type: 'geojson',

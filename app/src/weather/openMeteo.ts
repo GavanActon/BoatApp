@@ -111,6 +111,24 @@ export function dayHours(f: PointForecast, dayStartMs: number, fromH = 7, toH = 
 export interface DayOutlook {
   dayStartMs: number
   cond: Condition | null // null = beyond the forecast (or the day is over)
+  tempMaxC: number | null // daytime high (remaining hours for today)
+  weatherCode: number | null // most severe daytime code, like Open-Meteo's daily summary
+}
+
+/** Human name for an Open-Meteo weather code. */
+export function skyLabel(code: number): string {
+  if (code === 0) return 'Clear'
+  if (code === 1) return 'Mostly clear'
+  if (code === 2) return 'Part cloudy'
+  if (code === 3) return 'Overcast'
+  if (code === 45 || code === 48) return 'Fog'
+  if (code >= 51 && code <= 57) return 'Drizzle'
+  if (code >= 61 && code <= 67) return 'Rain'
+  if (code >= 71 && code <= 77) return 'Snow'
+  if (code >= 80 && code <= 82) return 'Showers'
+  if (code === 85 || code === 86) return 'Snow shwrs'
+  if (code >= 95) return 'Thunder'
+  return '—'
 }
 
 const OUTLOOK_FROM_H = 7
@@ -136,10 +154,16 @@ export function dailyOutlook(f: PointForecast, days = 7): DayOutlook[] {
     let bestGood = 0
     let bestOk = 0
     let any = false
+    let tempMax: number | null = null
+    let wxMax: number | null = null
     for (let i = 0; i < h.time.length; i++) {
       const t = Date.parse(h.time[i])
       if (t < from || t > to || t < now - 3600_000) continue
       any = true
+      const tc = h.tempC[i]
+      if (tc != null) tempMax = tempMax == null ? tc : Math.max(tempMax, tc)
+      const wc = h.weatherCode[i]
+      if (wc != null) wxMax = wxMax == null ? wc : Math.max(wxMax, wc)
       const c =
         (h.weatherCode[i] ?? 0) >= 95
           ? 'rough'
@@ -152,6 +176,8 @@ export function dailyOutlook(f: PointForecast, days = 7): DayOutlook[] {
     out.push({
       dayStartMs,
       cond: !any ? null : bestGood >= MIN_WINDOW_H ? 'good' : bestOk >= MIN_WINDOW_H ? 'mod' : 'rough',
+      tempMaxC: tempMax,
+      weatherCode: wxMax,
     })
   }
   return out

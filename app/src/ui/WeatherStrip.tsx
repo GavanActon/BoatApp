@@ -11,11 +11,12 @@ import {
   dayHours,
   fetchPointForecast,
   nextHours,
+  skyLabel,
   type Condition,
   type HourRow,
   type PointForecast,
 } from '../weather/openMeteo'
-import { IconClose, IconPin, IconWindArrow } from './icons'
+import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
 /**
  * Two-level outlook strip pinned to the top of the map — the app's clock.
@@ -96,6 +97,10 @@ export default function WeatherStrip() {
   const todayMs = startOfDayMs(Date.now())
   const selDayMs = startOfDayMs(planTimeMs ?? Date.now())
 
+  // temp + sky per day always come from the point forecast, whatever rates the chips
+  const outlook = useMemo(() => (forecast ? dailyOutlook(forecast) : []), [forecast])
+  const wxByDay = useMemo(() => new Map(outlook.map((o) => [o.dayStartMs, o])), [outlook])
+
   // day chips: rated against the planned trip when there is one, else generic
   const tripRated = destination != null && plan != null && plan.days.length > 0
   const days = useMemo(() => {
@@ -105,8 +110,8 @@ export default function WeatherStrip() {
         cond: d.best == null ? null : verdictCond(d.best),
       }))
     }
-    return forecast ? dailyOutlook(forecast) : []
-  }, [tripRated, plan, forecast])
+    return outlook
+  }, [tripRated, plan, outlook])
 
   const rows: HourRow[] = useMemo(() => {
     if (!forecast) return []
@@ -152,6 +157,9 @@ export default function WeatherStrip() {
       <div className="wxstrip-days" role="tablist" aria-label="Pick a day">
         {days.map((d) => {
           const sel = d.dayStartMs === selDayMs
+          const wx = wxByDay.get(d.dayStartMs)
+          const wxCode = wx?.weatherCode ?? null
+          const wxTemp = wx?.tempMaxC ?? null
           return (
             <button
               key={d.dayStartMs}
@@ -169,9 +177,19 @@ export default function WeatherStrip() {
                     : d.cond === 'mod'
                       ? 'usable with caution'
                       : 'rough'
+              }${
+                wxCode != null && wxTemp != null
+                  ? `, ${skyLabel(wxCode)}, high ${Math.round(wxTemp)} degrees`
+                  : ''
               }`}
             >
-              {dayLabel(d.dayStartMs)}
+              <span className="wxday-name">{dayLabel(d.dayStartMs)}</span>
+              {wxCode != null && wxTemp != null && (
+                <span className="wxday-wx">
+                  <IconSky code={wxCode} size={11} />
+                  <b className="numeral">{Math.round(wxTemp)}°</b>
+                </span>
+              )}
             </button>
           )
         })}

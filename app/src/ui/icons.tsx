@@ -127,6 +127,76 @@ export const IconWindArrow = (p: IconProps & { deg: number }) => (
   </svg>
 )
 
+// cloud outline shared by the sky glyphs; the raised variant leaves room for precipitation
+const CLOUD = 'M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z'
+const CLOUD_HI = 'M18 7.5h-1.1A7 7 0 1 0 9.1 16.3H18a4.4 4.4 0 0 0 0-8.8z'
+
+/** Sky glyph for an Open-Meteo weather code — pairs with skyLabel(). */
+export const IconSky = (p: IconProps & { code: number }) => {
+  const c = p.code
+  const kind =
+    c >= 95
+      ? 'thunder'
+      : (c >= 71 && c <= 77) || c === 85 || c === 86
+        ? 'snow'
+        : (c >= 51 && c <= 67) || (c >= 80 && c <= 82)
+          ? 'rain'
+          : c === 45 || c === 48
+            ? 'fog'
+            : c === 3
+              ? 'cloud'
+              : c === 2
+                ? 'suncloud'
+                : 'sun'
+  return (
+    <svg
+      width={S(p)}
+      height={S(p)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      {kind === 'sun' && (
+        <>
+          <circle cx="12" cy="12" r="4.2" />
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" />
+        </>
+      )}
+      {kind === 'suncloud' && (
+        <>
+          <circle cx="7.5" cy="7.5" r="3" />
+          <path d="M7.5 1.8v1.7M1.8 7.5h1.7M3.5 3.5l1.2 1.2M11.5 3.5l-1.2 1.2" />
+          <path d="M18.5 20.5a3.8 3.8 0 0 0 0-7.6h-.95A6 6 0 1 0 11 20.5z" />
+        </>
+      )}
+      {kind === 'cloud' && <path d={CLOUD} />}
+      {kind === 'fog' && <path d="M4 8.5h16M4 13h16M7 17.5h10" />}
+      {kind === 'rain' && (
+        <>
+          <path d={CLOUD_HI} />
+          <path d="M8.7 19.3l-1 2.4M13 19.3l-1 2.4M17.3 19.3l-1 2.4" />
+        </>
+      )}
+      {kind === 'snow' && (
+        <>
+          <path d={CLOUD_HI} />
+          <path d="M8.5 20.3h.01M12.7 20.3h.01M16.9 20.3h.01" strokeWidth="2.6" />
+        </>
+      )}
+      {kind === 'thunder' && (
+        <>
+          <path d={CLOUD_HI} />
+          <path d="M13.4 16.2l-2.4 4h2.1l-1.2 3.6 3.9-5h-2.2z" fill="currentColor" stroke="none" />
+        </>
+      )}
+    </svg>
+  )
+}
+
 export const IconRefresh = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 12a8 8 0 1 1-2.34-5.66" />

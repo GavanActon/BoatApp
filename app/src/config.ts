@@ -66,8 +66,10 @@ export const SEAMARKS_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.pn
 export const SATELLITE_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
-/** Preset day-trip destinations. Points get snapped to navigable water by the router. */
+/** Preset day-trip destinations. Points get snapped to navigable water by the router.
+ *  The first entry is the default trip on a fresh install. */
 export const DESTINATIONS: { name: string; lon: number; lat: number }[] = [
+  { name: 'The Sandies', lon: -84.6495, lat: 46.8056 },
   { name: 'Île Parisienne', lon: -84.755, lat: 46.685 },
   { name: 'Batchawana Bay', lon: -84.52, lat: 46.93 },
   { name: 'Goulais Bay', lon: -84.44, lat: 46.7 },
