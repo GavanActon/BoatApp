@@ -40,20 +40,13 @@ import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
  * hour-by-hour conditions at the exact spot, never trip-rated.
  */
 
-const STRIP_HOURS = 12
-const DAY_FROM_H = 7 // future-day cells span 7 am … 6 pm
-const DAY_TO_H = 18
+// Ten cells, not twelve: at phone width twelve cells leave 28 px each, too
+// narrow for "0.2 · 3s" to read as numbers rather than texture. Future days
+// span the same ten hours so every day is the same shape.
+const STRIP_HOURS = 10
+const DAY_FROM_H = 8 // future-day cells span 8 am … 5 pm
+const DAY_TO_H = 17
 const REFRESH_MS = 30 * 60_000
-
-/**
- * Below this the wave readout is dropped from a cell. Twelve cells all reading
- * "0.1" is texture, not information — the condition color band already folds
- * wave height in, and 0.1 vs 0.2 m changes nothing about the day. The row
- * reappears the moment the waves are worth reading. The selected hour always
- * shows its waves (with the period), so the number is never more than a tap
- * away, and every cell still announces waves to a screen reader.
- */
-const WAVE_SHOW_M = 0.3
 
 function hourLabel(d: Date): string {
   const h = d.getHours()
@@ -245,12 +238,7 @@ export default function WeatherStrip() {
                   : 'na'
               : conditionFor(r.windKn, r.gustKn, r.waveM)
             const active = planTimeMs == null ? isNowCell : cellMs === planHourMs
-            // the selected hour is the one you're reading, so it gets the detail
-            const waveText =
-              active || (r.waveM ?? 0) >= WAVE_SHOW_M
-                ? (r.waveM?.toFixed(1) ?? (active ? '–' : null))
-                : null
-            const period = active && showPeriod ? formatPeriod(r.wavePeriodS) : null
+            const period = showPeriod ? formatPeriod(r.wavePeriodS) : null
             const wxText =
               `wind ${Math.round(r.windKn)} knots, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
               (showPeriod && r.wavePeriodS != null ? ` at ${Math.round(r.wavePeriodS)} seconds` : '')
@@ -286,12 +274,10 @@ export default function WeatherStrip() {
                 <span className="wxcell-h numeral">{isNowCell ? 'Now' : hourLabel(r.time)}</span>
                 <IconWindArrow deg={r.windDir + 180} size={12} />
                 <b className="numeral">{Math.round(r.windKn)}</b>
-                {waveText && (
-                  <span className="wxcell-wave numeral">
-                    {waveText}
-                    {period && <em>{period}</em>}
-                  </span>
-                )}
+                <span className="wxcell-wave numeral">
+                  {r.waveM != null ? r.waveM.toFixed(1) : '–'}
+                  {period && <em>{period}</em>}
+                </span>
               </button>
             )
           })}
