@@ -1,11 +1,10 @@
 import { depthAt, formatDepth } from '../map/depthGrid'
-import { endTrip, startTrip } from '../routing/planner'
+import { endTrip } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
-import { startRecording, stopRecording } from '../tracking/gpsService'
+import { stopRecording } from '../tracking/gpsService'
 import { knToUnit, speedUnitLabel, type SpeedUnit } from '../units'
-import { IconRoute } from './icons'
 
 function fmtSog(sogKn: number | null, unit: SpeedUnit): string {
   if (sogKn == null) return '—'
@@ -25,11 +24,14 @@ export default function InstrumentBar() {
   const distanceNm = useGpsStore((s) => s.recordingDistanceNm)
   const depthUnit = useAppStore((s) => s.depthUnit)
   const speedUnit = useAppStore((s) => s.speedUnit)
-  const plan = useRouteStore((s) => s.plan)
   const underWay = useRouteStore((s) => s.tripStartedAt) != null
 
   const depth = fix ? depthAt(fix.lon, fix.lat) : null
   const hasGps = status === 'on' && fix != null
+
+  // tied up, the bar is three dashes and a button the trip card already
+  // carries — the map gets the room until we're actually moving
+  if (!recording && !underWay) return null
 
   return (
     <div className="instruments glass">
@@ -56,21 +58,15 @@ export default function InstrumentBar() {
           <span className="rec-dot" />
           {distanceNm.toFixed(1)} nm
         </button>
-      ) : plan ? (
-        // trip loaded and ready: one tap casts off
-        <button className="rec-btn go" onClick={() => startTrip()} aria-label="Start trip">
-          <IconRoute size={15} />
-          GO
-        </button>
       ) : (
-        // no trip — plain track recording
+        // plain track recording: same, tap to stop
         <button
-          className={`rec-btn ${recording ? 'recording' : ''}`}
-          onClick={() => (recording ? void stopRecording() : void startRecording())}
-          aria-label={recording ? 'Stop recording track' : 'Record track'}
+          className="rec-btn recording"
+          onClick={() => void stopRecording()}
+          aria-label="Stop recording track"
         >
           <span className="rec-dot" />
-          {recording ? `${distanceNm.toFixed(1)} nm` : 'REC'}
+          {distanceNm.toFixed(1)} nm
         </button>
       )}
     </div>

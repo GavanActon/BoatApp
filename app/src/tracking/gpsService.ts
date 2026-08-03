@@ -186,8 +186,8 @@ export function locateAndFollow() {
       cameraHoldUntil = Date.now() + 1200
       map.easeTo({ center: [fix.lon, fix.lat], zoom: Math.max(map.getZoom(), 12) })
     }
-    // direct when possible — withMap's loaded() gate would swallow the tap
-    // if some camera animation happens to be running
+    // direct when possible — easeTo needs no style, so don't make the tap wait
+    // on the style parsing
     const map = getMap()
     if (map) ease(map)
     else withMap(ease)
@@ -201,8 +201,8 @@ const MIN_INTERVAL_MS = 2000
 
 const LIVE_SOURCE = 'track-live'
 
-// withMap, not map.loaded() — loaded() is false during any camera animation,
-// and follow mode animates on every fix, which would freeze the trail under way
+// withMap, not map.loaded() — loaded() waits on every tile source, and a fix
+// arriving while tiles stream (or never finish) would drop the trail update
 function updateLiveTrail() {
   withMap(updateLiveTrailOn)
 }

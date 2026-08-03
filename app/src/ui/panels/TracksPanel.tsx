@@ -5,6 +5,7 @@ import { withMap } from '../../map/mapController'
 import { useAppStore } from '../../state/appStore'
 import { db, type Track } from '../../tracking/db'
 import { exportTrackGpx } from '../../tracking/gpx'
+import { startRecording, stopRecording } from '../../tracking/gpsService'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { IconShare, IconTrash } from '../icons'
 
@@ -95,14 +96,24 @@ export default function TracksPanel() {
     }
   }
 
+  // recording lives here now — under way, the instrument bar carries the stop
+  const recordBtn = (
+    <button
+      className={`rec-btn rec-start ${recording ? 'recording' : ''}`}
+      onClick={() => (recording ? void stopRecording() : void startRecording())}
+      aria-label={recording ? 'Stop recording track' : 'Record track'}
+    >
+      <span className="rec-dot" />
+      {recording ? 'Stop recording' : 'Record a track'}
+    </button>
+  )
+
   if (!tracks.length) {
     return (
       <div className="panel">
         <div className="empty">
           <p>No tracks yet.</p>
-          <p className="row-desc">
-            Tap <strong>REC</strong> in the instrument bar to start recording your route.
-          </p>
+          {recordBtn}
         </div>
       </div>
     )
@@ -110,6 +121,7 @@ export default function TracksPanel() {
 
   return (
     <div className="panel">
+      {recordBtn}
       {tracks.map((t) => (
         <div key={t.id} className={`row track-row ${shownId === t.id ? 'track-shown' : ''}`}>
           <button className="row-text" onClick={() => void toggleShow(t)}>

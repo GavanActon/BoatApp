@@ -15,6 +15,8 @@ export default function LayersPanel() {
   const setLayer = useAppStore((s) => s.setLayer)
   const wxStrip = useAppStore((s) => s.wxStrip)
   const setWxStrip = useAppStore((s) => s.setWxStrip)
+  const wavePeriod = useAppStore((s) => s.wavePeriod)
+  const setWavePeriod = useAppStore((s) => s.setWavePeriod)
   const depthUnit = useAppStore((s) => s.depthUnit)
   const setDepthUnit = useAppStore((s) => s.setDepthUnit)
   const speedUnit = useAppStore((s) => s.speedUnit)
@@ -90,10 +92,29 @@ export default function LayersPanel() {
         </div>
       </div>
 
+      <label className="row">
+        <div className="row-text">
+          <span className="row-title">Wave period</span>
+          <span className="row-desc">
+            Seconds beside every wave height — under ~4 s the sea is steep and rides worse than
+            the height suggests
+          </span>
+        </div>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={wavePeriod}
+          onChange={(e) => setWavePeriod(e.target.checked)}
+        />
+      </label>
+
       <div className="row">
         <div className="row-text">
-          <span className="row-title">Speed units</span>
-          <span className="row-desc">Boat speed & cruise speed in trips</span>
+          <span className="row-title">Speed & distance units</span>
+          <span className="row-desc">
+            Knots go with nautical miles, km/h with kilometres, mph with miles — on the
+            scale bar and the measuring tool
+          </span>
         </div>
         <div className="seg">
           {SPEED_UNITS.map((u) => (

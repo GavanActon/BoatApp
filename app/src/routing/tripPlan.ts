@@ -48,6 +48,7 @@ export interface TripSample {
   gustKn: number
   windDir: number
   waveM: number | null
+  wavePeriodS: number | null
   weatherCode: number
   cond: Condition
 }
@@ -65,10 +66,21 @@ export interface TripOption {
   windowEndMs: number
 }
 
+/** The sweep's rating for one candidate departure hour. A null verdict means
+ *  that hour can't be rated: already past, or the trip would outrun the
+ *  forecast. */
+export interface HourRating {
+  ms: number
+  verdict: Verdict | null
+  stayMin: number | null // maximized time there when leaving this hour
+  homeMs: number | null
+}
+
 export interface DayWindows {
   dayStartMs: number
   best: Verdict | null // null = the trip would run past the end of the forecast
   options: TripOption[]
+  hours: HourRating[] // every swept hour of the day, rated (the strip's cells)
 }
 
 export interface TripPlan {
@@ -223,9 +235,11 @@ function attachWx(itinerary: ItinerarySample[], forecast: RouteForecast): TripSa
     const gustKn = p.gustKn[i] ?? 0
     const windDir = p.windDir[i] ?? 0
     const waveM = p.waveM[i] ?? null
+    // optional-chained: a route forecast cached before periods were fetched has no array
+    const wavePeriodS = p.wavePeriodS?.[i] ?? null
     const weatherCode = p.weatherCode[i] ?? 0
     const cond: Condition = weatherCode >= 95 ? 'rough' : conditionFor(windKn, gustKn, waveM)
-    return { ...s, windKn, gustKn, windDir, waveM, weatherCode, cond }
+    return { ...s, windKn, gustKn, windDir, waveM, wavePeriodS, weatherCode, cond }
   })
 }
 
@@ -332,16 +346,28 @@ export function computeDepartureWindows(
     const backByMs = cfg.backByHour == null ? Infinity : dayStartMs + cfg.backByHour * 3600_000
 
     const rated: { ms: number; verdict: 'go' | 'caution'; stayMin: number | null; homeMs: number }[] = []
+    const hours: HourRating[] = []
     let anyData = false
     let anyNogo = false
     for (let h = SWEEP_FIRST_H; h <= SWEEP_LAST_H; h++) {
       const departMs = dayStartMs + h * 3600_000
-      if (departMs < now - 30 * 60_000) continue // that boat has sailed
+      if (departMs < now - 30 * 60_000) {
+        hours.push({ ms: departMs, verdict: null, stayMin: null, homeMs: null }) // that boat has sailed
+        continue
+      }
       const r = rateDeparture(route, cum, forecast, cfg, departMs, wxEndMs, backByMs, oneWayMs)
-      if (r === 'nodata') continue
+      if (r === 'nodata') {
+        hours.push({ ms: departMs, verdict: null, stayMin: null, homeMs: null })
+        continue
+      }
       anyData = true
-      if (r === 'nogo') anyNogo = true
-      else rated.push({ ms: departMs, ...r })
+      if (r === 'nogo') {
+        anyNogo = true
+        hours.push({ ms: departMs, verdict: 'nogo', stayMin: null, homeMs: null })
+      } else {
+        rated.push({ ms: departMs, ...r })
+        hours.push({ ms: departMs, verdict: r.verdict, stayMin: r.stayMin, homeMs: r.homeMs })
+      }
     }
 
     // contiguous same-verdict departures form one window; its option is the
@@ -388,7 +414,7 @@ export function computeDepartureWindows(
             ? 'nogo'
             : null
 
-    days.push({ dayStartMs, best, options: shown })
+    days.push({ dayStartMs, best, options: shown, hours })
   }
   return days
 }

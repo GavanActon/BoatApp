@@ -1,7 +1,14 @@
 import { useMemo } from 'react'
 import { useAppStore } from '../../state/appStore'
 import { floorHourMs, isToday, startOfDayMs } from '../../time'
-import { conditionFor, dayHours, nextHours, skyLabel, type PointForecast } from '../../weather/openMeteo'
+import {
+  conditionFor,
+  dayHours,
+  formatPeriod,
+  nextHours,
+  skyLabel,
+  type PointForecast,
+} from '../../weather/openMeteo'
 import { IconWindArrow } from '../icons'
 
 /**
@@ -29,6 +36,7 @@ export default function HourlyDetail({
   dayStartMs?: number | null
 }) {
   const planTimeMs = useAppStore((s) => s.planTimeMs)
+  const showPeriod = useAppStore((s) => s.wavePeriod)
   const dayMode = dayStartMs != null && !isToday(dayStartMs)
 
   const rows = useMemo(
@@ -49,7 +57,7 @@ export default function HourlyDetail({
         <span>Time</span>
         <span>Wind</span>
         <span>Gust</span>
-        <span>Waves</span>
+        <span>{showPeriod ? 'Waves · per' : 'Waves'}</span>
         <span className="hd-right">Temp · Sky</span>
       </div>
       {rows.map((r, k) => {
@@ -71,7 +79,9 @@ export default function HourlyDetail({
               {r.waveM != null ? (
                 <>
                   <b className="numeral">{r.waveM.toFixed(1)}</b> m
-                  {r.wavePeriodS != null && <em className="numeral"> {Math.round(r.wavePeriodS)}s</em>}
+                  {showPeriod && formatPeriod(r.wavePeriodS) && (
+                    <em className="numeral"> {formatPeriod(r.wavePeriodS)}</em>
+                  )}
                 </>
               ) : (
                 '—'

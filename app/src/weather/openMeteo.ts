@@ -34,6 +34,7 @@ export interface GridCell {
   gustKn: number[]
   windDir: number[]
   waveM: (number | null)[]
+  wavePeriodS: (number | null)[]
 }
 
 export interface GridForecast {
@@ -74,6 +75,16 @@ export function nextHours(f: PointForecast, n: number): HourRow[] {
       wavePeriodS: h.wavePeriodS[i] ?? null,
     }
   })
+}
+
+/**
+ * Wave period, rounded, for display beside a height. Period is what separates a
+ * 0.8 m long swell you barely feel from a 0.8 m 3-second chop that stops the
+ * boat — deep-water wavelength is ~1.56·T², so short periods mean steep seas.
+ * Returns null when the wave model has no data for the point.
+ */
+export function formatPeriod(s: number | null | undefined): string | null {
+  return s == null ? null : `${Math.round(s)}s`
 }
 
 export type Condition = 'good' | 'mod' | 'rough'
@@ -292,7 +303,7 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wave_height&forecast_days=7&timezone=UTC`
+      `&hourly=wave_height,wave_period&forecast_days=7&timezone=UTC`
 
     const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
@@ -301,7 +312,7 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       hourly: { time: string[]; wind_speed_10m: number[]; wind_gusts_10m: number[]; wind_direction_10m: number[] }
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: { wave_height: (number | null)[] }
+      hourly?: { wave_height: (number | null)[]; wave_period: (number | null)[] }
     }>
 
     const cells: GridCell[] = windArr.map((w, i) => ({
@@ -311,6 +322,7 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       gustKn: w.hourly.wind_gusts_10m,
       windDir: w.hourly.wind_direction_10m,
       waveM: marineArr[i]?.hourly?.wave_height ?? [],
+      wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
     }))
 
     const grid: GridForecast = {
@@ -338,6 +350,7 @@ export interface RoutePointWx {
   windDir: number[]
   weatherCode: number[]
   waveM: (number | null)[]
+  wavePeriodS: (number | null)[]
 }
 
 export interface RouteForecast {
@@ -366,7 +379,7 @@ export async function fetchRouteForecast(
       `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wave_height&forecast_days=7&timezone=UTC`
+      `&hourly=wave_height,wave_period&forecast_days=7&timezone=UTC`
 
     const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
@@ -379,7 +392,7 @@ export async function fetchRouteForecast(
       }
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: { wave_height: (number | null)[] }
+      hourly?: { wave_height: (number | null)[]; wave_period: (number | null)[] }
     }>
 
     const forecast: RouteForecast = {
@@ -393,6 +406,7 @@ export async function fetchRouteForecast(
         windDir: w.hourly.wind_direction_10m,
         weatherCode: w.hourly.weather_code,
         waveM: marineArr[i]?.hourly?.wave_height ?? [],
+        wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
       })),
     }
     await cachePut(key, forecast)

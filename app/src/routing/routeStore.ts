@@ -43,11 +43,11 @@ interface RouteState {
   picking: 'dest' | 'start' | null
   setPicking: (v: 'dest' | 'start' | null) => void
 
-  // map-facing trip builder card: pick start/destination ('choose') and
-  // preview the run ('preview') with the map visible; the full options panel
-  // is a button away. null = hidden.
-  builder: 'choose' | 'preview' | null
-  setBuilder: (v: 'choose' | 'preview' | null) => void
+  // the map-facing trip card — the trip's home on the nav screen: 'choose'
+  // asks where-from/where-to, 'trip' is the planned/under-way card that stays
+  // docked over the map. null = dismissed (the top chip stands in).
+  card: 'choose' | 'trip' | null
+  setCard: (v: 'choose' | 'trip' | null) => void
 
   // trip under way (persisted so an iOS PWA reload mid-trip resumes monitoring)
   tripStartedAt: number | null
@@ -121,8 +121,9 @@ export const useRouteStore = create<RouteState>()(
       picking: null,
       setPicking: (picking) => set({ picking }),
 
-      builder: null,
-      setBuilder: (builder) => set({ builder }),
+      // the default destination ships with its card showing
+      card: 'trip',
+      setCard: (card) => set({ card }),
 
       tripStartedAt: null,
       tripOrigin: null,
@@ -160,6 +161,13 @@ export const useRouteStore = create<RouteState>()(
         tripStartedAt: s.tripStartedAt,
         tripOrigin: s.tripOrigin,
       }),
+      // the card isn't persisted: it simply shows whenever a trip came back
+      merge: (persisted, current) => {
+        const p = persisted as Partial<RouteState> | undefined
+        const merged = { ...current, ...p }
+        merged.card = merged.destination ? 'trip' : null
+        return merged
+      },
     },
   ),
 )

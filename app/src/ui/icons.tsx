@@ -203,3 +203,31 @@ export const IconRefresh = (p: IconProps) => (
     <path d="M20 3v4h-4" />
   </svg>
 )
+
+export const IconUndo = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 9h11a5 5 0 0 1 0 10h-6" />
+    <path d="M8 5 4 9l4 4" />
+  </svg>
+)
+
+/** Diagonal ruler — the range-and-bearing tool. */
+export const IconRuler = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <g transform="rotate(-45 12 12)">
+      <rect x="1.6" y="8.5" width="20.8" height="7" rx="1.6" />
+      <path d="M6 8.5v3M10 8.5v4M14 8.5v3M18 8.5v4" />
+    </g>
+  </svg>
+)
+
+export const IconSliders = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M3 7h4M11 7h10" />
+    <circle cx="9" cy="7" r="2" />
+    <path d="M3 12h9.5M17.5 12H21" />
+    <circle cx="15.5" cy="12" r="2" />
+    <path d="M3 17h2.5M9.5 17H21" />
+    <circle cx="7.5" cy="17" r="2" />
+  </svg>
+)

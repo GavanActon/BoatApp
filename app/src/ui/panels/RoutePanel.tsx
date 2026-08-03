@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { endTrip, replan, startTrip } from '../../routing/planner'
+import { endTrip, replan } from '../../routing/planner'
 import { useRouteStore } from '../../routing/routeStore'
 import {
   compass,
-  type DayWindows,
   type TripOption,
   type TripPhase,
   type TripPlan,
@@ -15,29 +14,24 @@ import {
   dayTimeLabel,
   durationLabel,
   floorHourMs,
-  hourOfDayLabel,
   hourShort,
   isToday,
   startOfDayMs,
   timeLabel,
 } from '../../time'
 import { db, type SavedStart, type SavedTrip } from '../../tracking/db'
-import { knToUnit, speedUnitLabel, unitToKn } from '../../units'
-import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
+import { knToUnit, speedUnitLabel } from '../../units'
+import { fetchPointForecast, formatPeriod, type PointForecast } from '../../weather/openMeteo'
 import Disclosure from '../Disclosure'
 import { IconCheck, IconMinus, IconPlus, IconRefresh, IconTrash, IconWindArrow } from '../icons'
 import HourlyDetail from './HourlyDetail'
 
 /**
- * Trip planner, answers-first: pick where you're going and the panel leads
- * with the verdict and the week's trip options. The two per-trip decisions
- * (where, when) are the only controls on the surface; boat & family
- * configuration (round trip, cruise speed, minimum stay, back-by) lives in
- * the collapsed "Trip setup" row, and admin (timeline evidence, saved-trip
- * management) in its own disclosures.
- *
- * Once under way the panel becomes the live trip view: verdict, timeline,
- * end-trip.
+ * The trip details drawer. The map screen owns the trip — the card carries
+ * the facts, the strip up top picks the departure, the route line wears the
+ * conditions — so this drawer only EXPANDS on what's already visible: the
+ * verdict's full reasoning, the leg-by-leg timeline with each leg's day
+ * forecast a tap away, and saved-trip admin. Under way it adds End trip.
  */
 
 function ageLabel(fetchedAt: number): string {
@@ -46,16 +40,6 @@ function ageLabel(fetchedAt: number): string {
   if (min < 60) return `${min} min ago`
   return `${Math.round(min / 6) / 10} h ago`
 }
-
-const STAY_CHOICES = [
-  { min: 30, label: '30m' },
-  { min: 60, label: '1h' },
-  { min: 120, label: '2h' },
-  { min: 180, label: '3h' },
-]
-
-const BACKBY_MIN_H = 11 // stepping below 11 AM makes no trip; above 11 PM means "any"
-const BACKBY_MAX_H = 23
 
 const VERDICT_TEXT = {
   go: 'Good to go',
@@ -78,8 +62,7 @@ function phaseLabel(phase: TripPhase, destName: string | null): string {
   }
 }
 
-/** "8a · 4½h" for round trips (leave then, that long there), a departure
- *  range "8a–1p" for one-way runs. */
+/** "Sat 8a · 4½h" for round trips (leave then, that long there). */
 function optionLabel(o: TripOption): string {
   if (o.stayMin != null) return `${hourShort(o.departMs)} · ${durationLabel(o.stayMin)}`
   if (o.windowStartMs === o.windowEndMs) return hourShort(o.windowStartMs)
@@ -180,6 +163,7 @@ function TimelineRow({
   expanded: boolean
   onToggle: () => void
 }) {
+  const showPeriod = useAppStore((s) => s.wavePeriod)
   return (
     <button
       className={`trip-row trip-${s.cond} ${expanded ? 'trip-expanded' : ''}`}
@@ -197,6 +181,9 @@ function TimelineRow({
         {s.waveM != null ? (
           <>
             <b className="numeral">{s.waveM.toFixed(1)}</b> m
+            {showPeriod && formatPeriod(s.wavePeriodS) && (
+              <em className="numeral"> {formatPeriod(s.wavePeriodS)}</em>
+            )}
           </>
         ) : (
           '—'
@@ -257,70 +244,6 @@ function Timeline({ plan }: { plan: TripPlan }) {
   )
 }
 
-/** "When to go" — the 7-day trip-option sweep, tappable. Each chip is a
- *  concrete schedule; adopting one sets the departure AND the stay. */
-function DepartureWindows({ days }: { days: DayWindows[] }) {
-  const planTimeMs = useAppStore((s) => s.planTimeMs)
-  const setPlanTime = useAppStore((s) => s.setPlanTime)
-  const setPlannedStay = useRouteStore((s) => s.setPlannedStay)
-  const plannedStayMin = useRouteStore((s) => s.plannedStayMin)
-  const selDayMs = startOfDayMs(planTimeMs ?? Date.now())
-
-  function adopt(o: TripOption) {
-    setPlanTime(o.departMs <= Date.now() ? null : o.departMs)
-    setPlannedStay(o.stayMin)
-  }
-
-  function isAdopted(o: TripOption): boolean {
-    const timeMatch =
-      planTimeMs != null
-        ? planTimeMs === o.departMs
-        : o.windowStartMs <= Date.now() && Date.now() <= o.windowEndMs + 3_599_000
-    return timeMatch && (o.stayMin == null || plannedStayMin === o.stayMin)
-  }
-
-  return (
-    <>
-      <div className="panel-section">When to go — leave · time there</div>
-      <div className="win-days">
-        {days.map((d) => (
-          <div
-            key={d.dayStartMs}
-            className={`win-day${d.dayStartMs === selDayMs ? ' win-day-on' : ''}`}
-          >
-            <span className={`win-dayname cond-${d.best ?? 'na'}`}>{dayLabel(d.dayStartMs)}</span>
-            <span className="win-list">
-              {d.best == null ? (
-                <em className="win-none">
-                  {isToday(d.dayStartMs) ? 'done for today' : 'beyond the forecast'}
-                </em>
-              ) : d.options.length === 0 ? (
-                <em className="win-none">no window — stay in</em>
-              ) : (
-                d.options.map((o) => (
-                  <button
-                    key={o.departMs}
-                    className={`win win-${o.verdict}${isAdopted(o) ? ' win-on' : ''}`}
-                    onClick={() => adopt(o)}
-                    aria-label={
-                      `${dayLabel(d.dayStartMs)}: leave ${hourShort(o.departMs)}` +
-                      (o.stayMin != null ? `, ${durationLabel(o.stayMin)} there` : '') +
-                      `, ${o.stayMin != null ? 'home' : 'there'} by ${timeLabel(o.homeMs)}` +
-                      ` — ${o.verdict === 'go' ? 'good' : 'usable with caution'}`
-                    }
-                  >
-                    {optionLabel(o)}
-                  </button>
-                ))
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
-  )
-}
-
 export default function RoutePanel() {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
   const online = useAppStore((s) => s.online)
@@ -335,16 +258,11 @@ export default function RoutePanel() {
     viaPoints,
     setViaPoints,
     roundTrip,
-    setRoundTrip,
     cruiseKn,
-    setCruiseKn,
     stayMin,
-    setStayMin,
-    plannedStayMin,
     setPlannedStay,
     backByHour,
-    setBackBy,
-    setBuilder,
+    setCard,
     route,
     routeError,
     plan,
@@ -391,12 +309,6 @@ export default function RoutePanel() {
     reloadSaved()
     setJustSaved(true)
     setTimeout(() => setJustSaved(false), 1600)
-  }
-
-  /** Hand where-from/where-to back to the map-facing builder card. */
-  function openBuilder() {
-    setSheetTab(null)
-    setBuilder('choose')
   }
 
   async function commitStartName(sp: SavedStart) {
@@ -463,16 +375,18 @@ export default function RoutePanel() {
             {planning ? 'Re-timing the trip…' : (planError ?? 'Waiting for a forecast…')}
           </div>
         )}
-        <button className="btn-primary trip-start btn-stop" onClick={() => endTrip()}>
+        <button
+          className="btn-primary trip-start btn-stop"
+          onClick={() => {
+            endTrip()
+            setSheetTab(null) // back to the map — the trip's home
+          }}
+        >
           End trip
         </button>
       </div>
     )
   }
-
-  // cruise speed is stored in knots; step by whole units of the chosen display unit
-  const shownSpeed = Math.round(knToUnit(speedUnit, cruiseKn))
-  const stepSpeed = (delta: number) => setCruiseKn(unitToKn(speedUnit, shownSpeed + delta))
 
   // departure = the app-wide planning time; the verdict card's ± nudges it
   const stepHour = (delta: number) => {
@@ -481,41 +395,21 @@ export default function RoutePanel() {
     setPlanTime(next <= Date.now() ? null : next)
   }
 
-  // step the back-by hour; past 11 PM it means "no limit" ("Any" sits one
-  // notch above the max, so − from Any lands back on 11 PM)
-  const stepBackBy = (delta: number) => {
-    const base = backByHour ?? BACKBY_MAX_H + 1
-    const next = base + delta
-    setBackBy(next > BACKBY_MAX_H ? null : Math.max(BACKBY_MIN_H, next))
-  }
-
-  const backByLabel = backByHour == null ? 'Any' : hourOfDayLabel(backByHour)
-  const setupSummary =
-    `${roundTrip ? 'round trip' : 'one way'} · ${shownSpeed} ${speedUnitLabel(speedUnit)}` +
-    (roundTrip ? ` · ≥${durationLabel(stayMin)} there` : '') +
-    ` · back by ${backByLabel}`
-
   return (
     <div className="panel">
-      {/* ---------- the trip: chosen via the map builder, changed there too ---------- */}
-      {destination ? (
-        <div className="trip-route-head">
-          <span className="trip-route-names">
-            <span>{startPoint ? (startPoint.name ?? 'Pinned start') : 'Current location'}</span>
-            {' → '}
-            <b>{destination.name ?? 'Pinned spot'}</b>
-          </span>
-          <button className="linklike" onClick={openBuilder}>
-            Change
-          </button>
-        </div>
-      ) : (
+      {!destination && (
         <>
           <div className="empty">
             No trip yet — pick a destination and the route gets plotted through safe water, the
             weather checked for every leg, and the whole week swept for the best times to go.
           </div>
-          <button className="btn-ghost" onClick={openBuilder}>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              setSheetTab(null)
+              setCard('choose')
+            }}
+          >
             Choose a destination
           </button>
         </>
@@ -525,19 +419,6 @@ export default function RoutePanel() {
 
       {destination && route && (
         <>
-          <div className="route-edit-note">
-            {viaPoints.length > 0 ? (
-              <>
-                Steered through {viaPoints.length} point{viaPoints.length === 1 ? '' : 's'} — drag
-                to adjust, tap one to remove.{' '}
-                <button className="linklike" onClick={() => setViaPoints([])}>
-                  Reset course
-                </button>
-              </>
-            ) : (
-              'Drag the route line on the map to steer it around islands or shoals.'
-            )}
-          </div>
           {plan && (
             <VerdictCard
               plan={plan}
@@ -553,114 +434,27 @@ export default function RoutePanel() {
             <div className="empty">{online ? planError : `Offline — ${planError}`}</div>
           )}
 
-          {/* ---------- decision 2: when ---------- */}
-          {plan && plan.days.length > 0 && <DepartureWindows days={plan.days} />}
+          <div className="route-edit-note">
+            {viaPoints.length > 0 ? (
+              <>
+                Steered through {viaPoints.length} point{viaPoints.length === 1 ? '' : 's'} — drag
+                to adjust, tap one to remove.{' '}
+                <button className="linklike" onClick={() => setViaPoints([])}>
+                  Reset course
+                </button>
+              </>
+            ) : (
+              'Drag the route line on the map to steer it around islands or shoals.'
+            )}
+          </div>
 
           {plan && (
             <>
-              <button className="btn-primary trip-start" onClick={() => startTrip()}>
-                {planTimeMs != null ? 'Start trip now' : 'Start trip'}
-              </button>
-              {planTimeMs != null && (
-                <div className="trip-plan-note">
-                  Planned for {dayTimeLabel(planTimeMs)} — starting casts off right away.
-                </div>
-              )}
+              <div className="panel-section">Trip timeline — tap a leg for its day forecast</div>
+              <Timeline plan={plan} />
             </>
           )}
         </>
-      )}
-
-      {/* ---------- configuration: boat & family character, rarely touched ---------- */}
-      <Disclosure title="Trip setup" summary={setupSummary}>
-        <label className="row">
-          <div className="row-text">
-            <span className="row-title">Round trip</span>
-            <span className="row-desc">Rates the weather for the ride back too</span>
-          </div>
-          <input
-            type="checkbox"
-            className="switch"
-            checked={roundTrip}
-            onChange={(e) => setRoundTrip(e.target.checked)}
-          />
-        </label>
-
-        <div className="row">
-          <div className="row-text">
-            <span className="row-title">Cruise speed</span>
-            <span className="row-desc">Used to time the trip and the forecast</span>
-          </div>
-          <div className="stepper">
-            <button className="icon-btn" onClick={() => stepSpeed(-1)} aria-label="Slower">
-              <IconMinus size={16} />
-            </button>
-            <b className="numeral">
-              {shownSpeed}
-              <span> {speedUnitLabel(speedUnit)}</span>
-            </b>
-            <button className="icon-btn" onClick={() => stepSpeed(1)} aria-label="Faster">
-              <IconPlus size={16} />
-            </button>
-          </div>
-        </div>
-
-        {roundTrip && (
-          <div className="row">
-            <div className="row-text">
-              <span className="row-title">Time there</span>
-              <span className="row-desc">
-                {plannedStayMin != null
-                  ? `At least ${durationLabel(stayMin)} · planned ${durationLabel(plannedStayMin)} from the picked option`
-                  : 'At least — options stretch it while the weather holds'}
-              </span>
-            </div>
-            <div className="seg">
-              {STAY_CHOICES.map((c) => (
-                <button
-                  key={c.min}
-                  className={stayMin === c.min ? 'seg-on' : ''}
-                  onClick={() => setStayMin(c.min)}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="row">
-          <div className="row-text">
-            <span className="row-title">Back by</span>
-            <span className="row-desc">
-              {roundTrip ? 'Latest you want to be home' : 'Latest you want to arrive'}
-            </span>
-          </div>
-          <div className="stepper">
-            <button className="icon-btn" onClick={() => stepBackBy(-1)} aria-label="Back an hour earlier">
-              <IconMinus size={16} />
-            </button>
-            <b className="numeral">{backByLabel}</b>
-            <button
-              className="icon-btn"
-              onClick={() => stepBackBy(1)}
-              disabled={backByHour == null}
-              aria-label="Back an hour later"
-            >
-              <IconPlus size={16} />
-            </button>
-          </div>
-        </div>
-      </Disclosure>
-
-      {/* ---------- evidence ---------- */}
-      {plan && (
-        <Disclosure
-          title="Trip timeline"
-          summary="conditions at every leg · tap one for its forecast"
-        >
-          <Timeline plan={plan} />
-        </Disclosure>
       )}
 
       {/* ---------- admin ---------- */}

@@ -50,6 +50,10 @@ interface AppState {
   // 12-hour outlook strip overlaid on the map (persisted)
   wxStrip: boolean
   setWxStrip: (v: boolean) => void
+
+  // show wave period (seconds) beside every wave height (persisted)
+  wavePeriod: boolean
+  setWavePeriod: (v: boolean) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -82,6 +86,9 @@ export const useAppStore = create<AppState>()(
 
       wxStrip: true,
       setWxStrip: (v) => set({ wxStrip: v }),
+
+      wavePeriod: true,
+      setWavePeriod: (v) => set({ wavePeriod: v }),
     }),
     {
       name: 'sandies-prefs',
@@ -92,6 +99,7 @@ export const useAppStore = create<AppState>()(
         satOpacity: s.satOpacity,
         headingUp: s.headingUp,
         wxStrip: s.wxStrip,
+        wavePeriod: s.wavePeriod,
         planTimeMs: s.planTimeMs,
       }),
       // deep-merge layers so prefs saved before a new layer key existed still get its default

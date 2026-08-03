@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import MapView from './map/MapView'
 import { withMap } from './map/mapController'
 import { REGION_BBOX } from './config'
@@ -8,16 +8,19 @@ import { locateAndFollow, startGps } from './tracking/gpsService'
 import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
 import { useRouteStore } from './routing/routeStore'
+import { initMeasureLayer } from './measure/measureLayer'
+import { useMeasureStore } from './measure/measureStore'
 import { dayShort, dayTimeLabel, isToday, timeLabel } from './time'
 import BottomSheet from './ui/BottomSheet'
 import InstrumentBar from './ui/InstrumentBar'
-import { IconCompass, IconLayers, IconLocate, IconRoute, IconTrack, IconWind, IconDownload } from './ui/icons'
+import MeasureCard from './ui/MeasureCard'
+import { IconCompass, IconLayers, IconLocate, IconRoute, IconRuler, IconTrack, IconWind, IconDownload } from './ui/icons'
 import LayersPanel from './ui/panels/LayersPanel'
 import OfflinePanel from './ui/panels/OfflinePanel'
 import RoutePanel from './ui/panels/RoutePanel'
 import TracksPanel from './ui/panels/TracksPanel'
 import WeatherPanel from './ui/panels/WeatherPanel'
-import TripBuilder from './ui/TripBuilder'
+import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 import { initWeatherLayer } from './weather/weatherLayer'
 
@@ -34,14 +37,18 @@ const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
   { id: 'offline', name: 'Offline', icon: IconDownload },
 ]
 
+/** Guides map-picking, and stands in for a dismissed trip card — tapping it
+ *  brings the card back. While the card is up it says nothing the card
+ *  doesn't. */
 function TripChip() {
   const picking = useRouteStore((s) => s.picking)
   const setPicking = useRouteStore((s) => s.setPicking)
-  const builder = useRouteStore((s) => s.builder)
+  const card = useRouteStore((s) => s.card)
+  const setCard = useRouteStore((s) => s.setCard)
   const destination = useRouteStore((s) => s.destination)
   const plan = useRouteStore((s) => s.plan)
   const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
-  const setSheetTab = useAppStore((s) => s.setSheetTab)
+  const measuring = useMeasureStore((s) => s.active)
 
   if (picking) {
     return (
@@ -50,8 +57,9 @@ function TripChip() {
       </button>
     )
   }
-  // the builder card is already saying all of this at the bottom of the map
-  if (builder) return null
+  // the trip card is already saying all of this at the bottom of the map —
+  // unless the ruler has borrowed its spot, in which case the chip stands in
+  if (card && !measuring) return null
   if (!destination || !plan) return null
 
   const underWay = tripStartedAt != null
@@ -76,7 +84,7 @@ function TripChip() {
     }
   }
   return (
-    <button className={`chip ${cls}`} onClick={() => setSheetTab('route')}>
+    <button className={`chip ${cls}`} onClick={() => setCard('trip')}>
       {text}
     </button>
   )
@@ -108,6 +116,7 @@ function TopBar() {
 
 function FabStack() {
   const follow = useAppStore((s) => s.follow)
+  const measuring = useMeasureStore((s) => s.active)
   const [bearing, setBearing] = useState(0)
 
   useEffect(() => {
@@ -120,6 +129,19 @@ function FabStack() {
 
   return (
     <div className="fabstack">
+      <button
+        className={`fab ${measuring ? 'active' : ''}`}
+        onClick={() => {
+          if (measuring) return useMeasureStore.getState().stop()
+          // the map needs to be tappable: put the sheet and any pick mode away
+          useAppStore.getState().setSheetTab(null)
+          useRouteStore.getState().setPicking(null)
+          useMeasureStore.getState().start()
+        }}
+        aria-label="Measure distance"
+      >
+        <IconRuler />
+      </button>
       <button
         className="fab"
         style={{ opacity: Math.abs(bearing) > 0.5 ? 1 : 0.55 }}
@@ -143,12 +165,27 @@ export default function App() {
   const sheetTab = useAppStore((s) => s.sheetTab)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
   const setOnline = useAppStore((s) => s.setOnline)
-  const builder = useRouteStore((s) => s.builder)
-  const setBuilder = useRouteStore((s) => s.setBuilder)
+  const card = useRouteStore((s) => s.card)
+  const setCard = useRouteStore((s) => s.setCard)
+  const measuring = useMeasureStore((s) => s.active)
+  const barRef = useRef<HTMLDivElement>(null)
+
+  // the FABs ride just above the bottom bar, which grows and shrinks with the
+  // card docked in it — publish its height so CSS can follow along
+  useEffect(() => {
+    const el = barRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--barh', `${Math.round(el.offsetHeight)}px`)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     initWeatherLayer()
     initRouteLayer()
+    initMeasureLayer() // after the route layer, so measurements draw on top
     initRoutePlanner()
 
     // grab a position right away; follow it only when it's on our waters.
@@ -198,25 +235,34 @@ export default function App() {
       </div>
       <FabStack />
 
-      <div className="bottombar">
-        <TripBuilder />
+      <div className="bottombar" ref={barRef}>
+        {/* one card at a time in the dock — measuring borrows the trip's spot */}
+        {measuring ? <MeasureCard /> : <TripCard />}
         <div className="tabdock glass">
           {TABS.map((t) => {
             const Icon = t.icon
-            const on = sheetTab === t.id || (t.id === 'route' && builder)
+            const on = sheetTab === t.id || (t.id === 'route' && card === 'choose')
             return (
               <button
                 key={t.id}
                 className={`tab ${on ? 'tab-on' : ''}`}
                 onClick={() => {
-                  // no trip yet → the Trip tab is the map-facing builder,
-                  // not the panel; with one planned, straight to the panel
-                  if (t.id === 'route' && !useRouteStore.getState().destination) {
-                    setSheetTab(null)
-                    setBuilder(builder ? null : 'choose')
+                  const destination = useRouteStore.getState().destination
+                  if (t.id === 'route') {
+                    if (!destination) {
+                      // no trip yet → the Trip tab toggles the map-facing chooser
+                      setSheetTab(null)
+                      setCard(card === 'choose' ? null : 'choose')
+                      return
+                    }
+                    // with a trip, the tab toggles the details drawer — and
+                    // makes sure the card is back up underneath it
+                    setCard('trip')
+                    setSheetTab(sheetTab === 'route' ? null : 'route')
                     return
                   }
-                  setBuilder(null)
+                  // another tab puts the chooser away; a planned card can stay
+                  if (card === 'choose') setCard(destination ? 'trip' : null)
                   setSheetTab(sheetTab === t.id ? null : t.id)
                 }}
                 aria-label={t.name}

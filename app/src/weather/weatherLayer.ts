@@ -1,6 +1,6 @@
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
-import { withMap } from '../map/mapController'
+import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { floorHourMs } from '../time'
 import { fetchGridForecast, hourIndexAt, type GridCell, type GridForecast } from './openMeteo'
@@ -14,7 +14,9 @@ import { fetchGridForecast, hourIndexAt, type GridCell, type GridForecast } from
 
 let grid: GridForecast | null = null
 let gridStale = false
-let layersAdded = false
+// the map the layers live on, so a replacement map re-adds them instead of
+// silently swallowing every setData (see onEachMap)
+let layersOn: MlMap | null = null
 
 const GRID_MAX_AGE_MS = 30 * 60_000
 
@@ -49,7 +51,7 @@ function makeArrowImage(color: string): ImageData {
 }
 
 function addLayers(map: MlMap) {
-  if (layersAdded || !map.getStyle()) return
+  if (layersOn === map || !map.getStyle()) return
 
   for (const b of ARROW_BUCKETS) {
     if (!map.hasImage(b.id)) map.addImage(b.id, makeArrowImage(b.color), { pixelRatio: 2 })
@@ -121,7 +123,7 @@ function addLayers(map: MlMap) {
     },
   })
 
-  layersAdded = true
+  layersOn = map
 }
 
 function emptyFc(): FeatureCollection {
@@ -147,7 +149,7 @@ function fcAt(g: GridForecast, targetMs: number): FeatureCollection {
 }
 
 function render(map: MlMap) {
-  if (!layersAdded) return
+  if (layersOn !== map) return
   const { layers, planTimeMs } = useAppStore.getState()
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
@@ -189,6 +191,7 @@ export interface GridConditions {
   gustKn: number
   windDir: number
   waveM: number | null
+  wavePeriodS: number | null
 }
 
 /** Wind + waves at the grid cell nearest a point, at the hour containing `ms`.
@@ -214,6 +217,8 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
     gustKn: best.gustKn[i] ?? windKn,
     windDir: best.windDir[i] ?? 0,
     waveM: best.waveM[i] ?? null,
+    // optional-chained: a grid cached before periods were fetched has no array
+    wavePeriodS: best.wavePeriodS?.[i] ?? null,
   }
 }
 
@@ -230,7 +235,7 @@ export function initWeatherLayer() {
   if (inited) return // React StrictMode double effect-run in dev
   inited = true
 
-  withMap((map) => {
+  onEachMap((map) => {
     addLayers(map)
     render(map)
   })

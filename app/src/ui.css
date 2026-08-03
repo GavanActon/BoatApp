@@ -189,6 +189,19 @@
   font-size: 9.5px;
 }
 
+/* wave period rides along at half a step down so height still reads first.
+   The dot is load-bearing: "0.2 3s" with only a margin reads as "0.23s". */
+.wxcell-wave em {
+  font-size: 8.5px;
+  font-style: normal;
+  color: var(--c-text-faint);
+}
+
+.wxcell-wave em::before {
+  content: '·';
+  margin: 0 1.5px;
+}
+
 .wx-good {
   border-top-color: rgba(89, 224, 184, 0.75);
   background: rgba(89, 224, 184, 0.07);
@@ -210,6 +223,11 @@
 
 .wx-rough b {
   color: var(--cond-rough);
+}
+
+/* an hour the trip sweep can't rate as a departure (past, beyond forecast) */
+.wxcell.wx-na {
+  opacity: 0.45;
 }
 
 .wx-active {
@@ -259,10 +277,13 @@
 
 /* ---------- FABs ---------- */
 
+/* docked just above the bottom bar (--barh, published by App) so the stack
+   clears whatever card is in it — the fallback covers the first paint */
 .fabstack {
   position: absolute;
   right: calc(var(--sar) + 12px);
-  bottom: calc(var(--sab) + 170px);
+  bottom: calc(var(--barh, 170px) + 12px);
+  transition: bottom 0.18s ease-out;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -378,6 +399,15 @@
   height: 9px;
   border-radius: 50%;
   background: var(--c-danger);
+}
+
+/* the panel's own record control — full width, letters not a code word */
+.rec-btn.rec-start {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+  font-size: 13px;
 }
 
 .rec-btn.recording {
@@ -1324,110 +1354,6 @@
   cursor: pointer;
 }
 
-/* ---------- departure windows ("when to go") ---------- */
-
-.win-days {
-  display: flex;
-  flex-direction: column;
-}
-
-.win-day {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 2px;
-  border-bottom: 1px solid rgba(126, 178, 224, 0.07);
-}
-
-.win-day:last-child {
-  border-bottom: none;
-}
-
-.win-day-on {
-  background: rgba(63, 200, 255, 0.05);
-  border-radius: 6px;
-}
-
-.win-dayname {
-  width: 56px;
-  flex-shrink: 0;
-  padding-left: 9px;
-  border-left: 3px solid transparent;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.cond-go {
-  border-left-color: var(--cond-good);
-}
-
-.cond-caution {
-  border-left-color: var(--cond-mod);
-}
-
-.cond-nogo {
-  border-left-color: var(--cond-rough);
-}
-
-.cond-na {
-  opacity: 0.5;
-}
-
-.win-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.win {
-  padding: 4px 11px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  border: 1px solid transparent;
-}
-
-.win-go {
-  background: rgba(89, 224, 184, 0.12);
-  border-color: rgba(89, 224, 184, 0.35);
-  color: var(--cond-good);
-}
-
-.win-caution {
-  background: rgba(255, 180, 84, 0.12);
-  border-color: rgba(255, 180, 84, 0.35);
-  color: var(--cond-mod);
-}
-
-.win-on {
-  outline: 1.5px solid var(--c-accent);
-  outline-offset: -1.5px;
-}
-
-.win-none {
-  font-size: 12px;
-  font-style: normal;
-  color: var(--c-text-faint);
-}
-
-/* departure time stepper + notes */
-
-.stepper .leave-label {
-  min-width: 84px;
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-.trip-plan-note {
-  padding-top: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--c-text-dim);
-}
-
 /* course-editing hint under the destination chips */
 
 .route-edit-note {
@@ -1666,28 +1592,106 @@
   margin-top: 2px;
 }
 
-/* the panel's route header: where the trip runs, changed on the map */
+/* the planned card's verdict line: the ± nudgers ride inside it */
 
-.trip-route-head {
-  display: flex;
+.tb-verdict {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 2px 0 10px;
-  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
-.trip-route-names {
+.tb-back {
+  color: var(--c-text-dim);
+  font-weight: 600;
+}
+
+/* sliders button while its setup card is up */
+
+.icon-btn-on {
+  color: var(--c-accent);
+  background: var(--c-accent-dim);
+  border-radius: 8px;
+}
+
+/* under way, the card collapses to one live line — tap it for the drawer */
+
+.tripcard-live {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  border-left: 4px solid transparent;
+}
+
+.tc-live-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--c-text-dim);
+}
+
+.tc-live-body b {
+  color: var(--c-text);
+  font-size: 14.5px;
+  white-space: nowrap;
+}
+
+.tc-live-body span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--c-text);
 }
 
-.trip-route-names span {
-  color: var(--c-text-dim);
-  font-weight: 600;
+.tc-go {
+  border-left-color: var(--cond-good);
+}
+
+.tc-caution {
+  border-left-color: var(--cond-mod);
+}
+
+.tc-nogo {
+  border-left-color: var(--cond-rough);
+}
+
+/* ---------- measuring tool ---------- */
+
+.measure-card .tb-head .linklike {
+  margin-left: auto;
+}
+
+.measure-card .tb-head .icon-btn {
+  margin-left: 0;
+  width: 34px;
+  height: 34px;
+}
+
+.measure-total {
+  font-size: 17px;
+  color: var(--c-warn) !important;
+}
+
+.measure-card .tb-facts {
+  gap: 4px 14px;
+  align-items: baseline;
+}
+
+.linklike:disabled {
+  opacity: 0.35;
+}
+
+/* the trip-setup card docked above the trip card */
+
+.tripsetup {
+  max-height: 45dvh;
+  overflow-y: auto;
+}
+
+.tripsetup .row {
+  padding: 8px 0;
 }

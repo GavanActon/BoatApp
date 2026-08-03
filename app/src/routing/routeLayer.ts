@@ -9,7 +9,8 @@ import type {
   MapMouseEvent,
   MapTouchEvent,
 } from 'maplibre-gl'
-import { getMap, withMap } from '../map/mapController'
+import { getMap, onEachMap, withMap } from '../map/mapController'
+import { useMeasureStore } from '../measure/measureStore'
 import { useAppStore } from '../state/appStore'
 import { useRouteStore } from './routeStore'
 import { condRank, timeLabel } from './tripPlan'
@@ -25,7 +26,9 @@ import { condRank, timeLabel } from './tripPlan'
  * course point to remove it. Every edit re-routes each leg through safe water.
  */
 
-let layersAdded = false
+// which map the layers live on — an identity, not a flag, so a replacement map
+// gets its own layers instead of silently swallowing every setData
+let layersOn: MlMap | null = null
 let lastRoute: unknown = null
 // 'launch' frames the persisted trip on startup but lets auto-follow win the
 // camera afterwards; 'user' (a trip change) also switches follow off so the
@@ -88,7 +91,7 @@ const ROUTE_LINE_FILTER: FilterSpecification = [
 ]
 
 function addLayers(map: MlMap) {
-  if (layersAdded || !map.getStyle()) return
+  if (layersOn === map || !map.getStyle()) return
 
   map.addSource('route', { type: 'geojson', data: emptyFc() })
 
@@ -245,7 +248,7 @@ function addLayers(map: MlMap) {
     },
   })
 
-  layersAdded = true
+  layersOn = map
 }
 
 function buildFc(): FeatureCollection {
@@ -348,7 +351,7 @@ function buildFc(): FeatureCollection {
 }
 
 function render(map: MlMap) {
-  if (!layersAdded) return
+  if (layersOn !== map) return
   const src = map.getSource('route') as GeoJSONSource | undefined
   src?.setData(buildFc())
 }
@@ -467,6 +470,7 @@ function showRemovePopup(map: MlMap, idx: number) {
 function beginDrag(map: MlMap, d: Drag, e: MapLayerMouseEvent | MapLayerTouchEvent) {
   if (drag) return
   if (useRouteStore.getState().picking) return
+  if (useMeasureStore.getState().active) return // the ruler owns the map
   if ('points' in e && e.points.length > 1) return // pinch, not an edit
   e.preventDefault() // keep the map itself from panning under the gesture
   drag = d
@@ -571,7 +575,7 @@ export function initRouteLayer() {
   if (inited) return
   inited = true
 
-  withMap((map) => {
+  onEachMap((map) => {
     addLayers(map)
     addEditHandlers(map)
     render(map)
@@ -580,6 +584,7 @@ export function initRouteLayer() {
     // (tap again to release); padded hit-test so fingers don't have to be exact
     map.on('click', (e) => {
       if (routeEditedRecently()) return // the click that ends an edit gesture
+      if (useMeasureStore.getState().active) return
       if (viaPopup) {
         viaPopup.remove()
         viaPopup = null
@@ -624,7 +629,7 @@ export function initRouteLayer() {
       s.startPoint !== prev.startPoint
     ) {
       const live = getMap()
-      if (live && layersAdded) render(live)
+      if (live && layersOn === live) render(live)
     }
     if (s.route !== prev.route || s.plan !== prev.plan || s.destination !== prev.destination) {
       const apply = (map: MlMap) => {
@@ -650,7 +655,7 @@ export function initRouteLayer() {
       }
       // once layers exist, update directly rather than waiting on withMap
       const live = getMap()
-      if (live && layersAdded) apply(live)
+      if (live && layersOn === live) apply(live)
       else withMap(apply)
     }
   })
@@ -666,7 +671,7 @@ export function initRouteLayer() {
     else withMap((m) => fitToRoute(m, true))
   }
   useRouteStore.subscribe((s, prev) => {
-    if (s.builder === 'preview' && prev.builder !== 'preview') refit()
+    if (s.card === 'trip' && prev.card !== 'trip') refit()
   })
   useAppStore.subscribe((s, prev) => {
     if (s.sheetTab === 'route' && prev.sheetTab !== 'route') refit()
