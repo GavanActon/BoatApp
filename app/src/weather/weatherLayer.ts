@@ -26,8 +26,13 @@ let gridStale = false
 let layersOn: MlMap | null = null
 
 const GRID_MAX_AGE_MS = 30 * 60_000
-const ARROW_SPACING_PX = 108 // roughly a thumb apart on a phone
-const MAX_ARROWS = 400 // backstop; a phone-sized view asks for about a dozen
+// About half a dozen arrows on a phone screen. Deliberately sparse: zoomed
+// in on a trip, every arrow is sampled from the same cell or two, so a dense
+// field just prints one number a dozen times and implies detail the forecast
+// hasn't got. Spacing rather than a fixed count, so a bigger screen shows
+// more of the field instead of the same six arrows stretched across it.
+const ARROW_SPACING_PX = 170
+const MAX_ARROWS = 400 // backstop against a pathological viewport
 
 const ARROW_BUCKETS = [
   { id: 'wx-arrow-0', color: '#7fd4e8', max: 8 }, // light
