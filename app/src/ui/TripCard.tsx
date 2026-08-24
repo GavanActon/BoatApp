@@ -5,6 +5,7 @@ import { applySavedTrip, useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { dayTimeLabel, durationLabel, floorHourMs, timeLabel } from '../time'
 import { db, type SavedStart, type SavedTrip } from '../tracking/db'
+import { distanceUnitFor, runDistance } from '../units'
 import { IconClose, IconLocate, IconMinus, IconPin, IconPlus, IconSliders, IconStar } from './icons'
 import TripSetup from './TripSetup'
 
@@ -40,6 +41,7 @@ export default function TripCard() {
   const planError = useRouteStore((s) => s.planError)
   const cruiseKn = useRouteStore((s) => s.cruiseKn)
   const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
+  const speedUnit = useAppStore((s) => s.speedUnit)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const setPlanTime = useAppStore((s) => s.setPlanTime)
@@ -183,7 +185,7 @@ export default function TripCard() {
   if (tripStartedAt != null) {
     let liveText: string | null = null
     if (plan) {
-      liveText = `${plan.oneWayNm.toFixed(1)} nm to go · there ${timeLabel(plan.arriveMs)}`
+      liveText = `${runDistance(speedUnit, plan.oneWayNm)} ${distanceUnitFor(speedUnit)} to go · there ${timeLabel(plan.arriveMs)}`
       if (plan.verdict === 'nogo') liveText += ' · rough ahead'
       else if (plan.turnsBadMs != null) liveText += ` · turns ${timeLabel(plan.turnsBadMs)}`
     }
@@ -240,7 +242,8 @@ export default function TripCard() {
         <div className="tb-facts">
           {route ? (
             <span className="numeral">
-              <b>{route.distanceNm.toFixed(1)}</b> nm each way · about{' '}
+              <b>{runDistance(speedUnit, route.distanceNm)}</b> {distanceUnitFor(speedUnit)} each way ·
+              about{' '}
               <b>{durationLabel(Math.round((route.distanceNm / cruiseKn) * 60))}</b>
             </span>
           ) : (

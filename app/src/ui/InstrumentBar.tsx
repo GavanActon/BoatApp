@@ -4,7 +4,7 @@ import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { stopRecording } from '../tracking/gpsService'
-import { knToUnit, speedUnitLabel, type SpeedUnit } from '../units'
+import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, type SpeedUnit } from '../units'
 
 function fmtSog(sogKn: number | null, unit: SpeedUnit): string {
   if (sogKn == null) return '—'
@@ -56,7 +56,7 @@ export default function InstrumentBar() {
         // trip running: shows distance covered; tap to end the trip
         <button className="rec-btn recording" onClick={() => endTrip()} aria-label="End trip">
           <span className="rec-dot" />
-          {distanceNm.toFixed(1)} nm
+          {runDistance(speedUnit, distanceNm)} {distanceUnitFor(speedUnit)}
         </button>
       ) : (
         // plain track recording: same, tap to stop
@@ -66,7 +66,7 @@ export default function InstrumentBar() {
           aria-label="Stop recording track"
         >
           <span className="rec-dot" />
-          {distanceNm.toFixed(1)} nm
+          {runDistance(speedUnit, distanceNm)} {distanceUnitFor(speedUnit)}
         </button>
       )}
     </div>

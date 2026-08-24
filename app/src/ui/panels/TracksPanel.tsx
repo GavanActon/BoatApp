@@ -7,6 +7,7 @@ import { db, type Track } from '../../tracking/db'
 import { exportTrackGpx } from '../../tracking/gpx'
 import { startRecording, stopRecording } from '../../tracking/gpsService'
 import { useGpsStore } from '../../tracking/gpsStore'
+import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../../units'
 import { IconShare, IconTrash } from '../icons'
 
 const VIEW_SOURCE = 'track-view'
@@ -69,6 +70,7 @@ export default function TracksPanel() {
   const [shownId, setShownId] = useState<number | null>(null)
   const recording = useGpsStore((s) => s.recording)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
+  const speedUnit = useAppStore((s) => s.speedUnit)
 
   useEffect(() => {
     void db.tracks.orderBy('startedAt').reverse().toArray().then(setTracks)
@@ -127,9 +129,11 @@ export default function TracksPanel() {
           <button className="row-text" onClick={() => void toggleShow(t)}>
             <span className="row-title">{t.name}</span>
             <span className="row-desc">
-              {t.distanceNm.toFixed(1)} nm
+              {runDistance(speedUnit, t.distanceNm)} {distanceUnitFor(speedUnit)}
               {t.endedAt ? ` · ${fmtDuration(t.endedAt - t.startedAt)}` : ' · recording…'}
-              {t.maxSogKn > 0 ? ` · max ${t.maxSogKn.toFixed(1)} kn` : ''}
+              {t.maxSogKn > 0
+                ? ` · max ${knToUnit(speedUnit, t.maxSogKn).toFixed(1)} ${speedUnitLabel(speedUnit)}`
+                : ''}
             </span>
           </button>
           <button className="icon-btn" onClick={() => void exportTrackGpx(t)} aria-label="Export GPX">

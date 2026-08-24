@@ -3,6 +3,7 @@ import MapView from './map/MapView'
 import { withMap } from './map/mapController'
 import { REGION_BBOX } from './config'
 import { useAppStore, type SheetTab } from './state/appStore'
+import { distanceUnitFor, runDistance } from './units'
 import { useGpsStore, type Fix } from './tracking/gpsStore'
 import { locateAndFollow, startGps } from './tracking/gpsService'
 import { initRouteLayer } from './routing/routeLayer'
@@ -48,6 +49,7 @@ function TripChip() {
   const destination = useRouteStore((s) => s.destination)
   const plan = useRouteStore((s) => s.plan)
   const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
+  const speedUnit = useAppStore((s) => s.speedUnit)
   const measuring = useMeasureStore((s) => s.active)
 
   if (picking) {
@@ -67,7 +69,7 @@ function TripChip() {
   const cls = plan.verdict === 'go' ? 'chip-ok' : plan.verdict === 'caution' ? 'chip-warn' : 'chip-danger'
   let text: string
   if (underWay) {
-    text = `${name} · ${plan.oneWayNm.toFixed(1)} nm to go · there ${timeLabel(plan.arriveMs)}`
+    text = `${name} · ${runDistance(speedUnit, plan.oneWayNm)} ${distanceUnitFor(speedUnit)} to go · there ${timeLabel(plan.arriveMs)}`
     if (plan.verdict === 'nogo') text += ' · rough ahead'
     else if (plan.turnsBadMs != null) text += ` · turns ${timeLabel(plan.turnsBadMs)}`
   } else {

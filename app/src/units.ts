@@ -37,3 +37,13 @@ const NM_TO = { nm: 1, km: 1.852, mi: 1.15078 }
 export function nmToUnit(unit: DistanceUnit, nm: number): number {
   return nm * NM_TO[unit]
 }
+
+/**
+ * A passage distance, one decimal, the way a run is quoted — "3.9" nm,
+ * "7.2" km. The unit string to sit beside it is distanceUnitFor().
+ * measureMath's formatDistance() is the ruler's version: it drops to metres
+ * or feet close in, which a run across the bay never wants.
+ */
+export function runDistance(speed: SpeedUnit, nm: number): string {
+  return nmToUnit(distanceUnitFor(speed), nm).toFixed(1)
+}

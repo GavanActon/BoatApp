@@ -20,7 +20,7 @@ import {
   timeLabel,
 } from '../../time'
 import { db, type SavedStart, type SavedTrip } from '../../tracking/db'
-import { knToUnit, speedUnitLabel } from '../../units'
+import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../../units'
 import { fetchPointForecast, formatPeriod, type PointForecast } from '../../weather/openMeteo'
 import Disclosure from '../Disclosure'
 import { IconCheck, IconMinus, IconPlus, IconRefresh, IconTrash, IconWindArrow } from '../icons'
@@ -85,6 +85,7 @@ function VerdictCard({
   onNudge?: (deltaHours: number) => void
   better?: { text: string; onUse: () => void }
 }) {
+  const speedUnit = useAppStore((s) => s.speedUnit)
   return (
     <div className={`verdict verdict-${plan.verdict}`}>
       <div className="verdict-head">
@@ -125,7 +126,8 @@ function VerdictCard({
           </span>
         )}
         <span>
-          <b>{plan.oneWayNm.toFixed(1)}</b> {underWay ? 'nm to go' : 'nm each way'}
+          <b>{runDistance(speedUnit, plan.oneWayNm)}</b>{' '}
+          {distanceUnitFor(speedUnit)} {underWay ? 'to go' : 'each way'}
         </span>
         <span>
           there <b>{underWay ? timeLabel(plan.arriveMs) : dayTimeLabel(plan.arriveMs)}</b>
