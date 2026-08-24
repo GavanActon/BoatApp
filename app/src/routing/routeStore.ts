@@ -39,6 +39,13 @@ interface RouteState {
   backByHour: number | null // latest hour-of-day to be home / off the water; null = no limit
   setBackBy: (h: number | null) => void
 
+  // Route editing is a MODE. Without it, a press anywhere on the line — a
+  // 26 px-wide hit target — pulls a fresh course point out of the course, which
+  // happens by accident far more often than on purpose. Not persisted: you turn
+  // it on to make a change, and it doesn't outlive the session.
+  editing: boolean
+  setEditing: (v: boolean) => void
+
   // "tap the map to set…" mode — what the next map tap places
   picking: 'dest' | 'start' | null
   setPicking: (v: 'dest' | 'start' | null) => void
@@ -86,6 +93,7 @@ export const useRouteStore = create<RouteState>()(
           destination,
           viaPoints: [],
           picking: null,
+          editing: false, // a new trip is not a course you were part-way through editing
           focusPoint: null,
           expandedIdx: null,
           plannedStayMin: null,
@@ -117,6 +125,9 @@ export const useRouteStore = create<RouteState>()(
       setPlannedStay: (plannedStayMin) => set({ plannedStayMin }),
       backByHour: 17, // home by 5 pm unless told otherwise
       setBackBy: (backByHour) => set({ backByHour }),
+
+      editing: false,
+      setEditing: (editing) => set({ editing }),
 
       picking: null,
       setPicking: (picking) => set({ picking }),

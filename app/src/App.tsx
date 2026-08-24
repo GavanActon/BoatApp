@@ -15,7 +15,17 @@ import { dayShort, dayTimeLabel, isToday, timeLabel } from './time'
 import BottomSheet from './ui/BottomSheet'
 import InstrumentBar from './ui/InstrumentBar'
 import MeasureCard from './ui/MeasureCard'
-import { IconCompass, IconLayers, IconLocate, IconRoute, IconRuler, IconTrack, IconWind, IconDownload } from './ui/icons'
+import {
+  IconCompass,
+  IconEditRoute,
+  IconLayers,
+  IconLocate,
+  IconRoute,
+  IconRuler,
+  IconTrack,
+  IconWind,
+  IconDownload,
+} from './ui/icons'
 import LayersPanel from './ui/panels/LayersPanel'
 import OfflinePanel from './ui/panels/OfflinePanel'
 import RoutePanel from './ui/panels/RoutePanel'
@@ -42,6 +52,8 @@ const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
  *  brings the card back. While the card is up it says nothing the card
  *  doesn't. */
 function TripChip() {
+  const editing = useRouteStore((s) => s.editing)
+  const setEditing = useRouteStore((s) => s.setEditing)
   const picking = useRouteStore((s) => s.picking)
   const setPicking = useRouteStore((s) => s.setPicking)
   const card = useRouteStore((s) => s.card)
@@ -52,6 +64,13 @@ function TripChip() {
   const speedUnit = useAppStore((s) => s.speedUnit)
   const measuring = useMeasureStore((s) => s.active)
 
+  if (editing) {
+    return (
+      <button className="chip chip-accent" onClick={() => setEditing(false)}>
+        Drag the line to add a course point — or a point or pin to move it · done
+      </button>
+    )
+  }
   if (picking) {
     return (
       <button className="chip chip-accent" onClick={() => setPicking(null)}>
@@ -119,6 +138,9 @@ function TopBar() {
 function FabStack() {
   const follow = useAppStore((s) => s.follow)
   const measuring = useMeasureStore((s) => s.active)
+  const route = useRouteStore((s) => s.route)
+  const editing = useRouteStore((s) => s.editing)
+  const setEditing = useRouteStore((s) => s.setEditing)
   const [bearing, setBearing] = useState(0)
 
   useEffect(() => {
@@ -131,13 +153,31 @@ function FabStack() {
 
   return (
     <div className="fabstack">
+      {route && (
+        <button
+          className={`fab ${editing ? 'active' : ''}`}
+          onClick={() => {
+            if (editing) return setEditing(false)
+            // one map gesture owner at a time — the ruler does the same to us
+            useMeasureStore.getState().stop()
+            useAppStore.getState().setSheetTab(null)
+            useRouteStore.getState().setPicking(null)
+            setEditing(true)
+          }}
+          aria-label={editing ? 'Done editing the course' : 'Edit the course'}
+        >
+          <IconEditRoute />
+        </button>
+      )}
       <button
         className={`fab ${measuring ? 'active' : ''}`}
         onClick={() => {
           if (measuring) return useMeasureStore.getState().stop()
-          // the map needs to be tappable: put the sheet and any pick mode away
+          // the map needs to be tappable: put the sheet, pick mode and the
+          // course editor away
           useAppStore.getState().setSheetTab(null)
           useRouteStore.getState().setPicking(null)
+          useRouteStore.getState().setEditing(false)
           useMeasureStore.getState().start()
         }}
         aria-label="Measure distance"

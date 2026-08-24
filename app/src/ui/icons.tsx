@@ -221,6 +221,15 @@ export const IconRuler = (p: IconProps) => (
   </svg>
 )
 
+export const IconEditRoute = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4.5 19 11 11l8-4" />
+    <circle cx="11" cy="11" r="2.8" fill="currentColor" stroke="none" />
+    <circle cx="4.5" cy="19" r="1.7" />
+    <circle cx="19" cy="7" r="1.7" />
+  </svg>
+)
+
 export const IconSliders = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
     <path d="M3 7h4M11 7h10" />

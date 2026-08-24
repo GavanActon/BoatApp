@@ -416,6 +416,11 @@ function buildFc(): FeatureCollection {
 
 function render(map: MlMap) {
   if (layersOn !== map) return
+  // the handles grow while the course is editable — the only on-map sign that
+  // a press will now do something, and the thing you have to hit to drag
+  const editing = useRouteStore.getState().editing
+  map.setPaintProperty('route-vias', 'circle-radius', editing ? 9 : 6.5)
+  map.setPaintProperty('route-vias', 'circle-stroke-width', editing ? 3.5 : 2.5)
   const src = map.getSource('route') as GeoJSONSource | undefined
   src?.setData(buildFc())
 }
@@ -533,6 +538,7 @@ function showRemovePopup(map: MlMap, idx: number) {
 
 function beginDrag(map: MlMap, d: Drag, e: MapLayerMouseEvent | MapLayerTouchEvent) {
   if (drag) return
+  if (!useRouteStore.getState().editing) return // the course is read-only outside edit mode
   if (useRouteStore.getState().picking) return
   if (useMeasureStore.getState().active) return // the ruler owns the map
   if ('points' in e && e.points.length > 1) return // pinch, not an edit
@@ -690,7 +696,8 @@ export function initRouteLayer() {
     if (
       s.focusPoint !== prev.focusPoint ||
       s.viaPoints !== prev.viaPoints ||
-      s.startPoint !== prev.startPoint
+      s.startPoint !== prev.startPoint ||
+      s.editing !== prev.editing
     ) {
       const live = getMap()
       if (live && layersOn === live) render(live)
