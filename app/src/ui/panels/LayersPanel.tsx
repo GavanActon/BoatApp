@@ -21,6 +21,8 @@ export default function LayersPanel() {
   const setDepthUnit = useAppStore((s) => s.setDepthUnit)
   const speedUnit = useAppStore((s) => s.speedUnit)
   const setSpeedUnit = useAppStore((s) => s.setSpeedUnit)
+  const windUnit = useAppStore((s) => s.windUnit)
+  const setWindUnit = useAppStore((s) => s.setWindUnit)
   const headingUp = useAppStore((s) => s.headingUp)
   const setHeadingUp = useAppStore((s) => s.setHeadingUp)
   const satOpacity = useAppStore((s) => s.satOpacity)
@@ -112,7 +114,7 @@ export default function LayersPanel() {
         <div className="row-text">
           <span className="row-title">Speed & distance units</span>
           <span className="row-desc">
-            Knots go with nautical miles, km/h with kilometres, mph with miles — on the
+            The boat: speed over ground, cruise speed, trip and track distances, the
             scale bar and the measuring tool
           </span>
         </div>
@@ -122,6 +124,27 @@ export default function LayersPanel() {
               key={u.id}
               className={speedUnit === u.id ? 'seg-on' : ''}
               onClick={() => setSpeedUnit(u.id)}
+            >
+              {u.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Wind units</span>
+          <span className="row-desc">
+            The forecast: outlook strip, hourly table, charts and the map arrows. Marine
+            forecasts quote knots
+          </span>
+        </div>
+        <div className="seg">
+          {SPEED_UNITS.map((u) => (
+            <button
+              key={u.id}
+              className={windUnit === u.id ? 'seg-on' : ''}
+              onClick={() => setWindUnit(u.id)}
             >
               {u.label}
             </button>

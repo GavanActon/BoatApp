@@ -21,8 +21,10 @@ interface AppState {
   // preferences (persisted)
   depthUnit: DepthUnit
   setDepthUnit: (u: DepthUnit) => void
-  speedUnit: SpeedUnit
+  speedUnit: SpeedUnit // the boat: SOG, cruise, trip and track distances
   setSpeedUnit: (u: SpeedUnit) => void
+  windUnit: SpeedUnit // the forecast: set independently of the boat's
+  setWindUnit: (u: SpeedUnit) => void
   layers: LayerVisibility
   setLayer: (k: keyof LayerVisibility, v: boolean) => void
   satOpacity: number // 0..1 satellite layer opacity
@@ -66,6 +68,8 @@ export const useAppStore = create<AppState>()(
       setDepthUnit: (u) => set({ depthUnit: u }),
       speedUnit: 'kn',
       setSpeedUnit: (u) => set({ speedUnit: u }),
+      windUnit: 'kn',
+      setWindUnit: (u) => set({ windUnit: u }),
       layers: { depth: true, contours: true, seamarks: true, satellite: true, weather: false },
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
@@ -95,6 +99,7 @@ export const useAppStore = create<AppState>()(
       partialize: (s) => ({
         depthUnit: s.depthUnit,
         speedUnit: s.speedUnit,
+        windUnit: s.windUnit,
         layers: s.layers,
         satOpacity: s.satOpacity,
         headingUp: s.headingUp,

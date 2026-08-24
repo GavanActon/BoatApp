@@ -12,6 +12,7 @@ import type {
 import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useMeasureStore } from '../measure/measureStore'
 import { useAppStore } from '../state/appStore'
+import { windSpeed, type SpeedUnit } from '../units'
 import { formatPeriod } from '../weather/openMeteo'
 import { useRouteStore } from './routeStore'
 import { condRank, timeLabel, type TripSample } from './tripPlan'
@@ -64,17 +65,21 @@ function windArrow(fromDeg: number): string {
 /**
  * What it will be like at one pass of a leg point — "↘ 12 · 0.4m 5s" — which
  * is what you look at a planned route for; the clock lives on the trip card.
- * Wind stays in knots like every other forecast readout (the speed preference
- * is for the boat, not the weather), the period rides along only when the Wave
- * period preference is on, and the sea drops out where the model has no data.
+ * Wind follows the Wind units preference, which is set apart from the boat's
+ * own; the period rides along only when the Wave period preference is on, and
+ * the sea drops out where the model has no data.
  *
  * The arrow comes back on its own because the label layer renders it a size up
  * — at body size the glyph is small enough to read as punctuation.
  */
-function wxParts(s: TripSample, showPeriod: boolean): { arrow: string; text: string } {
+function wxParts(
+  s: TripSample,
+  showPeriod: boolean,
+  windUnit: SpeedUnit,
+): { arrow: string; text: string } {
   const per = showPeriod ? formatPeriod(s.wavePeriodS) : null
   const sea = s.waveM == null ? '' : ` · ${s.waveM.toFixed(1)}m${per ? ` ${per}` : ''}`
-  return { arrow: windArrow(s.windDir), text: ` ${Math.round(s.windKn)}${sea}` }
+  return { arrow: windArrow(s.windDir), text: ` ${windSpeed(windUnit, s.windKn)}${sea}` }
 }
 
 function emptyFc(): FeatureCollection {
@@ -332,7 +337,7 @@ function buildFc(): FeatureCollection {
   }
   if (plan) {
     const focus = useRouteStore.getState().focusPoint
-    const showPeriod = useAppStore.getState().wavePeriod
+    const { wavePeriod: showPeriod, windUnit } = useAppStore.getState()
 
     // the return leg re-visits the outbound spots — pair them up so each dot
     // carries both legs: conditions out on top, conditions back underneath
@@ -346,8 +351,8 @@ function buildFc(): FeatureCollection {
       const cond = back && condRank(back.cond) > condRank(out.cond) ? back.cond : out.cond
       // one dot, two passes: ordering alone said which was which when these
       // were clock times, but two lines of weather look alike
-      const o = wxParts(out, showPeriod)
-      const b = back ? wxParts(back, showPeriod) : null
+      const o = wxParts(out, showPeriod, windUnit)
+      const b = back ? wxParts(back, showPeriod, windUnit) : null
       const focused =
         focus != null && Math.abs(focus.lon - out.lon) < 1e-6 && Math.abs(focus.lat - out.lat) < 1e-6
 
@@ -734,8 +739,8 @@ export function initRouteLayer() {
   })
   useAppStore.subscribe((s, prev) => {
     if (s.sheetTab === 'route' && prev.sheetTab !== 'route') refit()
-    // the leg labels carry the period, so the preference has to reach them
-    if (s.wavePeriod !== prev.wavePeriod) {
+    // the leg labels carry the period and the wind, so both have to reach them
+    if (s.wavePeriod !== prev.wavePeriod || s.windUnit !== prev.windUnit) {
       const live = getMap()
       if (live && layersOn === live) render(live)
     }

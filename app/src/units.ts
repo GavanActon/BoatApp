@@ -23,6 +23,16 @@ export function speedUnitLabel(unit: SpeedUnit): string {
   return SPEED_UNITS.find((u) => u.id === unit)!.label
 }
 
+/**
+ * A wind speed, rounded the way a forecast quotes it. Wind carries its own
+ * preference: marine forecasts are in knots by convention, but someone who
+ * reads the wind ashore in km/h may want that and still think of the boat in
+ * knots. Pair with speedUnitLabel().
+ */
+export function windSpeed(unit: SpeedUnit, kn: number): number {
+  return Math.round(knToUnit(unit, kn))
+}
+
 /** Distances are stored in nautical miles everywhere, like speeds in knots. */
 export type DistanceUnit = 'nm' | 'km' | 'mi'
 

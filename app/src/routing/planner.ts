@@ -184,6 +184,7 @@ export async function replan(quiet = false): Promise<void> {
       // the timeline uses the option-adopted stay when there is one, else the minimum
       stayMin: s.plannedStayMin ?? s.stayMin,
       destName,
+      windUnit: useAppStore.getState().windUnit,
       // under way, the trip is re-timed often but the forecast holds for 30 min
       maxWxCacheMs: underWay ? TRIP_WX_REFRESH_MS : PLAN_WX_CACHE_MS,
       windows: !underWay,
@@ -267,7 +268,10 @@ export function initRoutePlanner() {
 
   // the app-wide planning time IS the departure time — replan when it moves
   useAppStore.subscribe((s, prev) => {
-    if (s.planTimeMs !== prev.planTimeMs && useRouteStore.getState().destination) void replan()
+    if (!useRouteStore.getState().destination) return
+    if (s.planTimeMs !== prev.planTimeMs) void replan()
+    // the verdict quotes the wind, so its unit has to reach the headline
+    else if (s.windUnit !== prev.windUnit) void replan(true)
   })
 
   // first GPS fix moves the start from home waters to the boat — unless a

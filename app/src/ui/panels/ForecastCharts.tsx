@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../../state/appStore'
+import { knToUnit, speedUnitLabel } from '../../units'
 import type { PointForecast } from '../../weather/openMeteo'
 
 /**
@@ -90,10 +91,14 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
     return best
   }, [h.time])
 
+  const windUnit = useAppStore((s) => s.windUnit)
+
   const i0 = Math.max(0, nowIdx - 1)
   const n = Math.min(HOURS, h.time.length - i0)
-  const wind = h.windKn.slice(i0, i0 + n)
-  const gust = h.gustKn.slice(i0, i0 + n)
+  // converted here rather than at each readout, so the plot, the axis ticks
+  // and the scrub chip all speak the same unit
+  const wind = h.windKn.slice(i0, i0 + n).map((v) => knToUnit(windUnit, v))
+  const gust = h.gustKn.slice(i0, i0 + n).map((v) => knToUnit(windUnit, v))
   const wave = h.waveM.slice(i0, i0 + n)
   const times = h.time.slice(i0, i0 + n)
 
@@ -157,7 +162,7 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
         <span className="fc-time numeral">{timeLabel}</span>
         <span className="fc-chip">
           <i style={{ background: COL_WIND }} /> Wind{' '}
-          <b className="numeral">{Math.round(wind[idx] ?? 0)}</b> kn
+          <b className="numeral">{Math.round(wind[idx] ?? 0)}</b> {speedUnitLabel(windUnit)}
         </span>
         <span className="fc-chip">
           <i style={{ background: COL_GUST }} /> Gust{' '}
@@ -178,7 +183,7 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
       >
         {/* wind plot */}
         <text x={PAD_L} y={WIND_TOP - 5} className="fc-title">
-          WIND · kn
+          WIND · {speedUnitLabel(windUnit)}
         </text>
         {[0.5, 1].map((f) => (
           <g key={f}>

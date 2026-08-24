@@ -18,6 +18,7 @@ import {
   type HourRow,
   type PointForecast,
 } from '../weather/openMeteo'
+import { speedUnitLabel, windSpeed } from '../units'
 import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
 /**
@@ -65,6 +66,7 @@ export default function WeatherStrip() {
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const setPlanTime = useAppStore((s) => s.setPlanTime)
   const showPeriod = useAppStore((s) => s.wavePeriod)
+  const windUnit = useAppStore((s) => s.windUnit)
   const online = useAppStore((s) => s.online)
   // the first fix arrives after mount; without a pinned start it IS the
   // trip's start, so the strip has to come off home waters when it lands
@@ -259,7 +261,7 @@ export default function WeatherStrip() {
             const active = planTimeMs == null ? isNowCell : cellMs === planHourMs
             const period = showPeriod ? formatPeriod(r.wavePeriodS) : null
             const wxText =
-              `wind ${Math.round(r.windKn)} knots, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
+              `wind ${windSpeed(windUnit, r.windKn)} ${speedUnitLabel(windUnit)}, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
               (showPeriod && r.wavePeriodS != null ? ` at ${Math.round(r.wavePeriodS)} seconds` : '')
             return (
               <button
@@ -292,7 +294,7 @@ export default function WeatherStrip() {
               >
                 <span className="wxcell-h numeral">{isNowCell ? 'Now' : hourLabel(r.time)}</span>
                 <IconWindArrow deg={r.windDir + 180} size={12} />
-                <b className="numeral">{Math.round(r.windKn)}</b>
+                <b className="numeral">{windSpeed(windUnit, r.windKn)}</b>
                 <span className="wxcell-wave numeral">
                   {r.waveM != null ? r.waveM.toFixed(1) : '–'}
                   {period && <em>{period}</em>}

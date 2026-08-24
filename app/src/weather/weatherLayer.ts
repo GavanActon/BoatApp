@@ -3,6 +3,7 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
+import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
 import {
   fetchGridForecast,
@@ -123,7 +124,9 @@ function addLayers(map: MlMap) {
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-size': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 11, 1.25],
-      'text-field': ['concat', ['to-string', ['round', ['get', 'wind']]], ' kn'],
+      // pre-formatted: `wind` stays in knots for the icon buckets below, whose
+      // thresholds are Beaufort-ish and unit-bound
+      'text-field': ['get', 'windText'],
       'text-font': ['Noto Sans Regular'],
       'text-size': 10,
       'text-offset': [0, 1.6],
@@ -149,7 +152,7 @@ function emptyFc(): FeatureCollection {
 
 /** The old rendering: one feature per forecast cell. Kept for a grid cached
  *  by an earlier build, whose shape this one can't assume. */
-function fcAtCells(g: GridForecast, i: number): FeatureCollection {
+function fcAtCells(g: GridForecast, i: number, windUnit: SpeedUnit): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: g.cells.map((c) => ({
@@ -161,6 +164,7 @@ function fcAtCells(g: GridForecast, i: number): FeatureCollection {
         // wind_direction is where wind comes FROM; arrow points where it blows TO
         arrowDir: ((c.windDir[i] ?? 0) + 180) % 360,
         wave: c.waveM[i],
+        windText: `${windSpeed(windUnit, c.windKn[i] ?? 0)} ${speedUnitLabel(windUnit)}`,
       },
     })),
   }
@@ -263,10 +267,15 @@ function latticeStep(native: number, want: number): number {
  * false detail: the weather model's own resolution is ~10 km, so between two
  * cells there is nothing to know that interpolation doesn't already say.
  */
-function fcForView(map: MlMap, g: GridForecast, targetMs: number): FeatureCollection {
+function fcForView(
+  map: MlMap,
+  g: GridForecast,
+  targetMs: number,
+  windUnit: SpeedUnit,
+): FeatureCollection {
   const i = hourIndexAt(g.time, targetMs)
   const f = fieldOf(g)
-  if (!f) return fcAtCells(g, i)
+  if (!f) return fcAtCells(g, i, windUnit)
 
   const b = map.getBounds()
   const cv = map.getCanvas()
@@ -300,6 +309,7 @@ function fcForView(map: MlMap, g: GridForecast, targetMs: number): FeatureCollec
           // wind_direction is where wind comes FROM; arrow points where it blows TO
           arrowDir: (s.dir + 180) % 360,
           wave: s.wave,
+          windText: `${windSpeed(windUnit, s.wind)} ${speedUnitLabel(windUnit)}`,
         },
       })
     }
@@ -309,11 +319,13 @@ function fcForView(map: MlMap, g: GridForecast, targetMs: number): FeatureCollec
 
 function render(map: MlMap) {
   if (layersOn !== map) return
-  const { layers, planTimeMs } = useAppStore.getState()
+  const { layers, planTimeMs, windUnit } = useAppStore.getState()
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
   src.setData(
-    grid && layers.weather ? fcForView(map, grid, planTimeMs ?? floorHourMs()) : emptyFc(),
+    grid && layers.weather
+      ? fcForView(map, grid, planTimeMs ?? floorHourMs(), windUnit)
+      : emptyFc(),
   )
   const vis = layers.weather ? 'visible' : 'none'
   map.setLayoutProperty('wx-wave', 'visibility', vis)
@@ -405,6 +417,7 @@ export function initWeatherLayer() {
   if (useAppStore.getState().layers.weather) void refreshWeatherGrid()
 
   useAppStore.subscribe((s, prev) => {
+    if (s.windUnit !== prev.windUnit) withMap(render) // arrow labels carry the unit
     if (s.layers.weather !== prev.layers.weather || s.planTimeMs !== prev.planTimeMs) {
       withMap(render)
       // fetch on first enable, refresh a stale grid on interaction

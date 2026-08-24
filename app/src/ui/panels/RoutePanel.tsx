@@ -20,7 +20,7 @@ import {
   timeLabel,
 } from '../../time'
 import { db, type SavedStart, type SavedTrip } from '../../tracking/db'
-import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../../units'
+import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, windSpeed } from '../../units'
 import { fetchPointForecast, formatPeriod, type PointForecast } from '../../weather/openMeteo'
 import Disclosure from '../Disclosure'
 import { IconCheck, IconMinus, IconPlus, IconRefresh, IconTrash, IconWindArrow } from '../icons'
@@ -166,6 +166,7 @@ function TimelineRow({
   onToggle: () => void
 }) {
   const showPeriod = useAppStore((s) => s.wavePeriod)
+  const windUnit = useAppStore((s) => s.windUnit)
   return (
     <button
       className={`trip-row trip-${s.cond} ${expanded ? 'trip-expanded' : ''}`}
@@ -177,7 +178,8 @@ function TimelineRow({
       <span className="trip-phase">{phaseLabel(s.phase, destName)}</span>
       <span className="hd-wind">
         <IconWindArrow deg={s.windDir + 180} size={14} />
-        <b className="numeral">{Math.round(s.windKn)}</b> kn {compass(s.windDir)}
+        <b className="numeral">{windSpeed(windUnit, s.windKn)}</b> {speedUnitLabel(windUnit)}{' '}
+        {compass(s.windDir)}
       </span>
       <span className="hd-wave">
         {s.waveM != null ? (

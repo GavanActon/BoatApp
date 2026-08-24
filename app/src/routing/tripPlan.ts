@@ -1,4 +1,5 @@
 import { dayTimeLabel, timeLabel } from '../time'
+import { knToUnit, speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import {
   conditionFor,
   fetchRouteForecast,
@@ -25,6 +26,8 @@ export interface TripOptions {
   roundTrip: boolean
   stayMin: number // planned time at destination before heading back
   destName: string | null
+  /** Unit the verdict text quotes wind in — its own preference, not the boat's. */
+  windUnit: SpeedUnit
   /** Reuse a cached route forecast younger than this (progress updates while
    *  under way re-time the trip every couple of minutes without refetching). */
   maxWxCacheMs?: number
@@ -454,7 +457,9 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
   for (const s of samples) if (condRank(s.cond) > condRank(worst.cond)) worst = s
 
   const where = phaseText(worst.phase, opts.destName)
-  const wx = `${Math.round(worst.windKn)} kn ${compass(worst.windDir)}, gusts ${Math.round(worst.gustKn)}` +
+  const wu = opts.windUnit
+  const wx =
+    `${windSpeed(wu, worst.windKn)} ${speedUnitLabel(wu)} ${compass(worst.windDir)}, gusts ${windSpeed(wu, worst.gustKn)}` +
     (worst.waveM != null ? `, ${worst.waveM.toFixed(1)} m waves` : '')
   let headline: string
   if (verdict === 'nogo') {
@@ -467,7 +472,7 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
   } else {
     const maxWind = Math.max(...samples.map((s) => s.windKn))
     const maxWave = Math.max(...samples.map((s) => s.waveM ?? 0))
-    headline = `Good to go — wind under ${Math.ceil(maxWind + 1)} kn and waves under ${(Math.ceil(maxWave * 10) / 10 + 0.1).toFixed(1)} m the whole trip.`
+    headline = `Good to go — wind under ${Math.ceil(knToUnit(wu, maxWind) + 1)} ${speedUnitLabel(wu)} and waves under ${(Math.ceil(maxWave * 10) / 10 + 0.1).toFixed(1)} m the whole trip.`
   }
 
   // heads-up scan: first rough hour at either end of the route within the horizon
@@ -490,7 +495,7 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
         turnsBadText =
           (p.weatherCode[i] ?? 0) >= 95
             ? `Thunderstorms possible around ${dayTimeLabel(t)}`
-            : `Turns rough around ${dayTimeLabel(t)} — ${Math.round(p.windKn[i])} kn ${compass(p.windDir[i] ?? 0)}` +
+            : `Turns rough around ${dayTimeLabel(t)} — ${windSpeed(wu, p.windKn[i])} ${speedUnitLabel(wu)} ${compass(p.windDir[i] ?? 0)}` +
               (p.waveM[i] != null ? `, ${(p.waveM[i] as number).toFixed(1)} m waves` : '')
         break
       }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useAppStore } from '../../state/appStore'
+import { speedUnitLabel, windSpeed } from '../../units'
 import { floorHourMs, isToday, startOfDayMs } from '../../time'
 import {
   conditionFor,
@@ -37,6 +38,7 @@ export default function HourlyDetail({
 }) {
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const showPeriod = useAppStore((s) => s.wavePeriod)
+  const windUnit = useAppStore((s) => s.windUnit)
   const dayMode = dayStartMs != null && !isToday(dayStartMs)
 
   const rows = useMemo(
@@ -72,9 +74,10 @@ export default function HourlyDetail({
             </span>
             <span className={rough ? 'hd-wind warn' : 'hd-wind'}>
               <IconWindArrow deg={r.windDir + 180} size={14} />
-              <b className="numeral">{Math.round(r.windKn)}</b> kn {compass(r.windDir)}
+              <b className="numeral">{windSpeed(windUnit, r.windKn)}</b> {speedUnitLabel(windUnit)}{' '}
+              {compass(r.windDir)}
             </span>
-            <span className="hd-gust numeral">{Math.round(r.gustKn)}</span>
+            <span className="hd-gust numeral">{windSpeed(windUnit, r.gustKn)}</span>
             <span className={rough ? 'hd-wave warn' : 'hd-wave'}>
               {r.waveM != null ? (
                 <>
