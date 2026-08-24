@@ -153,6 +153,12 @@
   opacity: 0.65;
 }
 
+/* same chip, naming where the trip departs from rather than a focused leg:
+   nothing to dismiss, so it sits quieter than the accent-colored focus one */
+.wxstrip-from {
+  color: var(--c-text-dim);
+}
+
 .wxcell {
   flex: 1;
   min-width: 0;

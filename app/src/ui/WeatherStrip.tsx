@@ -66,9 +66,14 @@ export default function WeatherStrip() {
   const setPlanTime = useAppStore((s) => s.setPlanTime)
   const showPeriod = useAppStore((s) => s.wavePeriod)
   const online = useAppStore((s) => s.online)
+  // the first fix arrives after mount; without a pinned start it IS the
+  // trip's start, so the strip has to come off home waters when it lands
+  const hasFix = useGpsStore((s) => s.fix != null)
   const focusPoint = useRouteStore((s) => s.focusPoint)
   const setFocusPoint = useRouteStore((s) => s.setFocusPoint)
   const destination = useRouteStore((s) => s.destination)
+  const startPoint = useRouteStore((s) => s.startPoint)
+  const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
   const plan = useRouteStore((s) => s.plan)
   const setPlannedStay = useRouteStore((s) => s.setPlannedStay)
 
@@ -77,14 +82,21 @@ export default function WeatherStrip() {
 
   const show = enabled || focusPoint != null // a focused dot always surfaces the strip
 
+  // A trip planned from a pinned start (launch ramp, marina) is rated at the
+  // RAMP's weather, not the phone's — the two are often an hour apart by road,
+  // and the strip's numbers have to be the ones the sweep colored the cells
+  // with. Under way the boat IS the departure point, so GPS is right again.
+  const departFrom =
+    destination != null && tripStartedAt == null && startPoint != null ? startPoint : null
+
   useEffect(() => {
     if (!show) return
     let alive = true
     const load = async () => {
       const fix = useGpsStore.getState().fix
       const c = getMap()?.getCenter()
-      const lon = focusPoint?.lon ?? fix?.lon ?? c?.lng ?? HOME.center[0]
-      const lat = focusPoint?.lat ?? fix?.lat ?? c?.lat ?? HOME.center[1]
+      const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? HOME.center[0]
+      const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? HOME.center[1]
       try {
         const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat)
         if (alive) {
@@ -102,7 +114,7 @@ export default function WeatherStrip() {
       clearInterval(t)
     }
     // re-fetch when connectivity returns so a stale strip heals itself
-  }, [show, online, focusPoint])
+  }, [show, online, focusPoint, departFrom, hasFix])
 
   const todayMs = startOfDayMs(Date.now())
   const selDayMs = startOfDayMs(planTimeMs ?? Date.now())
@@ -171,6 +183,13 @@ export default function WeatherStrip() {
           <span>{focusPoint.label}</span>
           <IconClose size={11} />
         </button>
+      )}
+
+      {!focusPoint && departFrom && (
+        <span className="wxstrip-focus wxstrip-from">
+          <IconPin size={11} />
+          <span>{departFrom.name ?? 'Pinned start'}</span>
+        </span>
       )}
 
       <div className="wxstrip-days" role="tablist" aria-label="Pick a day">

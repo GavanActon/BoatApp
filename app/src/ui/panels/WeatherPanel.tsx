@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getMap } from '../../map/mapController'
+import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
 import { dayLabel, isToday, startOfDayMs } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
@@ -31,10 +32,14 @@ export default function WeatherPanel() {
   const [stale, setStale] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // named only when the forecast is somewhere other than here (a trip's
+  // pinned start); the locate button swings it back
+  const [spot, setSpot] = useState<string | null>(null)
 
-  const load = useCallback(async (lon: number, lat: number) => {
+  const load = useCallback(async (lon: number, lat: number, label: string | null = null) => {
     setLoading(true)
     setError(null)
+    setSpot(label)
     try {
       const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat)
       setForecast(fc)
@@ -47,11 +52,19 @@ export default function WeatherPanel() {
   }, [])
 
   useEffect(() => {
-    const map = getMap()
-    const c = map?.getCenter()
-    const lon = fix?.lon ?? c?.lng
-    const lat = fix?.lat ?? c?.lat
-    if (lon != null && lat != null) void load(lon, lat)
+    // a trip planned from a pinned start opens on the DEPARTURE point —
+    // that is the weather the trip is rated against, and the ramp can be an
+    // hour from the phone by road. Under way the boat is the start already.
+    const rs = useRouteStore.getState()
+    const from = rs.destination && rs.tripStartedAt == null ? rs.startPoint : null
+    if (from) {
+      void load(from.lon, from.lat, from.name ?? 'Pinned start')
+    } else {
+      const c = getMap()?.getCenter()
+      const lon = fix?.lon ?? c?.lng
+      const lat = fix?.lat ?? c?.lat
+      if (lon != null && lat != null) void load(lon, lat)
+    }
     // also refresh the map layer grid when the panel opens (cheap, cached)
     void refreshWeatherGrid()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -65,6 +78,7 @@ export default function WeatherPanel() {
         <>
           <div className="panel-section">
             {isToday(selDayMs) ? 'Next 12 hours' : `${dayLabel(selDayMs)} hour by hour`}
+            {spot && <em className="age-badge">at {spot}</em>}
           </div>
           <HourlyDetail forecast={forecast} dayStartMs={selDayMs} />
         </>
