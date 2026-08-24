@@ -27,12 +27,13 @@ let gridStale = false
 let layersOn: MlMap | null = null
 
 const GRID_MAX_AGE_MS = 30 * 60_000
-// About half a dozen arrows on a phone screen. Deliberately sparse: zoomed
-// in on a trip, every arrow is sampled from the same cell or two, so a dense
-// field just prints one number a dozen times and implies detail the forecast
-// hasn't got. Spacing rather than a fixed count, so a bigger screen shows
-// more of the field instead of the same six arrows stretched across it.
-const ARROW_SPACING_PX = 170
+// About ten arrows on screen, whatever the screen. A COUNT, not a pixel
+// spacing: the forecast holds a fixed amount of information — 56 points over
+// the whole region — and a wider display adds none of it. Sizing by spacing
+// let a desktop ask for more columns than the grid has, and the halving below
+// obliged by subdividing past the source: 45 arrows carrying two distinct
+// values on a 1600px screen, ~112 on a 2548px one.
+const TARGET_ARROWS = 10
 const MAX_ARROWS = 400 // backstop against a pathological viewport
 
 const ARROW_BUCKETS = [
@@ -248,7 +249,7 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
 
 /**
  * The lattice spacing: the grid's own step, halved until the arrows sit no
- * further apart than ARROW_SPACING_PX asks for, and never coarser than the
+ * further apart than the target count asks for, and never coarser than the
  * grid itself. Halving rather than fitting the viewport exactly is what keeps
  * the lattice on fixed ground — a step derived from the live bounds re-spaces
  * on every pan, and the whole field crawls across the map with you.
@@ -279,8 +280,11 @@ function fcForView(
 
   const b = map.getBounds()
   const cv = map.getCanvas()
-  const wantX = Math.max(2, Math.round(cv.clientWidth / ARROW_SPACING_PX))
-  const wantY = Math.max(2, Math.round(cv.clientHeight / ARROW_SPACING_PX))
+  // spacing that lands TARGET_ARROWS across the viewport's area, so a phone and
+  // a wide monitor show the same amount of field rather than the same density
+  const spacing = Math.sqrt((cv.clientWidth * cv.clientHeight) / TARGET_ARROWS)
+  const wantX = Math.max(2, Math.round(cv.clientWidth / spacing))
+  const wantY = Math.max(2, Math.round(cv.clientHeight / spacing))
   const stepLon = latticeStep(f.dLon, (b.getEast() - b.getWest()) / wantX)
   const stepLat = latticeStep(f.dLat, (b.getNorth() - b.getSouth()) / wantY)
 
