@@ -12,14 +12,15 @@ import type {
 import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useMeasureStore } from '../measure/measureStore'
 import { useAppStore } from '../state/appStore'
+import { formatPeriod } from '../weather/openMeteo'
 import { useRouteStore } from './routeStore'
-import { condRank, timeLabel } from './tripPlan'
+import { condRank, timeLabel, type TripSample } from './tripPlan'
 
 /**
  * Draws the planned route on the map: the track itself, a dot at each leg
- * point labelled with the ETA outbound AND on the way back (coloured by the
- * worse of the two conditions), and the destination pin. Tapping a dot points
- * the forecast strip at the top of the map at that spot.
+ * point labelled with the conditions there outbound AND on the way back
+ * (coloured by the worse of the two), and the destination pin. Tapping a dot
+ * points the forecast strip at the top of the map at that spot.
  *
  * The route is editable in place: press-drag the line to pull in a new course
  * point, drag a course point (or the destination pin) to move it, tap a
@@ -49,6 +50,32 @@ export function routeEditedRecently(withinMs = 600): boolean {
 }
 
 const COND_COLORS = { good: '#59e0b8', mod: '#ffb454', rough: '#ff6b6b' }
+
+// Eight-point arrows pointing DOWNWIND — the way the wind arrows on the
+// weather layer, the outlook strip and the tap popup all point, so a glance
+// at any of them reads the same. Noto Sans carries all eight, and the glyph
+// range they live in ships with the offline font set.
+const WIND_ARROWS = ['↓', '↙', '←', '↖', '↑', '↗', '→', '↘']
+
+function windArrow(fromDeg: number): string {
+  return WIND_ARROWS[Math.round(fromDeg / 45) % 8]
+}
+
+/**
+ * What it will be like at one pass of a leg point — "↘ 12 · 0.4m 5s" — which
+ * is what you look at a planned route for; the clock lives on the trip card.
+ * Wind stays in knots like every other forecast readout (the speed preference
+ * is for the boat, not the weather), the period rides along only when the Wave
+ * period preference is on, and the sea drops out where the model has no data.
+ *
+ * The arrow comes back on its own because the label layer renders it a size up
+ * — at body size the glyph is small enough to read as punctuation.
+ */
+function wxParts(s: TripSample, showPeriod: boolean): { arrow: string; text: string } {
+  const per = showPeriod ? formatPeriod(s.wavePeriodS) : null
+  const sea = s.waveM == null ? '' : ` · ${s.waveM.toFixed(1)}m${per ? ` ${per}` : ''}`
+  return { arrow: windArrow(s.windDir), text: ` ${Math.round(s.windKn)}${sea}` }
+}
 
 function emptyFc(): FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
@@ -156,9 +183,31 @@ function addLayers(map: MlMap) {
     source: 'route',
     filter: ['==', ['get', 'kind'], 'sample'],
     layout: {
-      'text-field': ['get', 'label'],
+      // assembled here rather than baked into one string so the wind arrows can
+      // run a size up (see wxParts); every section is always a string, the
+      // empty ones collapsing the label to a single outbound line
+      'text-field': [
+        'format',
+        ['get', 'pOut'],
+        {},
+        ['get', 'aOut'],
+        { 'font-scale': 1.35 },
+        ['get', 'tOut'],
+        {},
+        ['get', 'sep'],
+        {},
+        ['get', 'pBack'],
+        {},
+        ['get', 'aBack'],
+        { 'font-scale': 1.35 },
+        ['get', 'tBack'],
+        {},
+      ],
       'text-font': ['Noto Sans Regular'],
       'text-size': 10.5,
+      // conditions run wider than the ETAs they replaced — without this the
+      // default 10-em wrap breaks every leg across two ragged lines
+      'text-max-width': 20,
       'text-offset': [0, 1.25],
       'text-anchor': 'top',
       'text-optional': true,
@@ -170,7 +219,7 @@ function addLayers(map: MlMap) {
     },
   })
   // user-placed course points: small ringed handles, visually distinct from
-  // the condition-coloured ETA dots
+  // the condition-coloured leg dots
   map.addLayer({
     id: 'route-vias',
     type: 'circle',
@@ -283,9 +332,10 @@ function buildFc(): FeatureCollection {
   }
   if (plan) {
     const focus = useRouteStore.getState().focusPoint
+    const showPeriod = useAppStore.getState().wavePeriod
 
     // the return leg re-visits the outbound spots — pair them up so each dot
-    // carries both legs: ETA out on top, ETA back underneath
+    // carries both legs: conditions out on top, conditions back underneath
     const nOut = plan.samples.filter(
       (s) => s.phase === 'depart' || s.phase === 'outbound' || s.phase === 'arrive',
     ).length
@@ -294,7 +344,10 @@ function buildFc(): FeatureCollection {
       const backIdx = 2 * nOut - 2 - i
       const back = backIdx > i && backIdx < plan.samples.length ? plan.samples[backIdx] : null
       const cond = back && condRank(back.cond) > condRank(out.cond) ? back.cond : out.cond
-      const label = back ? `${timeLabel(out.atMs)}\n${timeLabel(back.atMs)}` : timeLabel(out.atMs)
+      // one dot, two passes: ordering alone said which was which when these
+      // were clock times, but two lines of weather look alike
+      const o = wxParts(out, showPeriod)
+      const b = back ? wxParts(back, showPeriod) : null
       const focused =
         focus != null && Math.abs(focus.lon - out.lon) < 1e-6 && Math.abs(focus.lat - out.lat) < 1e-6
 
@@ -304,7 +357,13 @@ function buildFc(): FeatureCollection {
         properties: {
           kind: 'sample',
           color: COND_COLORS[cond],
-          label,
+          pOut: b ? 'out ' : '',
+          aOut: o.arrow,
+          tOut: o.text,
+          sep: b ? '\n' : '',
+          pBack: b ? 'back ' : '',
+          aBack: b?.arrow ?? '',
+          tBack: b?.text ?? '',
           idx: i,
           focused,
         },
@@ -675,5 +734,10 @@ export function initRouteLayer() {
   })
   useAppStore.subscribe((s, prev) => {
     if (s.sheetTab === 'route' && prev.sheetTab !== 'route') refit()
+    // the leg labels carry the period, so the preference has to reach them
+    if (s.wavePeriod !== prev.wavePeriod) {
+      const live = getMap()
+      if (live && layersOn === live) render(live)
+    }
   })
 }
