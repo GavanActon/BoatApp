@@ -274,8 +274,12 @@ export async function fetchPointForecast(
 
 // ---------- grid forecast (7 days, for the map layer) ----------
 
-const GRID_COLS = 8
-const GRID_ROWS = 7
+/** Shape of the regional grid, so the map layer can read it as a lattice
+ *  and interpolate between cells. */
+export const GRID_SHAPE = { cols: 8, rows: 7 }
+
+const GRID_COLS = GRID_SHAPE.cols
+const GRID_ROWS = GRID_SHAPE.rows
 const GRID_KEY = 'grid:superior-east:v1'
 
 function gridPoints(): { lats: number[]; lons: number[] } {

@@ -1,9 +1,16 @@
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
+import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { floorHourMs } from '../time'
-import { fetchGridForecast, hourIndexAt, type GridCell, type GridForecast } from './openMeteo'
+import {
+  fetchGridForecast,
+  GRID_SHAPE,
+  hourIndexAt,
+  type GridCell,
+  type GridForecast,
+} from './openMeteo'
 
 /**
  * Wind + wave map layer. One fixed forecast grid over the cruising region,
@@ -19,6 +26,8 @@ let gridStale = false
 let layersOn: MlMap | null = null
 
 const GRID_MAX_AGE_MS = 30 * 60_000
+const ARROW_SPACING_PX = 108 // roughly a thumb apart on a phone
+const MAX_ARROWS = 400 // backstop; a phone-sized view asks for about a dozen
 
 const ARROW_BUCKETS = [
   { id: 'wx-arrow-0', color: '#7fd4e8', max: 8 }, // light
@@ -123,6 +132,9 @@ function addLayers(map: MlMap) {
     },
   })
 
+  // the lattice spans the viewport, so panning and zooming rebuild it
+  map.on('moveend', () => render(map))
+
   layersOn = map
 }
 
@@ -130,8 +142,9 @@ function emptyFc(): FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
 }
 
-function fcAt(g: GridForecast, targetMs: number): FeatureCollection {
-  const i = hourIndexAt(g.time, targetMs)
+/** The old rendering: one feature per forecast cell. Kept for a grid cached
+ *  by an earlier build, whose shape this one can't assume. */
+function fcAtCells(g: GridForecast, i: number): FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: g.cells.map((c) => ({
@@ -148,12 +161,155 @@ function fcAt(g: GridForecast, targetMs: number): FeatureCollection {
   }
 }
 
+interface Field {
+  lon0: number
+  lat0: number
+  dLon: number
+  dLat: number
+  cols: number
+  rows: number
+}
+
+/** The regional grid read as a regular lattice. Null for a cached grid whose
+ *  shape doesn't match this build's — fcAtCells covers that. */
+function fieldOf(g: GridForecast): Field | null {
+  const { cols, rows } = GRID_SHAPE
+  if (cols < 2 || rows < 2 || g.cells.length !== cols * rows) return null
+  const dLon = g.cells[1].lon - g.cells[0].lon
+  const dLat = g.cells[cols].lat - g.cells[0].lat
+  if (!dLon || !dLat) return null
+  return { lon0: g.cells[0].lon, lat0: g.cells[0].lat, dLon, dLat, cols, rows }
+}
+
+interface Sample {
+  wind: number
+  gust: number
+  dir: number
+  wave: number | null
+}
+
+/**
+ * Bilinear sample of the forecast field. Speeds and heights interpolate as
+ * plain scalars; direction goes through unit vectors, because averaging 359°
+ * and 1° as numbers points the arrow due south. Corners are clamped rather
+ * than extrapolated, so the edge of the region holds its own value.
+ */
+function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: number): Sample {
+  const fx = (lon - f.lon0) / f.dLon
+  const fy = (lat - f.lat0) / f.dLat
+  const x0 = Math.min(f.cols - 2, Math.max(0, Math.floor(fx)))
+  const y0 = Math.min(f.rows - 2, Math.max(0, Math.floor(fy)))
+  const tx = Math.min(1, Math.max(0, fx - x0))
+  const ty = Math.min(1, Math.max(0, fy - y0))
+  const corners: [GridCell, number][] = [
+    [g.cells[y0 * f.cols + x0], (1 - tx) * (1 - ty)],
+    [g.cells[y0 * f.cols + x0 + 1], tx * (1 - ty)],
+    [g.cells[(y0 + 1) * f.cols + x0], (1 - tx) * ty],
+    [g.cells[(y0 + 1) * f.cols + x0 + 1], tx * ty],
+  ]
+
+  let wind = 0
+  let gust = 0
+  let u = 0
+  let v = 0
+  let wave = 0
+  let waveW = 0
+  for (const [c, w] of corners) {
+    if (!c || !w) continue
+    const kn = c.windKn[i] ?? 0
+    wind += kn * w
+    gust += (c.gustKn[i] ?? kn) * w
+    const rad = ((c.windDir[i] ?? 0) * Math.PI) / 180
+    u += Math.sin(rad) * w
+    v += Math.cos(rad) * w
+    const h = c.waveM[i]
+    if (h != null) {
+      wave += h * w
+      waveW += w
+    }
+  }
+  return {
+    wind,
+    gust,
+    dir: ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360,
+    // a partly-covered corner set still gives a height, just from what it had
+    wave: waveW > 0 ? wave / waveW : null,
+  }
+}
+
+/**
+ * The lattice spacing: the grid's own step, halved until the arrows sit no
+ * further apart than ARROW_SPACING_PX asks for, and never coarser than the
+ * grid itself. Halving rather than fitting the viewport exactly is what keeps
+ * the lattice on fixed ground — a step derived from the live bounds re-spaces
+ * on every pan, and the whole field crawls across the map with you.
+ */
+function latticeStep(native: number, want: number): number {
+  const steps = Math.max(0, Math.round(Math.log2(Math.abs(native) / want)))
+  return Math.abs(native) / 2 ** steps
+}
+
+/**
+ * Arrows on a lattice spanning the current view rather than on the forecast
+ * grid's own points. The grid is one cell per ~13 x 15 km, so a phone zoomed
+ * to a short trip sits INSIDE a single cell with nothing to draw — which is
+ * exactly what it looked like: an empty map. Sampling the field instead keeps
+ * arrows on screen at any zoom and costs no extra requests, and it claims no
+ * false detail: the weather model's own resolution is ~10 km, so between two
+ * cells there is nothing to know that interpolation doesn't already say.
+ */
+function fcForView(map: MlMap, g: GridForecast, targetMs: number): FeatureCollection {
+  const i = hourIndexAt(g.time, targetMs)
+  const f = fieldOf(g)
+  if (!f) return fcAtCells(g, i)
+
+  const b = map.getBounds()
+  const cv = map.getCanvas()
+  const wantX = Math.max(2, Math.round(cv.clientWidth / ARROW_SPACING_PX))
+  const wantY = Math.max(2, Math.round(cv.clientHeight / ARROW_SPACING_PX))
+  const stepLon = latticeStep(f.dLon, (b.getEast() - b.getWest()) / wantX)
+  const stepLat = latticeStep(f.dLat, (b.getNorth() - b.getSouth()) / wantY)
+
+  // clipped to the charted region — the field says nothing about water the
+  // grid doesn't cover, and edge-clamping out there would be an invention
+  const west = Math.max(b.getWest(), REGION_BBOX.west)
+  const east = Math.min(b.getEast(), REGION_BBOX.east)
+  const south = Math.max(b.getSouth(), REGION_BBOX.south)
+  const north = Math.min(b.getNorth(), REGION_BBOX.north)
+
+  // anchored on the grid's own origin, so arrows hold still while you pan
+  // instead of crawling with the viewport
+  const lon0 = f.lon0 + Math.ceil((west - f.lon0) / stepLon) * stepLon
+  const lat0 = f.lat0 + Math.ceil((south - f.lat0) / stepLat) * stepLat
+
+  const features: FeatureCollection['features'] = []
+  for (let lat = lat0; lat <= north && features.length < MAX_ARROWS; lat += stepLat) {
+    for (let lon = lon0; lon <= east && features.length < MAX_ARROWS; lon += stepLon) {
+      const s = sampleField(g, f, i, lon, lat)
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [lon, lat] },
+        properties: {
+          wind: s.wind,
+          gust: s.gust,
+          // wind_direction is where wind comes FROM; arrow points where it blows TO
+          arrowDir: (s.dir + 180) % 360,
+          wave: s.wave,
+        },
+      })
+    }
+  }
+  return { type: 'FeatureCollection', features }
+}
+
 function render(map: MlMap) {
   if (layersOn !== map) return
   const { layers, planTimeMs } = useAppStore.getState()
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
-  src.setData(grid && layers.weather ? fcAt(grid, planTimeMs ?? floorHourMs()) : emptyFc())
+  src.setData(
+    grid && layers.weather ? fcForView(map, grid, planTimeMs ?? floorHourMs()) : emptyFc(),
+  )
   const vis = layers.weather ? 'visible' : 'none'
   map.setLayoutProperty('wx-wave', 'visibility', vis)
   map.setLayoutProperty('wx-wind', 'visibility', vis)
