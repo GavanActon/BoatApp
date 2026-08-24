@@ -231,9 +231,12 @@
   color: var(--cond-rough);
 }
 
-/* an hour the trip sweep can't rate as a departure (past, beyond forecast) */
+/* An hour the trip sweep can't rate as a departure (outside the 6a-8p
+   departure window, beyond the forecast). The wind and waves there are still
+   real numbers worth reading, so nothing dims — the missing verdict stripe
+   and tint are the cue on their own. */
 .wxcell.wx-na {
-  opacity: 0.45;
+  border-top-color: var(--c-border);
 }
 
 .wx-active {
