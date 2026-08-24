@@ -58,17 +58,33 @@ interface AppState {
   setWavePeriod: (v: boolean) => void
 }
 
+/** What actually reaches localStorage: the shape partialize writes, and so
+ *  the shape migrate has to hand back. Picked off AppState so the two can't
+ *  drift apart. */
+type PersistedPrefs = Pick<
+  AppState,
+  | 'depthUnit'
+  | 'speedUnit'
+  | 'windUnit'
+  | 'layers'
+  | 'satOpacity'
+  | 'headingUp'
+  | 'wxStrip'
+  | 'wavePeriod'
+  | 'planTimeMs'
+>
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       sheetTab: null,
       setSheetTab: (t) => set({ sheetTab: t }),
 
-      depthUnit: 'ft',
+      depthUnit: 'm',
       setDepthUnit: (u) => set({ depthUnit: u }),
-      speedUnit: 'kn',
+      speedUnit: 'kmh',
       setSpeedUnit: (u) => set({ speedUnit: u }),
-      windUnit: 'kn',
+      windUnit: 'kmh',
       setWindUnit: (u) => set({ windUnit: u }),
       layers: { depth: true, contours: true, seamarks: true, satellite: true, weather: false },
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
@@ -96,7 +112,22 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'sandies-prefs',
-      partialize: (s) => ({
+      // v1 made metric the default. Prefs saved before it carry the old
+      // knots/feet, so drop the unit keys once and let the defaults land.
+      version: 1,
+      migrate: (persisted, from) => {
+        const p = { ...(persisted as Partial<AppState>) }
+        if (from < 1) {
+          delete p.depthUnit
+          delete p.speedUnit
+          delete p.windUnit
+        }
+        // deliberately hands back a PARTIAL — merge below lays it over the
+        // current state, so the dropped keys land on the new metric defaults.
+        // migrate's signature can't say "partial", hence the cast.
+        return p as PersistedPrefs
+      },
+      partialize: (s): PersistedPrefs => ({
         depthUnit: s.depthUnit,
         speedUnit: s.speedUnit,
         windUnit: s.windUnit,
