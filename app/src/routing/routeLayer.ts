@@ -9,6 +9,7 @@ import type {
   MapMouseEvent,
   MapTouchEvent,
 } from 'maplibre-gl'
+import { depthAt } from '../map/depthGrid'
 import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useMeasureStore } from '../measure/measureStore'
 import { homeBase } from '../state/placesStore'
@@ -140,6 +141,7 @@ function addLayers(map: MlMap) {
   map.addSource('run', { type: 'geojson', lineMetrics: true, data: emptyFc() })
   // the rake: crests combed off the run, an ADDITIVE layer over the lanes
   map.addSource('rake', { type: 'geojson', data: emptyFc() })
+  map.addSource('run-shallow', { type: 'geojson', data: emptyFc() })
 
   map.addLayer({
     id: 'route-line-casing',
@@ -173,6 +175,22 @@ function addLayers(map: MlMap) {
       },
     })
   }
+
+  // Where the course crosses charted water under 2 m, it says so: the same
+  // salmon the chart's shallow tint wears, dashed down the centreline between
+  // the lanes. Prefer deep water, penalize sub-2 m — and when the router does
+  // thread shallow, the person at the wheel sees exactly where.
+  map.addLayer({
+    id: 'run-shallow',
+    type: 'line',
+    source: 'run-shallow',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': 'rgba(255, 138, 128, 0.95)',
+      'line-width': 3,
+      'line-dasharray': [1.2, 1.6],
+    },
+  })
   // The wave rake. The lanes carry HEIGHT as colour; this carries which way
   // the sea is running, which is the thing that decides how a crossing
   // actually feels and which nothing else on the chart can say. Additive:
@@ -749,6 +767,49 @@ const HL_PEAK = 0.34
  * geometry runs its own way, so one shared value sends the light out along one
  * and home along the other.
  */
+/** The stretches of the plotted course that cross charted water under 2 m —
+ *  sampled every ~60 m along the line off the offline depth grid. */
+const SHALLOW_MARK_M = 2
+function buildShallowFc(): FeatureCollection {
+  const { route } = useRouteStore.getState()
+  if (!route || route.coords.length < 2) return emptyFc()
+  const lines: [number, number][][] = []
+  let cur: [number, number][] | null = null
+  const endRun = () => {
+    if (cur && cur.length > 1) lines.push(cur)
+    cur = null
+  }
+  for (let i = 0; i < route.coords.length - 1; i++) {
+    const a = route.coords[i]
+    const b = route.coords[i + 1]
+    const mLat = 110540
+    const mLon = 111320 * Math.cos((a[1] * Math.PI) / 180)
+    const segM = Math.hypot((b[0] - a[0]) * mLon, (b[1] - a[1]) * mLat)
+    const n = Math.max(1, Math.ceil(segM / 60))
+    for (let k = 0; k < n; k++) {
+      const p0: [number, number] = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]
+      const p1: [number, number] = [
+        a[0] + ((b[0] - a[0]) * (k + 1)) / n,
+        a[1] + ((b[1] - a[1]) * (k + 1)) / n,
+      ]
+      const d = depthAt((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2)
+      if (d != null && d >= 0 && d < SHALLOW_MARK_M) {
+        if (!cur) cur = [p0]
+        cur.push(p1)
+      } else endRun()
+    }
+  }
+  endRun()
+  return {
+    type: 'FeatureCollection',
+    features: lines.map((c) => ({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: c },
+      properties: {},
+    })),
+  }
+}
+
 function renderRun(
   map: MlMap,
   highlight: number | null = null,
@@ -769,6 +830,7 @@ function renderRun(
   const src = map.getSource('run') as GeoJSONSource | undefined
   if (!src) return
   src.setData(buildRunFc())
+  ;(map.getSource('run-shallow') as GeoJSONSource | undefined)?.setData(buildShallowFc())
 
   const { plan } = useRouteStore.getState()
   const setRamp = (id: string, stops: (number | string)[] | null) =>

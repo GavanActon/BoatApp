@@ -25,12 +25,14 @@ export interface GridHeader {
 export const NODATA = 32767
 const DOWN = 2 // downsample factor: routing cell = DOWN×DOWN fine cells
 const MIN_NAV_DEPTH_M = 2 // preferred water: routes live here when they can
+// The rule, in the skipper's words: prefer deep water, penalize sub-2 m.
 // The chart under-reads close to shore — the old DEM smears shallows and
 // NONNA is shoal-biased by design, so cells habitually say 0 where a boat
-// floats fine. Charted water between these bounds is therefore ROUTABLE,
-// just expensive: the router threads it only when no deep path exists (a
-// dock approach, a river mouth), never to cut a corner.
-const SHALLOW_NAV_DEPTH_M = 0.6
+// floats fine. ANY charted water is therefore routable, just expensive
+// below 2 m: the router threads shallow only when no deep path exists (a
+// dock approach, a river mouth), never to cut a corner — and the route
+// wears its shallow stretches in the chart's shallow colour, so the
+// judgement stays with the person at the wheel. Uncharted stays a wall.
 const SHALLOW_PENALTY = 4 // cost multiplier inside the shallow tier
 const SHORE_PENALTY = 1.6 // cost multiplier for cells touching non-navigable cells
 const SNAP_RADIUS_CELLS = 60 // how far a start/dest may be from navigable water
@@ -51,24 +53,23 @@ export function buildNavMask(header: GridHeader, data: Int16Array): NavMask {
   const rny = Math.floor(ny / DOWN)
   const mask = new Uint8Array(rnx * rny)
   const minDm = MIN_NAV_DEPTH_M * 10
-  const shallowDm = SHALLOW_NAV_DEPTH_M * 10
 
   for (let cy = 0; cy < rny; cy++) {
     for (let cx = 0; cx < rnx; cx++) {
-      // the WORST of the four fine cells decides the tier: one dry or
-      // uncharted cell sinks it, one merely-shallow cell demotes it
+      // the WORST of the four fine cells decides the tier: one uncharted
+      // (or drying) cell sinks it, one merely-shallow cell demotes it
       let worst = Infinity
       for (let sy = 0; sy < DOWN && worst > -1; sy++) {
         for (let sx = 0; sx < DOWN; sx++) {
           const v = data[(cy * DOWN + sy) * nx + (cx * DOWN + sx)]
-          if (v === NODATA || v < shallowDm) {
+          if (v === NODATA || v < 0) {
             worst = -1
             break
           }
           if (v < worst) worst = v
         }
       }
-      mask[cy * rnx + cx] = worst < shallowDm ? 0 : worst >= minDm ? 1 : 2
+      mask[cy * rnx + cx] = worst < 0 ? 0 : worst >= minDm ? 1 : 2
     }
   }
 
