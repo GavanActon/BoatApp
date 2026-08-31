@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { getMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { dayLabel, isToday, startOfDayMs } from '../../time'
+import { agoLabel, dayLabel, isToday, startOfDayMs } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
-import { refreshWeatherGrid } from '../../weather/weatherLayer'
+import { waveOverlayStatus } from '../../weather/rdwps'
+import { onWeatherGrid, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
 import { IconLocate, IconRefresh } from '../icons'
 import ForecastCharts from './ForecastCharts'
 import HourlyDetail from './HourlyDetail'
@@ -128,6 +129,71 @@ export default function WeatherPanel() {
           <ForecastCharts forecast={forecast} />
         </>
       )}
+
+      <DataStatus />
     </div>
+  )
+}
+
+/**
+ * The data health rows — which feed the numbers above came from, how fresh,
+ * and whether a silent fallback is in effect. The app degrades quietly by
+ * design (a stale RDWPS run is simply not used); this is the one place that
+ * says so out loud, so a dead pipeline is noticed from the boat rather than
+ * from a wrong forecast. Lives at the bottom of the Weather tab: provenance
+ * belongs with the forecast it explains.
+ */
+function DataStatus() {
+  // ages tick and fetches land while the sheet is open — re-render for both
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000)
+    const off = onWeatherGrid(() => setTick((n) => n + 1))
+    return () => {
+      clearInterval(t)
+      off()
+    }
+  }, [])
+
+  const grid = weatherGridInfo()
+  const waves = waveOverlayStatus()
+  const online = useAppStore((s) => s.online)
+
+  // the model runs 4×/day and lands ~4 h behind its stamp; past ~11 h a
+  // cycle has been missed, past 18 h the app has already fallen back
+  const waveDesc =
+    waves.state === 'active'
+      ? `RDWPS 1 km · run ${agoLabel(waves.runAgeMs)}`
+      : waves.state === 'stale-run'
+        ? 'RDWPS run too old — using global model'
+        : 'RDWPS unavailable — using global model'
+  const waveWarn = waves.state !== 'active' || waves.runAgeMs > 11 * 3600_000
+
+  return (
+    <>
+      <div className="panel-section">Data</div>
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Wind & weather</span>
+          <span className="row-desc">Open-Meteo forecast grid</span>
+        </div>
+        <em className={grid?.stale || !grid ? 'age-badge stale' : 'age-badge'}>
+          {grid ? `${grid.stale ? 'offline copy · ' : ''}${agoLabel(Date.now() - grid.fetchedAt)}` : 'not loaded'}
+        </em>
+      </div>
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Waves</span>
+          <span className="row-desc">{waveDesc}</span>
+        </div>
+        <em className={waveWarn ? 'age-badge stale' : 'age-badge'}>
+          {waves.state === 'active'
+            ? agoLabel(waves.checkedAgoMs)
+            : online
+              ? 'fallback'
+              : 'offline'}
+        </em>
+      </div>
+    </>
   )
 }

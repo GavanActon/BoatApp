@@ -35,7 +35,8 @@ import TracksPanel from './ui/panels/TracksPanel'
 import WeatherPanel from './ui/panels/WeatherPanel'
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
-import { initWeatherLayer } from './weather/weatherLayer'
+import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
+import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
 import { initSeaFlow } from './weather/waveFlow'
 
@@ -106,6 +107,53 @@ function TripChip() {
   )
 }
 
+/** Every number on screen is only as good as its fetch. Quiet until the
+ *  forecast is genuinely old (refreshes normally land every 30 min, so hours
+ *  of age mean fetches are FAILING — flaky cell, dead API); then it says so
+ *  where decisions are being made. Tapping opens the Weather tab, whose Data
+ *  rows carry the details. */
+function ForecastAgeChip() {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000)
+    const off = onWeatherGrid(() => setTick((n) => n + 1))
+    return () => {
+      clearInterval(t)
+      off()
+    }
+  }, [])
+  const info = weatherGridInfo()
+  const ageMs = info ? Date.now() - info.fetchedAt : 0
+  if (ageMs < 3 * 3600_000) return null
+  return (
+    <button
+      className="chip chip-warn"
+      onClick={() => useAppStore.getState().setSheetTab('weather')}
+    >
+      Forecast {Math.round(ageMs / 3600_000)} h old
+    </button>
+  )
+}
+
+/** The forecast-shift alert: a fresh model run moved the hours the user
+ *  cares about. Tapping opens the Weather tab and accepts the new picture
+ *  as the baseline. */
+function ShiftChip() {
+  const wxShift = useAppStore((s) => s.wxShift)
+  if (!wxShift) return null
+  return (
+    <button
+      className="chip chip-warn"
+      onClick={() => {
+        useAppStore.getState().setSheetTab('weather')
+        acknowledgeWxShift()
+      }}
+    >
+      {wxShift}
+    </button>
+  )
+}
+
 function TopBar() {
   const online = useAppStore((s) => s.online)
   const offlineReady = useAppStore((s) => s.offlineReady)
@@ -118,6 +166,8 @@ function TopBar() {
           {offlineReady ? 'Offline · charts ready' : 'Offline · charts not downloaded'}
         </span>
       )}
+      <ForecastAgeChip />
+      <ShiftChip />
       {gpsStatus === 'acquiring' && <span className="chip">Acquiring GPS…</span>}
       {gpsStatus === 'denied' && (
         <span className="chip chip-warn">Location denied — allow location for this site</span>
@@ -226,6 +276,7 @@ export default function App() {
     initRoutePlanner()
     initWindFlow()
     initSeaFlow()
+    initForecastWatch()
 
     // grab a position right away; follow it only when it's on our waters.
     // the first fix is often a coarse wifi/IP guess, so hold out for an

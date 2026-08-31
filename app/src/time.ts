@@ -72,3 +72,14 @@ export function durationLabel(min: number): string {
   const h = Math.floor(min / 60)
   return `${h}${min % 60 >= 30 ? '½' : ''}h`
 }
+
+/** "just now", "12 min ago", "3 h ago", "2 d ago" — for data-freshness rows. */
+export function agoLabel(ms: number): string {
+  if (!Number.isFinite(ms)) return 'never'
+  const min = Math.round(ms / 60_000)
+  if (min < 2) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const h = Math.round(min / 60)
+  if (h < 48) return `${h} h ago`
+  return `${Math.round(h / 24)} d ago`
+}

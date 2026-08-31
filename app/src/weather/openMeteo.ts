@@ -1,5 +1,6 @@
 import { REGION_BBOX } from '../config'
 import { db } from '../tracking/db'
+import { applyWaveOverlayToSeries, ensureWaveOverlay } from './rdwps'
 
 /**
  * Open-Meteo client. Free, no API key, CORS-enabled.
@@ -378,6 +379,19 @@ export async function fetchPointForecast(
         waveDir: mh.wave_direction ?? [],
       },
     }
+    // upgrade the wave series to RDWPS 1 km where its run covers — the strip
+    // and the map must never quote two different seas for the same hour
+    await ensureWaveOverlay()
+    const h = forecast.hourly
+    applyWaveOverlayToSeries(
+      lon,
+      lat,
+      Date.parse(h.time[0]), // timezone=auto strings parse as local time
+      h.time.length,
+      h.waveM,
+      h.wavePeriodS,
+      h.waveDir,
+    )
     await cachePut(key, forecast)
     return { forecast, stale: false }
   } catch (e) {
@@ -554,6 +568,19 @@ export async function fetchRouteForecast(
         // wind has shifted and the old sea is still up
         waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
       })),
+    }
+    // the trip sweep rates departures on these — RDWPS where it covers
+    await ensureWaveOverlay()
+    for (const p of forecast.points) {
+      applyWaveOverlayToSeries(
+        p.lon,
+        p.lat,
+        Date.parse(`${p.time[0]}Z`), // timezone=UTC strings need the Z back
+        p.time.length,
+        p.waveM,
+        p.wavePeriodS,
+        p.waveDir,
+      )
     }
     await cachePut(key, forecast)
     return { forecast, stale: false }

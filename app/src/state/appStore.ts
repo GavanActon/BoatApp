@@ -11,9 +11,6 @@ interface LayerVisibility {
   seamarks: boolean
   satellite: boolean
   weather: boolean
-  /** The wave rake along a planned run — direction, over the lanes' height.
-   *  Additive: it composes with the lanes rather than replacing them. */
-  rake: boolean
   /** Live wind streaming over the chart — particles advected by the forecast
    *  grid at the planning time. The always-on sibling of the briefing. */
   windFlow: boolean
@@ -92,6 +89,13 @@ interface AppState {
   // live data (not persisted)
   online: boolean
   setOnline: (v: boolean) => void
+
+  // The forecast-shift alert (forecastWatch.ts): non-null when a fresh model
+  // run disagrees substantially with what the user last saw for the hours
+  // they care about. Transient — a reload re-derives it from the persisted
+  // baseline, so an overnight shift still greets the morning open.
+  wxShift: string | null
+  setWxShift: (v: string | null) => void
   offlineReady: boolean // all region files present in local storage
   setOfflineReady: (v: boolean) => void
 
@@ -190,7 +194,6 @@ export const useAppStore = create<AppState>()(
         seamarks: true,
         satellite: true,
         weather: false,
-        rake: false,
         windFlow: true, // the moving air is the app's face — on unless turned off
         seaFlow: true, // and the moving water beside it
       },
@@ -209,6 +212,9 @@ export const useAppStore = create<AppState>()(
 
       online: navigator.onLine,
       setOnline: (v) => set({ online: v }),
+
+      wxShift: null,
+      setWxShift: (v) => set({ wxShift: v }),
       offlineReady: false,
       setOfflineReady: (v) => set({ offlineReady: v }),
 

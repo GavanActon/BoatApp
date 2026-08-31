@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # redeploy with fresh RDWPS waves shortly after each model run lands
+  # (runs at 00/06/12/18Z; files appear ~3-4 h later)
+  schedule:
+    - cron: '30 3,9,15,21 * * *'
 
 permissions:
   contents: read
@@ -32,6 +36,16 @@ jobs:
       - name: Install
         working-directory: app
         run: npm ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch RDWPS waves (best-effort)
+        # a failed fetch keeps the repo's committed file — never breaks deploy
+        run: |
+          pip install --quiet numpy imagecodecs
+          python pipeline/fetch_rdwps.py || echo "RDWPS fetch failed — deploying with the last good waves file"
 
       - name: Build
         working-directory: app

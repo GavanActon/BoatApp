@@ -3,6 +3,7 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
+import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo } from './rdwps'
 import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
 import {
@@ -406,6 +407,10 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
       const { grid: g, stale } = await fetchGridForecast()
       grid = g
       gridStale = stale
+      // the better waves: RDWPS 1 km cells overwrite the global model's for
+      // the ~48 h it covers; Open-Meteo stands beyond and wherever it's null
+      if (waveOverlayAgeMs() > 30 * 60_000) await refreshWaveOverlay()
+      applyWaveOverlay(grid)
       withMap((map) => {
         addLayers(map)
         render(map)
@@ -421,8 +426,13 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
   return refreshing
 }
 
-export function weatherGridInfo(): { fetchedAt: number; stale: boolean } | null {
-  return grid ? { fetchedAt: grid.fetchedAt, stale: gridStale } : null
+export function weatherGridInfo(): {
+  fetchedAt: number
+  stale: boolean
+  /** Non-null while RDWPS 1 km waves are overlaid on the grid. */
+  waves: { model: string; run: string } | null
+} | null {
+  return grid ? { fetchedAt: grid.fetchedAt, stale: gridStale, waves: waveOverlayInfo() } : null
 }
 
 export interface GridConditions {
@@ -547,6 +557,15 @@ function startWeatherClock() {
     if (useAppStore.getState().online && grid && Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS) {
       void refreshWeatherGrid() // success notifies gridListeners → layers resync
     }
+    // the RDWPS overlay regenerates 4×/day — check it hourly on its own
+    if (useAppStore.getState().online && grid && waveOverlayAgeMs() > 60 * 60_000) {
+      void refreshWaveOverlay().then(() => {
+        if (grid && applyWaveOverlay(grid)) {
+          withMap(render)
+          for (const cb of gridListeners) cb()
+        }
+      })
+    }
   }, 60_000)
 }
 
@@ -557,6 +576,10 @@ export function initWeatherLayer() {
   if (inited) return // React StrictMode double effect-run in dev
   inited = true
   startWeatherClock()
+  if (import.meta.env.DEV) {
+    // the verify harness reads the grid through the same doors the app does
+    ;(window as unknown as Record<string, unknown>).__wx = { gridConditionsAt, weatherGridInfo }
+  }
 
   onEachMap((map) => {
     addLayers(map)
