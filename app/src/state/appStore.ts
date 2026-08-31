@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { SpeedUnit } from '../units'
 
-export type SheetTab = 'route' | 'layers' | 'weather' | 'tracks' | 'offline'
+export type SheetTab = 'places' | 'layers' | 'weather' | 'tracks' | 'offline'
 export type DepthUnit = 'm' | 'ft'
 
 interface LayerVisibility {
@@ -11,12 +11,25 @@ interface LayerVisibility {
   seamarks: boolean
   satellite: boolean
   weather: boolean
+  /** The wave rake along a planned run — direction, over the lanes' height.
+   *  Additive: it composes with the lanes rather than replacing them. */
+  rake: boolean
+  /** Live wind streaming over the chart — particles advected by the forecast
+   *  grid at the planning time. The always-on sibling of the briefing. */
+  windFlow: boolean
 }
 
 interface AppState {
   // UI
   sheetTab: SheetTab | null
   setSheetTab: (t: SheetTab | null) => void
+
+  // The dock's two heights (§2.3). 'rest' keeps the chart dominant; 'raised'
+  // grows the SAME card to carry the fuller version of whatever it is about —
+  // this replaced the separate route drawer that used to open over the card.
+  // Transient like armedEnd: a reload lands back at rest, on purpose.
+  detent: 'rest' | 'raised'
+  setDetent: (v: 'rest' | 'raised') => void
 
   // preferences (persisted)
   depthUnit: DepthUnit
@@ -29,6 +42,8 @@ interface AppState {
   setLayer: (k: keyof LayerVisibility, v: boolean) => void
   satOpacity: number // 0..1 satellite layer opacity
   setSatOpacity: (v: number) => void
+  windFlowOpacity: number // 0..1 wind-flow particle strength
+  setWindFlowOpacity: (v: number) => void
 
   // navigation state
   follow: boolean
@@ -49,6 +64,31 @@ interface AppState {
   planTimeMs: number | null
   setPlanTime: (ms: number | null) => void
 
+  // The far end of the trip window: when you want to be back. Together with
+  // planTimeMs this is the whole trip input — you say the hours you're free
+  // and the time at the destination falls out of it, rather than being a
+  // setting of its own. Null = no window, so the old "minimum stay" applies.
+  planEndMs: number | null
+  setPlanWindow: (startMs: number | null, endMs: number | null) => void
+
+  // How long an outing usually runs, used only to place a fresh window so it
+  // arrives with a sensible answer already in it.
+  usualOutingMin: number
+  setUsualOuting: (min: number) => void
+
+  // Has the user PICKED a time at all? Place taps explore; time taps plan —
+  // and "leaving now" is also a pick (the strip's Now cell), not a default.
+  // Until this is true the trip surface shows facts only: no window chips, no
+  // Start. Deliberately not persisted: a fresh open starts at exploring.
+  planPicked: boolean
+  setPlanPicked: (v: boolean) => void
+
+  // Which end of the window the next tap on an hour cell sets. Transient UI
+  // state shared between the card (which holds the chips) and the strip
+  // (which is their keypad) — deliberately not persisted.
+  armedEnd: 'out' | 'back' | null
+  setArmedEnd: (v: 'out' | 'back' | null) => void
+
   // 12-hour outlook strip overlaid on the map (persisted)
   wxStrip: boolean
   setWxStrip: (v: boolean) => void
@@ -56,6 +96,17 @@ interface AppState {
   // show wave period (seconds) beside every wave height (persisted)
   wavePeriod: boolean
   setWavePeriod: (v: boolean) => void
+
+  // The skipper's own limits — the water and wind THEY are happy in, used to
+  // mark which spots currently sit inside them.
+  //
+  // Both start null and stay null until set, on purpose. A default here would
+  // quietly turn every mark in the app into the app's opinion about your boat,
+  // which is the one thing this is meant not to be. Null means no marks are
+  // drawn at all; it does not mean zero.
+  waveLimitM: number | null
+  windLimitKn: number | null
+  setLimits: (waveM: number | null, windKn: number | null) => void
 }
 
 /** What actually reaches localStorage: the shape partialize writes, and so
@@ -68,10 +119,15 @@ type PersistedPrefs = Pick<
   | 'windUnit'
   | 'layers'
   | 'satOpacity'
+  | 'windFlowOpacity'
   | 'headingUp'
   | 'wxStrip'
   | 'wavePeriod'
   | 'planTimeMs'
+  | 'planEndMs'
+  | 'usualOutingMin'
+  | 'waveLimitM'
+  | 'windLimitKn'
 >
 
 export const useAppStore = create<AppState>()(
@@ -80,16 +136,29 @@ export const useAppStore = create<AppState>()(
       sheetTab: null,
       setSheetTab: (t) => set({ sheetTab: t }),
 
+      detent: 'rest',
+      setDetent: (detent) => set({ detent }),
+
       depthUnit: 'm',
       setDepthUnit: (u) => set({ depthUnit: u }),
       speedUnit: 'kmh',
       setSpeedUnit: (u) => set({ speedUnit: u }),
       windUnit: 'kmh',
       setWindUnit: (u) => set({ windUnit: u }),
-      layers: { depth: true, contours: true, seamarks: true, satellite: true, weather: false },
+      layers: {
+        depth: true,
+        contours: true,
+        seamarks: true,
+        satellite: true,
+        weather: false,
+        rake: false,
+        windFlow: false,
+      },
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
       setSatOpacity: (v) => set({ satOpacity: v }),
+      windFlowOpacity: 0.8,
+      setWindFlowOpacity: (v) => set({ windFlowOpacity: v }),
 
       follow: false,
       setFollow: (v) => set({ follow: v }),
@@ -102,13 +171,39 @@ export const useAppStore = create<AppState>()(
       setOfflineReady: (v) => set({ offlineReady: v }),
 
       planTimeMs: null,
-      setPlanTime: (ms) => set({ planTimeMs: ms }),
+      // moving the departure on its own drags the whole window with it, so the
+      // hours you're out stay the hours you asked for
+      setPlanTime: (ms) =>
+        set((st) => {
+          if (ms == null) return { planTimeMs: null, planEndMs: null }
+          const span =
+            st.planTimeMs != null && st.planEndMs != null
+              ? st.planEndMs - st.planTimeMs
+              : st.usualOutingMin * 60_000
+          return { planTimeMs: ms, planEndMs: ms + span }
+        }),
+
+      planEndMs: null,
+      setPlanWindow: (planTimeMs, planEndMs) => set({ planTimeMs, planEndMs }),
+
+      usualOutingMin: 180,
+      setUsualOuting: (usualOutingMin) => set({ usualOutingMin }),
+
+      planPicked: false,
+      setPlanPicked: (planPicked) => set({ planPicked }),
+
+      armedEnd: null,
+      setArmedEnd: (armedEnd) => set({ armedEnd }),
 
       wxStrip: true,
       setWxStrip: (v) => set({ wxStrip: v }),
 
       wavePeriod: true,
       setWavePeriod: (v) => set({ wavePeriod: v }),
+
+      waveLimitM: null,
+      windLimitKn: null,
+      setLimits: (waveLimitM, windLimitKn) => set({ waveLimitM, windLimitKn }),
     }),
     {
       name: 'sandies-prefs',
@@ -117,7 +212,11 @@ export const useAppStore = create<AppState>()(
       version: 1,
       migrate: (persisted, from) => {
         const p = { ...(persisted as Partial<AppState>) }
-        if (from < 1) {
+        // versionless storage arrives as `undefined`, and `undefined < 1` is
+        // false — so this has to normalise before comparing or prefs saved
+        // before v1 never get migrated at all
+        const was = typeof from === 'number' ? from : 0
+        if (was < 1) {
           delete p.depthUnit
           delete p.speedUnit
           delete p.windUnit
@@ -133,10 +232,15 @@ export const useAppStore = create<AppState>()(
         windUnit: s.windUnit,
         layers: s.layers,
         satOpacity: s.satOpacity,
+        windFlowOpacity: s.windFlowOpacity,
         headingUp: s.headingUp,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,
         planTimeMs: s.planTimeMs,
+        planEndMs: s.planEndMs,
+        usualOutingMin: s.usualOutingMin,
+        waveLimitM: s.waveLimitM,
+        windLimitKn: s.windLimitKn,
       }),
       // deep-merge layers so prefs saved before a new layer key existed still get its default
       merge: (persisted, current) => {
@@ -147,8 +251,16 @@ export const useAppStore = create<AppState>()(
           layers: { ...current.layers, ...p?.layers },
           // a planning time from a previous session that has already passed means "now"
           planTimeMs: p?.planTimeMs != null && p.planTimeMs > Date.now() ? p.planTimeMs : null,
+          planEndMs: p?.planTimeMs != null && p.planTimeMs > Date.now() ? (p.planEndMs ?? null) : null,
         }
       },
     },
   ),
 )
+
+// dev-only handle, the same convention as MapView's window.__map and the
+// route store's window.__route — lets the verify harness move the planning
+// clock, which has no other seam from outside the UI
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __app?: unknown }).__app = useAppStore
+}

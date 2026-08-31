@@ -55,9 +55,7 @@ export default function MeasureCard() {
       </div>
       {legs.length === 0 ? (
         <div className="tb-hint">
-          {points.length === 0
-            ? 'Tap the map to drop a point, then another. Keep tapping to measure a course leg by leg.'
-            : 'Tap again to measure from there.'}
+          {points.length === 0 ? 'Tap two points' : 'Tap again'}
         </div>
       ) : (
         <>
@@ -76,7 +74,6 @@ export default function MeasureCard() {
             </span>
           </div>
           <div className="tb-hint">
-            Straight-line range — drag a point to adjust it, tap it to remove it.
           </div>
         </>
       )}

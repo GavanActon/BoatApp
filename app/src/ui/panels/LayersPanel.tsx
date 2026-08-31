@@ -1,13 +1,30 @@
 import { Fragment } from 'react'
+import { getMap } from '../../map/mapController'
 import { useAppStore } from '../../state/appStore'
 import { SPEED_UNITS } from '../../units'
+import { playBriefing } from '../../weather/windFlow'
+import { IconWind } from '../icons'
 
 const LAYER_DEFS = [
-  { key: 'satellite', name: 'Satellite imagery', desc: 'Esri World Imagery' },
+  { key: 'satellite', name: 'Satellite imagery', desc: 'Sentinel-2, Aug 2023' },
   { key: 'depth', name: 'Depth shading', desc: 'Color-shaded bathymetry (NOAA NCEI)' },
   { key: 'contours', name: 'Depth contours', desc: 'Contour lines with soundings' },
-  { key: 'seamarks', name: 'Buoys & lights', desc: 'OpenSeaMap seamarks (needs internet once)' },
-  { key: 'weather', name: 'Wind & waves', desc: 'Forecast overlay — pick the hour on the outlook strip' },
+  { key: 'seamarks', name: 'Buoys & lights', desc: 'OpenSeaMap seamarks' },
+  { key: 'weather', name: 'Wind & waves', desc: 'Forecast overlay' },
+  {
+    key: 'windFlow',
+    name: 'Wind flow',
+    // the one sanctioned piece of standing motion on the chart — it exists
+    // because it was switched on, and its strength is the user's to set
+    desc: 'Live wind streaming over the water',
+  },
+  {
+    key: 'rake',
+    name: 'Wave rake',
+    // adds to the coloured lanes rather than replacing them: they carry how
+    // big, this carries which way
+    desc: 'Sea direction along the run',
+  },
 ] as const
 
 export default function LayersPanel() {
@@ -27,6 +44,9 @@ export default function LayersPanel() {
   const setHeadingUp = useAppStore((s) => s.setHeadingUp)
   const satOpacity = useAppStore((s) => s.satOpacity)
   const setSatOpacity = useAppStore((s) => s.setSatOpacity)
+  const windFlowOpacity = useAppStore((s) => s.windFlowOpacity)
+  const setWindFlowOpacity = useAppStore((s) => s.setWindFlowOpacity)
+  const setSheetTab = useAppStore((s) => s.setSheetTab)
 
   return (
     <div className="panel">
@@ -59,13 +79,44 @@ export default function LayersPanel() {
               />
             </div>
           )}
+          {l.key === 'windFlow' && layers.windFlow && (
+            <div className="row layer-opacity">
+              <div className="row-text">
+                <span className="row-desc">Strength · {Math.round(windFlowOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={Math.round(windFlowOpacity * 100)}
+                onChange={(e) => setWindFlowOpacity(Number(e.target.value) / 100)}
+              />
+            </div>
+          )}
         </Fragment>
       ))}
+
+      <button
+        className="row row-action"
+        onClick={() => {
+          // the performance needs the chart, so the sheet steps aside first
+          setSheetTab(null)
+          const map = getMap()
+          if (map) void playBriefing(map)
+        }}
+      >
+        <div className="row-text">
+          <span className="row-title">Play briefing</span>
+          <span className="row-desc">Ten seconds of wind and sea over your run, then quiet</span>
+        </div>
+        <IconWind size={20} />
+      </button>
 
       <label className="row">
         <div className="row-text">
           <span className="row-title">Outlook strip</span>
-          <span className="row-desc">Week & hours at the top of the map — sets the planning time</span>
+          <span className="row-desc">Week & hours</span>
         </div>
         <input
           type="checkbox"
@@ -97,10 +148,7 @@ export default function LayersPanel() {
       <label className="row">
         <div className="row-text">
           <span className="row-title">Wave period</span>
-          <span className="row-desc">
-            Seconds beside every wave height — under ~4 s the sea is steep and rides worse than
-            the height suggests
-          </span>
+          <span className="row-desc">Seconds beside every height</span>
         </div>
         <input
           type="checkbox"
@@ -113,10 +161,7 @@ export default function LayersPanel() {
       <div className="row">
         <div className="row-text">
           <span className="row-title">Speed & distance units</span>
-          <span className="row-desc">
-            The boat: speed over ground, cruise speed, trip and track distances, the
-            scale bar and the measuring tool
-          </span>
+          <span className="row-desc">Boat</span>
         </div>
         <div className="seg">
           {SPEED_UNITS.map((u) => (
@@ -134,10 +179,7 @@ export default function LayersPanel() {
       <div className="row">
         <div className="row-text">
           <span className="row-title">Wind units</span>
-          <span className="row-desc">
-            The forecast: outlook strip, hourly table, charts and the map arrows. Marine
-            forecasts quote knots
-          </span>
+          <span className="row-desc">Forecast</span>
         </div>
         <div className="seg">
           {SPEED_UNITS.map((u) => (

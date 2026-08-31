@@ -138,11 +138,7 @@ export default function OfflinePanel() {
         </div>
       )}
 
-      <div className="panel-note row-desc">
-        Charts and the base map work fully offline once downloaded. Weather always shows the last
-        fetched forecast with its age when you're out of coverage. Buoy symbols (OpenSeaMap) are
-        cached automatically as you browse them online.
-      </div>
+      <div className="panel-note row-desc">Charts offline · weather shows its age</div>
     </div>
   )
 }

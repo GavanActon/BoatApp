@@ -1,7 +1,79 @@
-import { defineConfig } from 'vite'
+import { createHash } from 'node:crypto'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
+
+/**
+ * Dev-only Open-Meteo cache. The app fetches `/__om/<host>/<path>?query` in
+ * dev (see openMeteo.ts); this middleware forwards to the real host, keeps
+ * every response on disk, and serves from disk while it's fresh. Repeated dev
+ * sessions and browser-driven tests then cost one upstream fetch per unique
+ * request instead of one per page load — Open-Meteo rate-limits bursts, and
+ * a test run that replans a trip a few times is exactly such a burst.
+ *
+ * A stale file also stands in whenever the upstream fetch fails (offline,
+ * 429), so dev keeps working through the rate limit it just avoided causing.
+ */
+function omCache(): Plugin {
+  const dir = join(__dirname, '.om-cache')
+  const FRESH_MS = 60 * 60_000 // forecasts update hourly; fresher is noise
+  const ALLOWED = new Set(['api.open-meteo.com', 'marine-api.open-meteo.com'])
+  return {
+    name: 'om-cache',
+    apply: 'serve',
+    configureServer(server) {
+      mkdirSync(dir, { recursive: true })
+      server.middlewares.use('/__om', (req, res) => {
+        void (async () => {
+          const [path, query] = (req.url ?? '').split('?')
+          const host = path.split('/')[1]
+          if (!ALLOWED.has(host)) {
+            res.statusCode = 403
+            res.end('host not allowed')
+            return
+          }
+          const upstream = `https://${host}${path.slice(host.length + 1)}?${query ?? ''}`
+          const file = join(dir, `${createHash('sha1').update(upstream).digest('hex')}.json`)
+          const age = (() => {
+            try {
+              return Date.now() - statSync(file).mtimeMs
+            } catch {
+              return Infinity
+            }
+          })()
+          const serveFile = () => {
+            res.setHeader('content-type', 'application/json')
+            res.setHeader('x-om-cache', age < FRESH_MS ? 'fresh' : 'stale')
+            res.end(readFileSync(file))
+          }
+          if (age < FRESH_MS) {
+            serveFile()
+            return
+          }
+          try {
+            const up = await fetch(upstream)
+            if (!up.ok) throw new Error(`upstream ${up.status}`)
+            const body = Buffer.from(await up.arrayBuffer())
+            writeFileSync(file, body)
+            res.setHeader('content-type', 'application/json')
+            res.setHeader('x-om-cache', 'miss')
+            res.end(body)
+          } catch (e) {
+            if (age < Infinity) {
+              serveFile() // stale beats down
+              return
+            }
+            res.statusCode = 502
+            res.end(String(e))
+          }
+        })()
+      })
+    },
+  }
+}
 
 // BASE_PATH lets the same build target GitHub Pages project sites (e.g. /BoatApp/)
 export default defineConfig({
@@ -13,6 +85,7 @@ export default defineConfig({
     // HTTPS_DEV=1 serves over self-signed HTTPS so an iPhone on the same
     // Wi-Fi gets a secure context (required for geolocation)
     ...(process.env.HTTPS_DEV ? [basicSsl()] : []),
+    omCache(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

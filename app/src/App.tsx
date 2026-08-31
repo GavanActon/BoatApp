@@ -20,29 +20,36 @@ import {
   IconEditRoute,
   IconLayers,
   IconLocate,
-  IconRoute,
   IconRuler,
+  IconSliders,
   IconTrack,
   IconWind,
   IconDownload,
+  IconDownloadDone,
+  IconPlaces,
 } from './ui/icons'
 import LayersPanel from './ui/panels/LayersPanel'
+import PlacesPanel from './ui/panels/PlacesPanel'
 import OfflinePanel from './ui/panels/OfflinePanel'
-import RoutePanel from './ui/panels/RoutePanel'
 import TracksPanel from './ui/panels/TracksPanel'
 import WeatherPanel from './ui/panels/WeatherPanel'
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 import { initWeatherLayer } from './weather/weatherLayer'
+import { initWindFlow } from './weather/windFlow'
 
 // auto-follow waits for a fix at least this tight before trusting it…
 const GOOD_FIX_ACCURACY_M = 150
 // …but takes the best available once the deadline passes
 const FOLLOW_DECIDE_TIMEOUT_MS = 10000
 
+// No Trip tab: the dock IS the trip surface, and it is always present (§2.5)
 const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
-  { id: 'route', name: 'Trip', icon: IconRoute },
-  { id: 'layers', name: 'Layers', icon: IconLayers },
+  // Places first: WHICH PLACE is the question the app opens on (§0.2) — this
+  // tab superseded the dock's old "Here" bar
+  { id: 'places', name: 'Places', icon: IconPlaces },
+  // still id 'layers' everywhere in code — only the name on the door changed
+  { id: 'layers', name: 'Settings', icon: IconSliders },
   { id: 'weather', name: 'Weather', icon: IconWind },
   { id: 'tracks', name: 'Tracks', icon: IconTrack },
   { id: 'offline', name: 'Offline', icon: IconDownload },
@@ -67,14 +74,14 @@ function TripChip() {
   if (editing) {
     return (
       <button className="chip chip-accent" onClick={() => setEditing(false)}>
-        Drag the line to add a course point — or a point or pin to move it · done
+        Editing course · done
       </button>
     )
   }
   if (picking) {
     return (
       <button className="chip chip-accent" onClick={() => setPicking(null)}>
-        Tap the map to set your {picking === 'start' ? 'starting point' : 'destination'} · cancel
+        Set {picking === 'start' ? 'start' : 'destination'} · cancel
       </button>
     )
   }
@@ -85,27 +92,14 @@ function TripChip() {
 
   const underWay = tripStartedAt != null
   const name = destination.name ?? 'Pinned spot'
-  const cls = plan.verdict === 'go' ? 'chip-ok' : plan.verdict === 'caution' ? 'chip-warn' : 'chip-danger'
-  let text: string
-  if (underWay) {
-    text = `${name} · ${runDistance(speedUnit, plan.oneWayNm)} ${distanceUnitFor(speedUnit)} to go · there ${timeLabel(plan.arriveMs)}`
-    if (plan.verdict === 'nogo') text += ' · rough ahead'
-    else if (plan.turnsBadMs != null) text += ` · turns ${timeLabel(plan.turnsBadMs)}`
-  } else {
-    // a trip planned for another day wears its day up front: "Sat · Gros Cap: good to go"
-    const day = isToday(plan.departMs) ? '' : `${dayShort(plan.departMs)} · `
-    text =
-      plan.verdict === 'go'
-        ? `${day}${name}: good to go`
-        : plan.verdict === 'caution'
-          ? `${day}${name}: use caution`
-          : `${day}${name}: not recommended`
-    if (plan.verdict !== 'nogo' && plan.turnsBadMs != null) {
-      text += ` · turns ${dayTimeLabel(plan.turnsBadMs)}`
-    }
-  }
+  // Facts, not a grade. This chip used to read "Gros Cap: good to go" in
+  // green — the app's loudest opinion, on the busiest part of the screen.
+  const dist = `${runDistance(speedUnit, plan.oneWayNm)} ${distanceUnitFor(speedUnit)}`
+  const text = underWay
+    ? `${name} · ${dist} to go · there ${timeLabel(plan.arriveMs)}`
+    : `${isToday(plan.departMs) ? '' : `${dayShort(plan.departMs)} · `}${name} · ${dist} · there ${dayTimeLabel(plan.arriveMs)}`
   return (
-    <button className={`chip ${cls}`} onClick={() => setCard('trip')}>
+    <button className="chip" onClick={() => setCard('trip')}>
       {text}
     </button>
   )
@@ -194,8 +188,9 @@ function FabStack() {
       </button>
       <button
         className={`fab ${follow ? 'active' : ''}`}
-        onClick={() => locateAndFollow()}
-        aria-label="My position"
+        // a toggle, not a one-way switch: pressing it while following lets go
+        onClick={() => (follow ? useAppStore.getState().setFollow(false) : locateAndFollow())}
+        aria-label={follow ? 'Stop following my position' : 'My position'}
       >
         <IconLocate />
       </button>
@@ -206,9 +201,8 @@ function FabStack() {
 export default function App() {
   const sheetTab = useAppStore((s) => s.sheetTab)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
+  const offlineReady = useAppStore((s) => s.offlineReady)
   const setOnline = useAppStore((s) => s.setOnline)
-  const card = useRouteStore((s) => s.card)
-  const setCard = useRouteStore((s) => s.setCard)
   const measuring = useMeasureStore((s) => s.active)
   const barRef = useRef<HTMLDivElement>(null)
 
@@ -229,6 +223,7 @@ export default function App() {
     initRouteLayer()
     initMeasureLayer() // after the route layer, so measurements draw on top
     initRoutePlanner()
+    initWindFlow()
 
     // grab a position right away; follow it only when it's on our waters.
     // the first fix is often a coarse wifi/IP guess, so hold out for an
@@ -241,6 +236,12 @@ export default function App() {
       decided = true
       unsubGps()
       clearTimeout(decideTimer)
+      // a good fix can arrive minutes into the session on a phone — by then
+      // the user may already be looking at a place or planning a run, and
+      // yanking the camera to the boat mid-thought is exactly the "GPS pulls
+      // me home" bug. Auto-follow only claims a camera nobody has pointed.
+      const rs = useRouteStore.getState()
+      if (rs.focusPoint != null || rs.destination != null) return
       const b = REGION_BBOX
       if (fix.lon >= b.west && fix.lon <= b.east && fix.lat >= b.south && fix.lat <= b.north) {
         locateAndFollow()
@@ -282,35 +283,21 @@ export default function App() {
         {measuring ? <MeasureCard /> : <TripCard />}
         <div className="tabdock glass">
           {TABS.map((t) => {
-            const Icon = t.icon
-            const on = sheetTab === t.id || (t.id === 'route' && card === 'choose')
+            // once the region's charts are all aboard, the Offline tab says
+            // so at a glance: the download arrow becomes a check and the
+            // label reads "On board" — nobody should wonder at the dock
+            // whether they remembered to download
+            const ready = t.id === 'offline' && offlineReady
+            const Icon = ready ? IconDownloadDone : t.icon
             return (
               <button
                 key={t.id}
-                className={`tab ${on ? 'tab-on' : ''}`}
-                onClick={() => {
-                  const destination = useRouteStore.getState().destination
-                  if (t.id === 'route') {
-                    if (!destination) {
-                      // no trip yet → the Trip tab toggles the map-facing chooser
-                      setSheetTab(null)
-                      setCard(card === 'choose' ? null : 'choose')
-                      return
-                    }
-                    // with a trip, the tab toggles the details drawer — and
-                    // makes sure the card is back up underneath it
-                    setCard('trip')
-                    setSheetTab(sheetTab === 'route' ? null : 'route')
-                    return
-                  }
-                  // another tab puts the chooser away; a planned card can stay
-                  if (card === 'choose') setCard(destination ? 'trip' : null)
-                  setSheetTab(sheetTab === t.id ? null : t.id)
-                }}
-                aria-label={t.name}
+                className={`tab ${sheetTab === t.id ? 'tab-on' : ''}${ready ? ' tab-ready' : ''}`}
+                onClick={() => setSheetTab(sheetTab === t.id ? null : t.id)}
+                aria-label={ready ? 'Offline charts downloaded' : t.name}
               >
                 <Icon size={20} />
-                <span>{t.name}</span>
+                <span>{ready ? 'On board' : t.name}</span>
               </button>
             )
           })}
@@ -319,8 +306,8 @@ export default function App() {
       </div>
 
       {activeTab && (
-        <BottomSheet title={activeTab.name}>
-          {sheetTab === 'route' && <RoutePanel />}
+        <BottomSheet title={activeTab.name} halfPct={sheetTab === 'places' ? 38 : 52}>
+          {sheetTab === 'places' && <PlacesPanel />}
           {sheetTab === 'layers' && <LayersPanel />}
           {sheetTab === 'weather' && <WeatherPanel />}
           {sheetTab === 'tracks' && <TracksPanel />}

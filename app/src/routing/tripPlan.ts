@@ -1,5 +1,5 @@
-import { dayTimeLabel, timeLabel } from '../time'
-import { knToUnit, speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
+import { timeLabel } from '../time'
+import { type SpeedUnit } from '../units'
 import {
   conditionFor,
   fetchRouteForecast,
@@ -7,6 +7,7 @@ import {
   type Condition,
   type RouteForecast,
 } from '../weather/openMeteo'
+import { ensureWeatherGrid, routeForecastFromGrid } from '../weather/weatherLayer'
 import type { RouteResult } from './waterRouter'
 
 /**
@@ -52,6 +53,9 @@ export interface TripSample {
   windDir: number
   waveM: number | null
   wavePeriodS: number | null
+  /** Where the sea runs FROM at this leg, degrees true. Null when the model
+   *  has no direction for the point (or the cached forecast predates it). */
+  waveDir: number | null
   weatherCode: number
   cond: Condition
 }
@@ -97,16 +101,14 @@ export interface TripPlan {
   arriveMs: number
   homeMs: number | null
   verdict: Verdict
-  headline: string
+  /** When the run is at its roughest — for marking, never for narrating. */
   turnsBadMs: number | null
-  turnsBadText: string | null
   fetchedAt: number
   stale: boolean
 }
 
 const SAMPLE_SPACING_NM = 2.5
 const MAX_SAMPLES_ONE_WAY = 6
-const BAD_WX_HORIZON_H = 14 // how far ahead the "turns bad" scan looks
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
 
@@ -240,9 +242,10 @@ function attachWx(itinerary: ItinerarySample[], forecast: RouteForecast): TripSa
     const waveM = p.waveM[i] ?? null
     // optional-chained: a route forecast cached before periods were fetched has no array
     const wavePeriodS = p.wavePeriodS?.[i] ?? null
+    const waveDir = p.waveDir?.[i] ?? null
     const weatherCode = p.weatherCode[i] ?? 0
     const cond: Condition = weatherCode >= 95 ? 'rough' : conditionFor(windKn, gustKn, waveM)
-    return { ...s, windKn, gustKn, windDir, waveM, wavePeriodS, weatherCode, cond }
+    return { ...s, windKn, gustKn, windDir, waveM, wavePeriodS, waveDir, weatherCode, cond }
   })
 }
 
@@ -442,7 +445,21 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
   // the start point moves with the boat; samples match by nearest point below
   const last = route.coords[route.coords.length - 1]
   const cacheKey = `${binKey(last[0], last[1])}|${pts.length}`
-  const { forecast, stale } = await fetchRouteForecast(pts, cacheKey, opts.maxWxCacheMs ?? 0)
+  let forecast: RouteForecast
+  let stale: boolean
+  try {
+    ;({ forecast, stale } = await fetchRouteForecast(pts, cacheKey, opts.maxWxCacheMs ?? 0))
+  } catch (err) {
+    // The per-point fetch failed (offline, rate-limited). The cached regional
+    // grid covers the same water seven days deep and agrees with the point
+    // API to ~0.02 m — stand it in rather than planning nothing, which used
+    // to leave a tapped point with a route but no segments at all.
+    await ensureWeatherGrid()
+    const fromGrid = routeForecastFromGrid(pts)
+    if (!fromGrid) throw err
+    forecast = fromGrid
+    stale = true
+  }
 
   const samples = attachWx(itinerary, forecast)
   const verdict = verdictFor(samples)
@@ -456,51 +473,9 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
   let worst = samples[0]
   for (const s of samples) if (condRank(s.cond) > condRank(worst.cond)) worst = s
 
-  const where = phaseText(worst.phase, opts.destName)
-  const wu = opts.windUnit
-  const wx =
-    `${windSpeed(wu, worst.windKn)} ${speedUnitLabel(wu)} ${compass(worst.windDir)}, gusts ${windSpeed(wu, worst.gustKn)}` +
-    (worst.waveM != null ? `, ${worst.waveM.toFixed(1)} m waves` : '')
-  let headline: string
-  if (verdict === 'nogo') {
-    headline =
-      worst.weatherCode >= 95
-        ? `Not recommended — thunderstorms ${where} around ${dayTimeLabel(worst.atMs)}.`
-        : `Not recommended — ${wx} ${where} around ${dayTimeLabel(worst.atMs)}.`
-  } else if (verdict === 'caution') {
-    headline = `Doable but expect some chop — ${wx} ${where} around ${dayTimeLabel(worst.atMs)}.`
-  } else {
-    const maxWind = Math.max(...samples.map((s) => s.windKn))
-    const maxWave = Math.max(...samples.map((s) => s.waveM ?? 0))
-    headline = `Good to go — wind under ${Math.ceil(knToUnit(wu, maxWind) + 1)} ${speedUnitLabel(wu)} and waves under ${(Math.ceil(maxWave * 10) / 10 + 0.1).toFixed(1)} m the whole trip.`
-  }
-
-  // heads-up scan: first rough hour at either end of the route within the horizon
-  let turnsBadMs: number | null = null
-  let turnsBadText: string | null = null
-  const horizonMs = opts.departMs + BAD_WX_HORIZON_H * 3600_000
-  const s0 = itinerary[0]
-  const sN = itinerary[itinerary.length - 1]
-  const scanPts = [nearestPoint(forecast, s0.lon, s0.lat), nearestPoint(forecast, sN.lon, sN.lat)]
-  for (const pi of new Set(scanPts)) {
-    const p = forecast.points[pi]
-    for (let i = 0; i < p.time.length; i++) {
-      const t = Date.parse(`${p.time[i]}Z`)
-      if (t < opts.departMs || t > horizonMs) continue
-      const rough =
-        (p.weatherCode[i] ?? 0) >= 95 ||
-        conditionFor(p.windKn[i] ?? 0, p.gustKn[i] ?? 0, p.waveM[i] ?? null) === 'rough'
-      if (rough && (turnsBadMs == null || t < turnsBadMs)) {
-        turnsBadMs = t
-        turnsBadText =
-          (p.weatherCode[i] ?? 0) >= 95
-            ? `Thunderstorms possible around ${dayTimeLabel(t)}`
-            : `Turns rough around ${dayTimeLabel(t)} — ${windSpeed(wu, p.windKn[i])} ${speedUnitLabel(wu)} ${compass(p.windDir[i] ?? 0)}` +
-              (p.waveM[i] != null ? `, ${(p.waveM[i] as number).toFixed(1)} m waves` : '')
-        break
-      }
-    }
-  }
+  // The worst leg's TIME, so the chart can mark it. No sentence: colour
+  // carries high and low, numbers support it, and the app says nothing else.
+  const turnsBadMs = worst.atMs
 
   const days =
     opts.windows === false
@@ -523,9 +498,7 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
     arriveMs,
     homeMs,
     verdict,
-    headline,
     turnsBadMs,
-    turnsBadText,
     fetchedAt: forecast.fetchedAt,
     stale,
   }

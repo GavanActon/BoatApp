@@ -21,6 +21,9 @@ export interface PointForecast {
     windDir: number[]
     tempC: number[]
     weatherCode: number[]
+    /** Chance of precipitation, 0–100. Optional so a forecast cached before
+     *  this field was requested still loads. */
+    precipProbPct?: (number | null)[]
     waveM: (number | null)[]
     wavePeriodS: (number | null)[]
     waveDir: (number | null)[]
@@ -35,6 +38,12 @@ export interface GridCell {
   windDir: number[]
   waveM: (number | null)[]
   wavePeriodS: (number | null)[]
+  /** Optional so a grid cached before rain chance was fetched still loads. */
+  precipProbPct?: (number | null)[]
+  /** Optional: a grid cached before the field was fetched has none. */
+  waterTempC?: (number | null)[]
+  weatherCode?: (number | null)[]
+  waveDir?: (number | null)[]
 }
 
 export interface GridForecast {
@@ -51,6 +60,7 @@ export interface HourRow {
   windDir: number
   tempC: number
   weatherCode: number
+  precipProbPct: number | null
   waveM: number | null
   wavePeriodS: number | null
 }
@@ -71,6 +81,9 @@ export function nextHours(f: PointForecast, n: number): HourRow[] {
       windDir: h.windDir[i],
       tempC: h.tempC[i],
       weatherCode: h.weatherCode[i],
+      // optional-chained: a forecast cached before rain chance was fetched
+      // has no array
+      precipProbPct: h.precipProbPct?.[i] ?? null,
       waveM: h.waveM[i] ?? null,
       wavePeriodS: h.wavePeriodS[i] ?? null,
     }
@@ -112,6 +125,9 @@ export function dayHours(f: PointForecast, dayStartMs: number, fromH = 7, toH = 
       windDir: h.windDir[i],
       tempC: h.tempC[i],
       weatherCode: h.weatherCode[i],
+      // optional-chained: a forecast cached before rain chance was fetched
+      // has no array
+      precipProbPct: h.precipProbPct?.[i] ?? null,
       waveM: h.waveM[i] ?? null,
       wavePeriodS: h.wavePeriodS[i] ?? null,
     })
@@ -122,8 +138,23 @@ export function dayHours(f: PointForecast, dayStartMs: number, fromH = 7, toH = 
 export interface DayOutlook {
   dayStartMs: number
   cond: Condition | null // null = beyond the forecast (or the day is over)
+  tempMinC: number | null // daytime low (remaining hours for today)
   tempMaxC: number | null // daytime high (remaining hours for today)
   weatherCode: number | null // most severe daytime code, like Open-Meteo's daily summary
+  windMinKn: number | null
+  windMaxKn: number | null
+  gustMaxKn: number | null
+  windDir: number | null // speed-weighted mean direction the wind blows FROM
+  waveMaxM: number | null
+  /** Highest chance of precipitation across the day's daytime hours. Null
+   *  when the cached forecast predates the field. */
+  precipMaxPct: number | null
+  /** Any daytime hour calls thunder (weather code 95+). The one thing the
+   *  interface is allowed to be loud about — see §0.6. */
+  thunder: boolean
+  /** The stretch that earned the day its rating, half-open [fromMs, toMs) —
+   *  the answer to "when do we go". Null on a day with no usable stretch. */
+  window: { fromMs: number; toMs: number } | null
 }
 
 /** Human name for an Open-Meteo weather code. */
@@ -142,14 +173,46 @@ export function skyLabel(code: number): string {
   return '—'
 }
 
-const OUTLOOK_FROM_H = 7
-const OUTLOOK_TO_H = 19
+export const OUTLOOK_FROM_H = 7
+export const OUTLOOK_TO_H = 19
 const MIN_WINDOW_H = 3 // shortest stretch that counts as a usable boating window
+
+interface RatedHour {
+  ms: number
+  cond: Condition
+}
+
+/** Longest run of hours passing `ok`, as a half-open [fromMs, toMs) span — an
+ *  hour's conditions hold right through to the next one, so a run ending on
+ *  the 12:00 hour is usable until 13:00. */
+function longestRun(
+  hours: RatedHour[],
+  ok: (c: Condition) => boolean,
+): { len: number; fromMs: number; toMs: number } {
+  let best = { len: 0, fromMs: 0, toMs: 0 }
+  let len = 0
+  for (let i = 0; i <= hours.length; i++) {
+    if (i < hours.length && ok(hours[i].cond)) {
+      len++
+      continue
+    }
+    if (len > best.len) {
+      best = { len, fromMs: hours[i - len].ms, toMs: hours[i - 1].ms + 3600_000 }
+    }
+    len = 0
+  }
+  return best
+}
 
 /**
  * Rates each of the next `days` calendar days for boatability: the longest
  * decent stretch during daytime hours decides the color. A day with a calm
  * morning and a rough afternoon is still a boating day.
+ *
+ * The roll-up beside the rating (temperature, sky, wind range and direction,
+ * biggest wave, and the window itself) covers the same daytime hours, so the
+ * numbers a day chip or an outlook row shows are the ones that earned it its
+ * color — never an overnight low or a 3 am gale nobody was going to boat in.
  */
 export function dailyOutlook(f: PointForecast, days = 7): DayOutlook[] {
   const h = f.hourly
@@ -160,42 +223,93 @@ export function dailyOutlook(f: PointForecast, days = 7): DayOutlook[] {
     const dayStartMs = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + d).getTime()
     const from = dayStartMs + OUTLOOK_FROM_H * 3600_000
     const to = dayStartMs + OUTLOOK_TO_H * 3600_000
-    let runGood = 0
-    let runOk = 0
-    let bestGood = 0
-    let bestOk = 0
-    let any = false
+    const hours: RatedHour[] = []
+    let tempMin: number | null = null
     let tempMax: number | null = null
     let wxMax: number | null = null
+    let windMin: number | null = null
+    let windMax: number | null = null
+    let gustMax: number | null = null
+    let waveMax: number | null = null
+    let precipMax: number | null = null
+    let thunder = false
+    // direction is averaged as a vector weighted by speed, so a calm hour
+    // swinging through north can't drag the day's arrow off the real wind
+    let dirX = 0
+    let dirY = 0
     for (let i = 0; i < h.time.length; i++) {
       const t = Date.parse(h.time[i])
       if (t < from || t > to || t < now - 3600_000) continue
-      any = true
       const tc = h.tempC[i]
-      if (tc != null) tempMax = tempMax == null ? tc : Math.max(tempMax, tc)
+      if (tc != null) {
+        tempMin = tempMin == null ? tc : Math.min(tempMin, tc)
+        tempMax = tempMax == null ? tc : Math.max(tempMax, tc)
+      }
       const wc = h.weatherCode[i]
       if (wc != null) wxMax = wxMax == null ? wc : Math.max(wxMax, wc)
-      const c =
-        (h.weatherCode[i] ?? 0) >= 95
-          ? 'rough'
-          : conditionFor(h.windKn[i], h.gustKn[i], h.waveM[i] ?? null)
-      runGood = c === 'good' ? runGood + 1 : 0
-      runOk = c !== 'rough' ? runOk + 1 : 0
-      bestGood = Math.max(bestGood, runGood)
-      bestOk = Math.max(bestOk, runOk)
+      if (wc != null && wc >= 95) thunder = true
+      // optional-chained: a forecast cached before rain chance was fetched
+      // has no array
+      const pp = h.precipProbPct?.[i]
+      if (pp != null) precipMax = precipMax == null ? pp : Math.max(precipMax, pp)
+      const wk = h.windKn[i]
+      if (wk != null) {
+        windMin = windMin == null ? wk : Math.min(windMin, wk)
+        windMax = windMax == null ? wk : Math.max(windMax, wk)
+        const rad = ((h.windDir[i] ?? 0) * Math.PI) / 180
+        dirX += Math.sin(rad) * wk
+        dirY += Math.cos(rad) * wk
+      }
+      const gk = h.gustKn[i]
+      if (gk != null) gustMax = gustMax == null ? gk : Math.max(gustMax, gk)
+      const wv = h.waveM[i] ?? null
+      if (wv != null) waveMax = waveMax == null ? wv : Math.max(waveMax, wv)
+      hours.push({
+        ms: t,
+        cond: (h.weatherCode[i] ?? 0) >= 95 ? 'rough' : conditionFor(h.windKn[i], h.gustKn[i], wv),
+      })
     }
+
+    const good = longestRun(hours, (c) => c === 'good')
+    const ok = longestRun(hours, (c) => c !== 'rough')
+    const cond: Condition | null = !hours.length
+      ? null
+      : good.len >= MIN_WINDOW_H
+        ? 'good'
+        : ok.len >= MIN_WINDOW_H
+          ? 'mod'
+          : 'rough'
+    const win = cond === 'good' ? good : cond === 'mod' ? ok : null
+
     out.push({
       dayStartMs,
-      cond: !any ? null : bestGood >= MIN_WINDOW_H ? 'good' : bestOk >= MIN_WINDOW_H ? 'mod' : 'rough',
+      cond,
+      tempMinC: tempMin,
       tempMaxC: tempMax,
       weatherCode: wxMax,
+      windMinKn: windMin,
+      windMaxKn: windMax,
+      gustMaxKn: gustMax,
+      windDir: windMax == null ? null : ((Math.atan2(dirX, dirY) * 180) / Math.PI + 360) % 360,
+      waveMaxM: waveMax,
+      precipMaxPct: precipMax,
+      thunder,
+      window: win && { fromMs: win.fromMs, toMs: win.toMs },
     })
   }
   return out
 }
 
-const WIND_BASE = 'https://api.open-meteo.com/v1/forecast'
-const MARINE_BASE = 'https://marine-api.open-meteo.com/v1/marine'
+// In dev, requests go through the vite server's disk cache (see omCache in
+// vite.config.ts) so repeated reloads and browser-driven tests don't hammer
+// Open-Meteo — the API rate-limits bursts. Production talks to it directly.
+const DEV = import.meta.env.DEV
+const WIND_BASE = DEV
+  ? '/__om/api.open-meteo.com/v1/forecast'
+  : 'https://api.open-meteo.com/v1/forecast'
+const MARINE_BASE = DEV
+  ? '/__om/marine-api.open-meteo.com/v1/marine'
+  : 'https://marine-api.open-meteo.com/v1/marine'
 
 async function getJson(url: string): Promise<unknown> {
   const resp = await fetch(url)
@@ -234,7 +348,7 @@ export async function fetchPointForecast(
   try {
     const windUrl =
       `${WIND_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
-      `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code` +
+      `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code,precipitation_probability` +
       `&wind_speed_unit=kn&forecast_days=7&timezone=auto`
     const marineUrl =
       `${MARINE_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
@@ -258,6 +372,7 @@ export async function fetchPointForecast(
         windDir: wh.wind_direction_10m,
         tempC: wh.temperature_2m,
         weatherCode: wh.weather_code,
+        precipProbPct: wh.precipitation_probability ?? [],
         waveM: mh.wave_height ?? [],
         wavePeriodS: mh.wave_period ?? [],
         waveDir: mh.wave_direction ?? [],
@@ -303,20 +418,32 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
 
     const windUrl =
       `${WIND_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m` +
+      `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation_probability,weather_code` +
       `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wave_height,wave_period&forecast_days=7&timezone=UTC`
+      `&hourly=wave_height,wave_period,wave_direction,sea_surface_temperature&forecast_days=7&timezone=UTC`
 
     const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
       latitude: number
       longitude: number
-      hourly: { time: string[]; wind_speed_10m: number[]; wind_gusts_10m: number[]; wind_direction_10m: number[] }
+      hourly: {
+        time: string[]
+        wind_speed_10m: number[]
+        wind_gusts_10m: number[]
+        wind_direction_10m: number[]
+        precipitation_probability?: (number | null)[]
+        weather_code?: (number | null)[]
+      }
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: { wave_height: (number | null)[]; wave_period: (number | null)[] }
+      hourly?: {
+        wave_height: (number | null)[]
+        wave_period: (number | null)[]
+        wave_direction: (number | null)[]
+        sea_surface_temperature?: (number | null)[]
+      }
     }>
 
     const cells: GridCell[] = windArr.map((w, i) => ({
@@ -327,6 +454,10 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       windDir: w.hourly.wind_direction_10m,
       waveM: marineArr[i]?.hourly?.wave_height ?? [],
       wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
+      precipProbPct: w.hourly.precipitation_probability ?? [],
+      weatherCode: w.hourly.weather_code ?? [],
+      waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
+      waterTempC: marineArr[i]?.hourly?.sea_surface_temperature ?? [],
     }))
 
     const grid: GridForecast = {
@@ -355,6 +486,9 @@ export interface RoutePointWx {
   weatherCode: number[]
   waveM: (number | null)[]
   wavePeriodS: (number | null)[]
+  /** Where the sea is running FROM, degrees true. Optional so a forecast
+   *  cached before this field was requested still loads. */
+  waveDir?: (number | null)[]
 }
 
 export interface RouteForecast {
@@ -383,7 +517,7 @@ export async function fetchRouteForecast(
       `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wave_height,wave_period&forecast_days=7&timezone=UTC`
+      `&hourly=wave_height,wave_period,wave_direction&forecast_days=7&timezone=UTC`
 
     const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
@@ -396,7 +530,11 @@ export async function fetchRouteForecast(
       }
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: { wave_height: (number | null)[]; wave_period: (number | null)[] }
+      hourly?: {
+        wave_height: (number | null)[]
+        wave_period: (number | null)[]
+        wave_direction: (number | null)[]
+      }
     }>
 
     const forecast: RouteForecast = {
@@ -411,6 +549,10 @@ export async function fetchRouteForecast(
         weatherCode: w.hourly.weather_code,
         waveM: marineArr[i]?.hourly?.wave_height ?? [],
         wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
+        // where the sea is running FROM — a separate field from the wind's,
+        // and on this lake often twenty or thirty degrees off it when the
+        // wind has shifted and the old sea is still up
+        waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
       })),
     }
     await cachePut(key, forecast)

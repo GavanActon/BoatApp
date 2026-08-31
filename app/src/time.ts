@@ -28,6 +28,11 @@ export function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+/** "Aug 24" */
+export function dateShort(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 /** "Sat" */
 export function dayShort(ms: number): string {
   return new Date(ms).toLocaleDateString(undefined, { weekday: 'short' })

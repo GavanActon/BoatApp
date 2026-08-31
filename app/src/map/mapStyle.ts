@@ -184,13 +184,14 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
       tileSize: 256,
       attribution: 'Seamarks © OpenSeaMap',
     },
-    // baked regional archive when reachable (offline-capable), else live Esri tiles
+    // baked regional archive when reachable (offline-capable), else live Esri
+    // tiles — different sources, so each carries its own credit
     satellite: opts.available.has('satellite')
       ? {
           type: 'raster',
           url: 'pmtiles://satellite',
           tileSize: 256,
-          attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+          attribution: 'Contains modified Copernicus Sentinel data 2023',
         }
       : {
           type: 'raster',

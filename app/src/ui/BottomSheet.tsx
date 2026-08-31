@@ -6,15 +6,24 @@ import { IconClose } from './icons'
  * iOS-style draggable bottom sheet with half / full snap points.
  * Content scrolls internally when at full height.
  */
-export default function BottomSheet({ title, children }: { title: string; children: ReactNode }) {
+export default function BottomSheet({
+  title,
+  children,
+  halfPct = 52,
+}: {
+  title: string
+  children: ReactNode
+  /** The half snap: Places rests lower so the chart keeps most of the screen. */
+  halfPct?: number
+}) {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
-  const [heightPct, setHeightPct] = useState(52)
+  const [heightPct, setHeightPct] = useState(halfPct)
   const drag = useRef<{ startY: number; startPct: number } | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setHeightPct(52)
-  }, [title])
+    setHeightPct(halfPct)
+  }, [title, halfPct])
 
   function onPointerDown(e: React.PointerEvent) {
     drag.current = { startY: e.clientY, startPct: heightPct }
@@ -29,11 +38,11 @@ export default function BottomSheet({ title, children }: { title: string; childr
     if (!drag.current) return
     drag.current = null
     setHeightPct((h) => {
-      if (h < 32) {
+      if (h < halfPct - 14) {
         setSheetTab(null)
-        return 52
+        return halfPct
       }
-      return h < 68 ? 52 : 88
+      return h < 68 ? halfPct : 88
     })
   }
 

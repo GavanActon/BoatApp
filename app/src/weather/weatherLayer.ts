@@ -9,8 +9,12 @@ import {
   fetchGridForecast,
   GRID_SHAPE,
   hourIndexAt,
+  OUTLOOK_FROM_H,
+  OUTLOOK_TO_H,
   type GridCell,
   type GridForecast,
+  type RouteForecast,
+  type RoutePointWx,
 } from './openMeteo'
 
 /**
@@ -84,20 +88,24 @@ function addLayers(map: MlMap) {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 26, 11, 64],
       'circle-blur': 1.1,
       'circle-opacity': 0.55,
+      // the sea-state ramp's own hues (weather/seaState.ts), with alpha —
+      // the blobs, the strip and the lanes must tell one colour story
       'circle-color': [
         'interpolate',
         ['linear'],
         ['coalesce', ['get', 'wave'], 0],
         0,
-        'rgba(30, 90, 140, 0.0)',
+        'rgba(185, 239, 173, 0.0)',
         0.3,
-        'rgba(63, 160, 220, 0.45)',
+        'rgba(127, 220, 106, 0.4)',
         0.8,
-        'rgba(120, 220, 170, 0.5)',
+        'rgba(242, 197, 61, 0.5)',
         1.5,
-        'rgba(255, 209, 102, 0.55)',
-        2.5,
-        'rgba(255, 107, 107, 0.6)',
+        'rgba(233, 110, 63, 0.55)',
+        2.2,
+        'rgba(199, 79, 134, 0.6)',
+        3.0,
+        'rgba(123, 45, 143, 0.65)',
       ],
     },
   })
@@ -196,6 +204,9 @@ interface Sample {
   gust: number
   dir: number
   wave: number | null
+  period: number | null
+  precip: number | null
+  water: number | null
 }
 
 /**
@@ -224,6 +235,12 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
   let v = 0
   let wave = 0
   let waveW = 0
+  let period = 0
+  let periodW = 0
+  let water = 0
+  let waterW = 0
+  let precip = 0
+  let precipW = 0
   for (const [c, w] of corners) {
     if (!c || !w) continue
     const kn = c.windKn[i] ?? 0
@@ -237,6 +254,23 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
       wave += h * w
       waveW += w
     }
+    // optional-chained: a grid cached before periods were fetched has no array
+    const p = c.wavePeriodS?.[i]
+    if (p != null) {
+      period += p * w
+      periodW += w
+    }
+    // optional-chained: a grid cached before rain chance was fetched has no array
+    const wt = c.waterTempC?.[i]
+    if (wt != null) {
+      water += wt * w
+      waterW += w
+    }
+    const pr = c.precipProbPct?.[i]
+    if (pr != null) {
+      precip += pr * w
+      precipW += w
+    }
   }
   return {
     wind,
@@ -244,6 +278,9 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
     dir: ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360,
     // a partly-covered corner set still gives a height, just from what it had
     wave: waveW > 0 ? wave / waveW : null,
+    period: periodW > 0 ? period / periodW : null,
+    water: waterW > 0 ? water / waterW : null,
+    precip: precipW > 0 ? precip / precipW : null,
   }
 }
 
@@ -338,6 +375,17 @@ function render(map: MlMap) {
 
 let refreshing: Promise<{ fetchedAt: number; stale: boolean } | null> | null = null
 
+// The grid is module state, not a store, so nothing tells a reader when it
+// lands. The spot badges on the chart need exactly that moment — their
+// numbers come out of this grid — so they register here rather than polling.
+const gridListeners = new Set<() => void>()
+
+/** Run `cb` every time a (re)fetched grid lands. Returns the unsubscribe. */
+export function onWeatherGrid(cb: () => void): () => void {
+  gridListeners.add(cb)
+  return () => gridListeners.delete(cb)
+}
+
 export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolean } | null> {
   // share one in-flight fetch across callers (strip taps, panel open)
   refreshing ??= (async () => {
@@ -349,6 +397,7 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
         addLayers(map)
         render(map)
       })
+      for (const cb of gridListeners) cb()
       return { fetchedAt: g.fetchedAt, stale }
     } catch {
       return null
@@ -369,12 +418,45 @@ export interface GridConditions {
   windDir: number
   waveM: number | null
   wavePeriodS: number | null
+  /** Chance of precipitation, 0–100. Null for a grid cached before it was fetched. */
+  precipProbPct: number | null
+  waterTempC: number | null
+  /** WMO code from the nearest cell — sky is not a thing to interpolate. */
+  weatherCode: number | null
 }
 
-/** Wind + waves at the grid cell nearest a point, at the hour containing `ms`.
- *  Null until the grid has loaded — ensureWeatherGrid() populates it. */
+/**
+ * Wind + waves at a point, at the hour containing `ms`.
+ *
+ * Interpolated across the lattice rather than snapped to the nearest cell:
+ * cells are ~13 x 15 km, so two spots on opposite sides of a headland can
+ * share one, and nearest-cell would report them as identical water. The
+ * corner weights are null-aware (`sampleField`), so a point near shore reads
+ * from whichever corners have wave data instead of blending in the land
+ * cells' nulls as calm.
+ *
+ * Null until the grid has loaded — ensureWeatherGrid() populates it.
+ */
 export function gridConditionsAt(lon: number, lat: number, ms: number): GridConditions | null {
   if (!grid || grid.time.length === 0) return null
+  const i = hourIndexAt(grid.time, ms)
+  const f = fieldOf(grid)
+  if (f) {
+    const s = sampleField(grid, f, i, lon, lat)
+    if (!Number.isFinite(s.wind)) return null
+    return {
+      windKn: s.wind,
+      gustKn: s.gust,
+      windDir: s.dir,
+      waveM: s.wave,
+      wavePeriodS: s.period,
+      precipProbPct: s.precip,
+      waterTempC: s.water,
+      weatherCode: nearestCell(lon, lat)?.weatherCode?.[i] ?? null,
+    }
+  }
+
+  // cached grid whose shape doesn't match this build — fall back to nearest cell
   const kx = Math.cos((lat * Math.PI) / 180) // a degree of lon is shorter than one of lat
   let best: GridCell | null = null
   let bestD = Infinity
@@ -386,7 +468,6 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
     }
   }
   if (!best) return null
-  const i = hourIndexAt(grid.time, ms)
   const windKn = best.windKn[i]
   if (windKn == null) return null
   return {
@@ -396,6 +477,9 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
     waveM: best.waveM[i] ?? null,
     // optional-chained: a grid cached before periods were fetched has no array
     wavePeriodS: best.wavePeriodS?.[i] ?? null,
+    precipProbPct: best.precipProbPct?.[i] ?? null,
+    waterTempC: best.waterTempC?.[i] ?? null,
+    weatherCode: best.weatherCode?.[i] ?? null,
   }
 }
 
@@ -430,4 +514,149 @@ export function initWeatherLayer() {
       }
     }
   })
+}
+
+/** Nearest grid cell — for the fields bilinear sampling shouldn't blend
+ *  (weather codes, wave direction). */
+function nearestCell(lon: number, lat: number): GridCell | null {
+  if (!grid) return null
+  const kx = Math.cos((lat * Math.PI) / 180)
+  let best: GridCell | null = null
+  let bestD = Infinity
+  for (const c of grid.cells) {
+    const d = ((c.lon - lon) * kx) ** 2 + (c.lat - lat) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = c
+    }
+  }
+  return best
+}
+
+/**
+ * A route forecast built from the cached regional grid — the stand-in when
+ * the per-point route fetch fails (offline, rate-limited). Same shape
+ * planTrip eats, and the grid agrees with the point API to ~0.02 m on this
+ * water, so a run through here loses nothing a skipper would notice. Without
+ * it, a tapped point whose forecast couldn't be fetched got a route with no
+ * segments at all — no lanes, no leg dots, no plan.
+ */
+export function routeForecastFromGrid(pts: [number, number][]): RouteForecast | null {
+  const g = grid
+  if (!g || g.time.length === 0) return null
+  const f = fieldOf(g)
+  const n = g.time.length
+  const points: RoutePointWx[] = pts.map(([lon, lat]) => {
+    const near = nearestCell(lon, lat)
+    const windKn: number[] = new Array(n)
+    const gustKn: number[] = new Array(n)
+    const windDir: number[] = new Array(n)
+    const weatherCode: number[] = new Array(n)
+    const waveM: (number | null)[] = new Array(n)
+    const wavePeriodS: (number | null)[] = new Array(n)
+    const waveDir: (number | null)[] = new Array(n)
+    for (let i = 0; i < n; i++) {
+      if (f) {
+        const smp = sampleField(g, f, i, lon, lat)
+        windKn[i] = Number.isFinite(smp.wind) ? smp.wind : (near?.windKn[i] ?? 0)
+        gustKn[i] = Number.isFinite(smp.gust) ? smp.gust : (near?.gustKn[i] ?? windKn[i])
+        windDir[i] = Number.isFinite(smp.dir) ? smp.dir : (near?.windDir[i] ?? 0)
+        waveM[i] = smp.wave
+        wavePeriodS[i] = smp.period
+      } else {
+        windKn[i] = near?.windKn[i] ?? 0
+        gustKn[i] = near?.gustKn[i] ?? windKn[i]
+        windDir[i] = near?.windDir[i] ?? 0
+        waveM[i] = near?.waveM[i] ?? null
+        wavePeriodS[i] = near?.wavePeriodS?.[i] ?? null
+      }
+      weatherCode[i] = near?.weatherCode?.[i] ?? 0
+      waveDir[i] = near?.waveDir?.[i] ?? null
+    }
+    return { lon, lat, time: g.time, windKn, gustKn, windDir, weatherCode, waveM, wavePeriodS, waveDir }
+  })
+  return { fetchedAt: g.fetchedAt, points }
+}
+
+export interface DayBand {
+  dayStartMs: number
+  /** Biggest sea across the day's boating hours, or null off the grid. */
+  waveMaxM: number | null
+  thunder: boolean
+}
+
+/**
+ * The week at a point, one band per day, straight off the cached grid — the
+ * Places sheet paints these as its ramp gradient. Same boating-hours window
+ * the strip's day chips rate (OUTLOOK_FROM_H–OUTLOOK_TO_H), so a place's band
+ * and its day chip never disagree about the same day.
+ */
+export function weekAt(lon: number, lat: number): DayBand[] {
+  const g = grid
+  const out: DayBand[] = []
+  const t0 = new Date()
+  const near = g ? nearestCell(lon, lat) : null
+  for (let d = 0; d < 7; d++) {
+    const dayStartMs = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + d).getTime()
+    let waveMaxM: number | null = null
+    let thunder = false
+    if (g && g.time.length > 0) {
+      for (let h = OUTLOOK_FROM_H; h <= OUTLOOK_TO_H; h += 2) {
+        const ms = dayStartMs + h * 3600_000
+        if (ms < Date.now() - 3600_000) continue // that water has passed
+        const i = hourIndexAt(g.time, ms)
+        const f = fieldOf(g)
+        const wave = f ? sampleField(g, f, i, lon, lat).wave : (near?.waveM[i] ?? null)
+        if (wave != null) waveMaxM = waveMaxM == null ? wave : Math.max(waveMaxM, wave)
+        if ((near?.weatherCode?.[i] ?? 0) >= 95) thunder = true
+      }
+    }
+    out.push({ dayStartMs, waveMaxM, thunder })
+  }
+  return out
+}
+
+export interface DayRange {
+  windLoKn: number | null
+  windHiKn: number | null
+  waveLoM: number | null
+  waveHiM: number | null
+}
+
+/**
+ * The day's spread at a point — the low and high of wind and sea across the
+ * boating hours, off the cached grid. The Places rows quote these as the
+ * "important numbers" over their colour band; hours already sailed today
+ * don't count, the same rule the week bands use.
+ */
+export function dayRangeAt(lon: number, lat: number, dayStartMs: number): DayRange {
+  const g = grid
+  const out: DayRange = { windLoKn: null, windHiKn: null, waveLoM: null, waveHiM: null }
+  if (!g || g.time.length === 0) return out
+  const f = fieldOf(g)
+  const near = nearestCell(lon, lat)
+  for (let h = OUTLOOK_FROM_H; h <= OUTLOOK_TO_H; h += 2) {
+    const ms = dayStartMs + h * 3600_000
+    if (ms < Date.now() - 3600_000) continue
+    const i = hourIndexAt(g.time, ms)
+    let wind: number | null = null
+    let wave: number | null = null
+    if (f) {
+      const smp = sampleField(g, f, i, lon, lat)
+      wind = Number.isFinite(smp.wind) ? smp.wind : null
+      wave = smp.wave
+    } else {
+      wind = near?.windKn[i] ?? null
+      wave = near?.waveM[i] ?? null
+    }
+    if (wind != null) {
+      out.windLoKn = out.windLoKn == null ? wind : Math.min(out.windLoKn, wind)
+      out.windHiKn = out.windHiKn == null ? wind : Math.max(out.windHiKn, wind)
+    }
+    if (wave != null) {
+      out.waveLoM = out.waveLoM == null ? wave : Math.min(out.waveLoM, wave)
+      out.waveHiM = out.waveHiM == null ? wave : Math.max(out.waveHiM, wave)
+    }
+  }
+  return out
 }

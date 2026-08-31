@@ -3,13 +3,13 @@ import { useAppStore } from '../../state/appStore'
 import { speedUnitLabel, windSpeed } from '../../units'
 import { floorHourMs, isToday, startOfDayMs } from '../../time'
 import {
-  conditionFor,
   dayHours,
   formatPeriod,
   nextHours,
   skyLabel,
   type PointForecast,
 } from '../../weather/openMeteo'
+import { seaColor } from '../../weather/seaState'
 import { IconWindArrow } from '../icons'
 
 /**
@@ -63,7 +63,7 @@ export default function HourlyDetail({
         <span className="hd-right">Temp · Sky</span>
       </div>
       {rows.map((r, k) => {
-        const rough = conditionFor(r.windKn, r.gustKn, r.waveM) === 'rough'
+        // the wave number wears the ramp; nothing here grades the hour
         const selected = planHourMs != null && r.time.getTime() === planHourMs
         return (
           <div className={`hd-row${selected ? ' hd-selected' : ''}`} key={k}>
@@ -72,16 +72,16 @@ export default function HourlyDetail({
                 ? 'Now'
                 : r.time.toLocaleTimeString(undefined, { hour: 'numeric' })}
             </span>
-            <span className={rough ? 'hd-wind warn' : 'hd-wind'}>
+            <span className="hd-wind">
               <IconWindArrow deg={r.windDir + 180} size={14} />
               <b className="numeral">{windSpeed(windUnit, r.windKn)}</b> {speedUnitLabel(windUnit)}{' '}
               {compass(r.windDir)}
             </span>
             <span className="hd-gust numeral">{windSpeed(windUnit, r.gustKn)}</span>
-            <span className={rough ? 'hd-wave warn' : 'hd-wave'}>
+            <span className="hd-wave">
               {r.waveM != null ? (
                 <>
-                  <b className="numeral">{r.waveM.toFixed(1)}</b> m
+                  <b className="numeral" style={{ color: seaColor(r.waveM) }}>{r.waveM.toFixed(1)}</b> m
                   {showPeriod && formatPeriod(r.wavePeriodS) && (
                     <em className="numeral"> {formatPeriod(r.wavePeriodS)}</em>
                   )}

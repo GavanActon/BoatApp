@@ -2,11 +2,13 @@
    Sandies — component styles
    ============================================================ */
 
-/* one traffic light everywhere: hour cells, day chips, verdicts, windows */
+/* One square language everywhere (§0.5): ~6 px tiles, ~5 px rows. The pill
+   era's 999px radii are gone; the circular map FABs are chart furniture and
+   exempt. The old --cond-good/mod/rough traffic light is retired — magnitude
+   colour comes from the sea-state ramp, inline (§1.2). */
 :root {
-  --cond-good: #59e0b8;
-  --cond-mod: #ffb454;
-  --cond-rough: #ff6b6b;
+  --r-tile: 6px;
+  --r-row: 5px;
 }
 
 .app {
@@ -63,7 +65,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border-radius: var(--r-md);
+  border-radius: 8px;
   animation: rise-in 0.25s ease;
 }
 
@@ -78,6 +80,7 @@
 }
 
 .wxday {
+  position: relative; /* anchors the droplet/⚡ corner marks */
   flex: 1;
   min-width: 0;
   display: flex;
@@ -86,7 +89,7 @@
   justify-content: center;
   gap: 1px;
   padding: 3px 0 4px;
-  border-radius: 7px;
+  border-radius: var(--r-tile);
   border-top: 3px solid transparent;
   font-size: 9.5px;
   font-weight: 700;
@@ -118,10 +121,6 @@
 .wxday-on .wxday-wx svg,
 .wxday-on .wxday-wx b {
   color: var(--c-accent);
-}
-
-.wxday.wx-na {
-  opacity: 0.4;
 }
 
 .wxday-on {
@@ -160,6 +159,7 @@
 }
 
 .wxcell {
+  position: relative; /* anchors the thunder corner mark */
   flex: 1;
   min-width: 0;
   display: flex;
@@ -167,7 +167,7 @@
   align-items: center;
   gap: 2px;
   padding: 5px 0 6px;
-  border-radius: 9px;
+  border-radius: var(--r-tile);
   border-top: 3px solid transparent;
   color: var(--c-text-dim);
   font-size: 10px;
@@ -208,35 +208,32 @@
   margin: 0 1.5px;
 }
 
-.wx-good {
-  border-top-color: rgba(89, 224, 184, 0.75);
-  background: rgba(89, 224, 184, 0.07);
+/* Hour and day cells take their border colour from the sea-state ramp,
+   inline — see WeatherStrip. The good/amber/rough classes that used to live
+   here graded your trip, which is the thing the ramp replaced. */
+
+/* Rain and lightning ride the cells as corner MARKS, not rows (§0.6): the
+   strip is the app's densest surface and its height is spoken for. ⚡ is
+   amber — the loud one — and never the red reserved for issued warnings. */
+.wx-bolt {
+  font-style: normal;
+  color: var(--c-warn);
 }
 
-.wx-mod {
-  border-top-color: rgba(255, 180, 84, 0.85);
-  background: rgba(255, 180, 84, 0.1);
+.wxday-marks {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 8px;
+  line-height: 1;
 }
 
-.wx-mod b {
-  color: var(--cond-mod);
-}
-
-.wx-rough {
-  border-top-color: rgba(255, 107, 107, 0.9);
-  background: rgba(255, 107, 107, 0.12);
-}
-
-.wx-rough b {
-  color: var(--cond-rough);
-}
-
-/* An hour the trip sweep can't rate as a departure (outside the 6a-8p
-   departure window, beyond the forecast). The wind and waves there are still
-   real numbers worth reading, so nothing dims — the missing verdict stripe
-   and tint are the cue on their own. */
-.wxcell.wx-na {
-  border-top-color: var(--c-border);
+.wxcell-bolt {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  font-size: 8px;
+  line-height: 1;
 }
 
 .wx-active {
@@ -262,7 +259,7 @@
 
 .chip {
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-tile);
   font-size: 12px;
   font-weight: 600;
   background: var(--c-surface-heavy);
@@ -323,7 +320,7 @@
   display: flex;
   gap: 2px;
   padding: 4px;
-  border-radius: 999px;
+  border-radius: 8px;
 }
 
 .tab {
@@ -332,7 +329,7 @@
   align-items: center;
   gap: 1px;
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: var(--r-tile);
   color: var(--c-text-dim);
   font-size: 10px;
   font-weight: 600;
@@ -348,7 +345,7 @@
 .instruments {
   display: flex;
   align-items: center;
-  border-radius: var(--r-lg);
+  border-radius: 8px;
   padding: 10px 14px;
   gap: 10px;
 }
@@ -392,7 +389,7 @@
   align-items: center;
   gap: 7px;
   padding: 10px 14px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-tile);
   background: rgba(255, 107, 107, 0.12);
   border: 1px solid rgba(255, 107, 107, 0.3);
   color: #ff9d9d;
@@ -420,9 +417,9 @@
 }
 
 .rec-btn.recording {
-  background: rgba(255, 107, 107, 0.22);
-  border-color: rgba(255, 107, 107, 0.55);
-  color: #ffc4c4;
+  background: rgba(89, 224, 184, 0.16);
+  border-color: rgba(89, 224, 184, 0.5);
+  color: var(--c-track);
 }
 
 .rec-btn.go {
@@ -541,7 +538,7 @@
   right: 0;
   bottom: 0;
   z-index: 20;
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-radius: 10px 10px 0 0;
   border-bottom: none;
   display: flex;
   flex-direction: column;
@@ -774,6 +771,18 @@
   padding-top: 0;
 }
 
+/* a row that DOES something rather than setting something — the icon on the
+   right is its face, wearing the wind's colour */
+.row-action {
+  width: 100%;
+  text-align: left;
+}
+
+.row-action svg {
+  color: var(--c-accent);
+  flex-shrink: 0;
+}
+
 .layer-opacity input[type='range'] {
   width: 55%;
   appearance: none;
@@ -812,7 +821,7 @@
   letter-spacing: 0;
   margin-left: 8px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--r-row);
   font-size: 11px;
   background: rgba(126, 178, 224, 0.12);
   color: var(--c-text-dim);
@@ -956,12 +965,123 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- 7-day outlook rows (the weather tab's headline) ---------- */
+
+.sevenday {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+/* Day name spans both lines; the numbers sit across the top and the verdict
+   runs under them, so a thumb scroll reads down one column of days and one
+   column of go/no-go without stopping on either. */
+.sd-row {
+  display: grid;
+  grid-template-columns: 50px 1fr auto auto;
+  grid-template-areas:
+    'day sky wind wave'
+    'day note note note';
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: var(--r-row);
+  border-left: 3px solid transparent;
+  color: var(--c-text-dim);
+}
+
+.sd-on {
+  background: var(--c-accent-dim);
+}
+
+.sd-on .sd-day b {
+  color: var(--c-accent);
+}
+
+.sd-row b {
+  color: var(--c-text);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* the second number of a pair — the day's low, the unit, the wave's metres —
+   half a step down so the one that matters reads first */
+.sd-row em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--c-text-faint);
+}
+
+.sd-day {
+  grid-area: day;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sd-day em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--c-text-faint);
+}
+
+.sd-sky {
+  grid-area: sky;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sd-sky svg {
+  color: var(--c-text-faint);
+}
+
+.sd-wind {
+  grid-area: wind;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.sd-wind svg {
+  color: var(--c-text-faint);
+}
+
+.sd-wave {
+  grid-area: wave;
+  min-width: 42px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sd-note {
+  grid-area: note;
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the sea-state word, wearing its own ramp colour (inline, from seaColor) */
+.sd-note b.sd-verdict {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
 /* ---------- offline panel ---------- */
 
 .bundle {
   background: rgba(126, 178, 224, 0.06);
   border: 1px solid var(--c-border);
-  border-radius: var(--r-md);
+  border-radius: 8px;
   padding: 14px;
   margin-top: 8px;
   display: flex;
@@ -996,7 +1116,7 @@
   justify-content: center;
   gap: 8px;
   padding: 12px;
-  border-radius: var(--r-md);
+  border-radius: 7px;
   background: var(--c-accent);
   color: #06253a;
   font-size: 15px;
@@ -1062,21 +1182,13 @@
   border-color: rgba(63, 200, 255, 0.4);
 }
 
-.dest-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 0 12px;
-  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
-}
-
 .panel-section-first {
   margin-top: 2px;
 }
 
 /* invitation to keep a map-picked start around */
 .dest-save-start {
-  color: var(--cond-good);
+  color: var(--c-track);
   border-style: dashed;
   border-color: rgba(89, 224, 184, 0.45);
 }
@@ -1086,7 +1198,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--r-tile);
   font-size: 13.5px;
   font-weight: 600;
   color: var(--c-text-dim);
@@ -1094,20 +1206,9 @@
   border: 1px solid transparent;
 }
 
-.dest-chip.dest-on {
-  color: var(--c-accent);
-  background: var(--c-accent-dim);
-  border-color: rgba(63, 200, 255, 0.45);
-}
-
 .dest-pick {
   border-style: dashed;
   border-color: var(--c-border-strong);
-}
-
-.dest-saved svg {
-  color: var(--c-warn);
-  flex-shrink: 0;
 }
 
 .trip-name-input {
@@ -1120,107 +1221,6 @@
   font-weight: 600;
   padding: 0 0 2px;
   outline: none;
-}
-
-.stepper {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.stepper b {
-  min-width: 52px;
-  text-align: center;
-  font-size: 17px;
-  color: var(--c-text);
-}
-
-.stepper b span {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--c-text-dim);
-  margin-left: 2px;
-}
-
-.stepper .icon-btn {
-  width: 34px;
-  height: 34px;
-}
-
-.verdict {
-  margin-top: 14px;
-  border-radius: var(--r-md);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  border: 1px solid var(--c-border);
-  background: rgba(126, 178, 224, 0.06);
-}
-
-.verdict-go {
-  border-color: rgba(89, 224, 184, 0.4);
-  background: rgba(89, 224, 184, 0.08);
-}
-
-.verdict-caution {
-  border-color: rgba(255, 180, 84, 0.4);
-  background: rgba(255, 180, 84, 0.08);
-}
-
-.verdict-nogo {
-  border-color: rgba(255, 107, 107, 0.45);
-  background: rgba(255, 107, 107, 0.1);
-}
-
-.verdict-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.verdict-head b {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.verdict-go .verdict-head b {
-  color: var(--c-track);
-}
-
-.verdict-caution .verdict-head b {
-  color: var(--c-warn);
-}
-
-.verdict-nogo .verdict-head b {
-  color: var(--c-danger);
-}
-
-.verdict p {
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--c-text);
-}
-
-.verdict-warn {
-  color: var(--c-warn) !important;
-  font-weight: 600;
-}
-
-.verdict-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  font-size: 12.5px;
-  color: var(--c-text-dim);
-  padding-top: 2px;
-}
-
-.verdict-facts b {
-  color: var(--c-text);
 }
 
 .trip-table {
@@ -1244,27 +1244,6 @@
   border-bottom: none;
 }
 
-.trip-good {
-  border-left-color: rgba(89, 224, 184, 0.75);
-}
-
-.trip-mod {
-  border-left-color: rgba(255, 180, 84, 0.85);
-}
-
-.trip-mod .hd-wind b,
-.trip-mod .hd-wave b {
-  color: var(--c-warn);
-}
-
-.trip-rough {
-  border-left-color: rgba(255, 107, 107, 0.9);
-}
-
-.trip-rough .hd-wind b,
-.trip-rough .hd-wave b {
-  color: var(--c-danger);
-}
 
 .trip-row b {
   color: var(--c-text);
@@ -1314,46 +1293,6 @@
   color: var(--c-accent);
 }
 
-.trip-live {
-  font-size: 12px;
-  color: var(--c-text-dim);
-  border-top: 1px solid rgba(126, 178, 224, 0.12);
-  padding-top: 8px;
-}
-
-.trip-start {
-  margin-top: 16px;
-}
-
-.btn-stop {
-  background: rgba(255, 107, 107, 0.85);
-  color: #2a0b10;
-}
-
-.trip-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.btn-ghost {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 12px;
-  border-radius: var(--r-md);
-  background: var(--c-accent-dim);
-  color: var(--c-accent);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.btn-ghost.danger {
-  background: rgba(255, 107, 107, 0.1);
-  color: var(--c-danger);
-}
 
 .trip-name {
   background: none;
@@ -1388,68 +1327,9 @@
   border-radius: 6px;
 }
 
-/* ---------- disclosure: configuration & admin fold away ---------- */
 
-.disc {
-  border-top: 1px solid rgba(126, 178, 224, 0.08);
-}
+/* small round ± steppers — limits, cruise speed */
 
-.disc:first-child {
-  border-top: none;
-}
-
-.disc-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 4px;
-  text-align: left;
-}
-
-.disc-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--c-text-dim);
-  white-space: nowrap;
-}
-
-.disc-sum {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--c-text-faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.disc-chevron {
-  flex-shrink: 0;
-  color: var(--c-text-faint);
-  transition: transform 0.2s;
-}
-
-.disc-open .disc-chevron {
-  transform: rotate(180deg);
-}
-
-.disc-open .disc-title {
-  color: var(--c-text);
-}
-
-.disc-body {
-  padding: 0 0 8px;
-}
-
-/* ± nudgers on the verdict card's "leaving" fact */
-
-.fact-leave {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 
 .nudge {
   width: 24px;
@@ -1462,18 +1342,6 @@
   flex-shrink: 0;
 }
 
-/* a non-green verdict card points at the week's best alternative */
-
-.verdict-better {
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(89, 224, 184, 0.12);
-  border: 1px solid rgba(89, 224, 184, 0.35);
-  color: var(--cond-good);
-}
 
 .icon-btn:disabled {
   opacity: 0.35;
@@ -1483,11 +1351,13 @@
 
 .tripbuilder {
   align-self: stretch;
-  border-radius: var(--r-md);
-  padding: 10px 12px 12px;
+  border-radius: 8px;
+  padding: 8px 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* tight on purpose: the rest card must stay under ~35% of the screen so
+     the chart keeps its dominance (§2.3) */
+  gap: 6px;
   animation: rise-in 0.25s ease;
 }
 
@@ -1506,38 +1376,6 @@
   font-size: 14.5px;
   font-weight: 700;
   color: var(--c-text);
-}
-
-.tb-names {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-
-.tb-names span {
-  color: var(--c-text-dim);
-  font-weight: 600;
-}
-
-.tb-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.tb-label {
-  width: 38px;
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--c-text-faint);
 }
 
 /* one swipeable line of chips per question — the map stays in view */
@@ -1570,21 +1408,6 @@
   color: var(--c-text);
 }
 
-.tb-verdict {
-  font-weight: 700;
-}
-
-.tb-go {
-  color: var(--cond-good);
-}
-
-.tb-caution {
-  color: var(--cond-mod);
-}
-
-.tb-nogo {
-  color: var(--cond-rough);
-}
 
 .tb-dim {
   color: var(--c-text-faint);
@@ -1601,19 +1424,6 @@
   margin-top: 2px;
 }
 
-/* the planned card's verdict line: the ± nudgers ride inside it */
-
-.tb-verdict {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.tb-back {
-  color: var(--c-text-dim);
-  font-weight: 600;
-}
 
 /* sliders button while its setup card is up */
 
@@ -1623,50 +1433,16 @@
   border-radius: 8px;
 }
 
-/* under way, the card collapses to one live line — tap it for the drawer */
+/* under way, the card collapses to the live leg — swipe up for what's left */
 
 .tripcard-live {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
+  /* the live leg stacks: heading, the two numbers, then the far end */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   border-left: 4px solid transparent;
 }
 
-.tc-live-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2px 0;
-  text-align: left;
-  font-size: 13.5px;
-  color: var(--c-text-dim);
-}
-
-.tc-live-body b {
-  color: var(--c-text);
-  font-size: 14.5px;
-  white-space: nowrap;
-}
-
-.tc-live-body span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tc-go {
-  border-left-color: var(--cond-good);
-}
-
-.tc-caution {
-  border-left-color: var(--cond-mod);
-}
-
-.tc-nogo {
-  border-left-color: var(--cond-rough);
-}
 
 /* ---------- measuring tool ---------- */
 
@@ -1694,13 +1470,751 @@
   opacity: 0.35;
 }
 
-/* the trip-setup card docked above the trip card */
+/* ---------- the dock bar: who the screen is about (§2.3) ---------- */
 
-.tripsetup {
-  max-height: 45dvh;
-  overflow-y: auto;
+/* The subject header — and at rest with no plan, nearly the whole card: the
+   strip above already carries every condition, so the dock only names the
+   subject and gets out of the chart's way. */
+.dock-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 2px;
 }
 
-.tripsetup .row {
-  padding: 8px 0;
+.dock-head .who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+/* the plan's day, right beside the name — a fact, not a countdown (§0.4) */
+.dock-head .head-day {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+}
+
+.dock-head .meta {
+  font-size: 10.5px;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+/* a spot header carries speed + ✕; push them to the right edge */
+.dock-head .speed-chip {
+  margin-left: auto;
+}
+
+.dock-head .head-x {
+  width: 26px;
+  height: 26px;
+}
+
+/* thunder due today: the one loud thing (§0.6) — amber, never the red that
+   belongs to issued warnings (§1.3) */
+.storm-chip {
+  margin-left: auto;
+  border: 1px solid rgba(255, 180, 84, 0.55);
+  background: rgba(255, 180, 84, 0.1);
+  border-radius: var(--r-row);
+  padding: 1px 7px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-warn);
+  white-space: nowrap;
+}
+
+/* with the ✕ group present, the storm chip rides between name and controls */
+.storm-chip + .speed-chip {
+  margin-left: 0;
+}
+
+/* the quiet statement of a future plan, where the button would be (§0.4) */
+.plan-note {
+  padding: 4px 0 1px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+/* ---------- raised: the note, the run, the jump list (L2) ---------- */
+
+/* tiny uppercase section caps inside the raised card */
+.cap-row {
+  margin: 10px 2px 4px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+/* the hand-written exposure note — the one sentence allowed, L2 only (§1.5) */
+.spot-note-l2 {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--c-text-dim);
+}
+
+/* the jump list: the other spots as square tiles, calmest first (§3.3) */
+/* "inside the limits you set" — quiet, and never present until they're set */
+.spot-clear {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-track);
+  flex: none;
+}
+
+.limits-set {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--c-accent);
+  padding: 4px 2px;
+}
+
+.limits-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border);
+}
+
+.limits-lab {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.limits-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+}
+
+/* ---------- the trip window: two chips, the strip as their keypad ---------- */
+
+.win-chips {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.win-chip {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-tile);
+  padding: 5px 8px 6px;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.win-chip:disabled {
+  opacity: 0.45;
+}
+
+/* armed: the strip's hour cells become this chip's keypad */
+.win-chip.win-armed {
+  border-color: var(--c-accent);
+  background: var(--c-accent-dim);
+  box-shadow: 0 0 0 3px rgba(63, 200, 255, 0.14);
+}
+
+.win-k {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.win-chip.win-armed .win-k {
+  color: var(--c-accent);
+}
+
+.win-v {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* time there — derived from the window, never set */
+.win-mid {
+  flex: none;
+  width: 62px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  font-size: 12.5px;
+}
+
+.win-mid.win-tight {
+  color: var(--c-warn);
+}
+
+.win-mid.win-tight .win-k {
+  color: var(--c-warn);
+}
+
+/* cruise speed, in place on the card rather than behind a popover */
+.speed-chip {
+  font-size: 11.5px;
+  color: var(--c-text-dim);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-row);
+  padding: 2px 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.speed-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  border: 1px solid var(--c-accent);
+  background: var(--c-accent-dim);
+  border-radius: var(--r-row);
+  padding: 2px 8px;
+}
+
+/* while a chip is armed, the hours that would still make a window stand out
+   and the ones that wouldn't stand down */
+.wxcell.wx-armable {
+  border-color: var(--c-accent);
+  border-style: dashed;
+}
+
+.wxcell.wx-unarmable {
+  opacity: 0.32;
+}
+
+.wxstrip-arm {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--c-accent);
+  text-align: center;
+  padding: 2px 0;
+}
+
+/* ---------- the live leg: time left, arrival, the far end ---------- */
+
+.leg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.leg-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+/* End trip, rehomed from the retired route drawer. A quiet chip in the head
+   row: the space-between layout parks it mid-row, well clear of the hide ✕,
+   so a miss on either lands on nothing. */
+.leg-end {
+  padding: 3px 12px;
+  border-radius: var(--r-row);
+  border: 1px solid var(--c-border-strong);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-dim);
+}
+
+.leg-body {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.leg-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+/* time left dominates — the only number that works at the wheel */
+.leg-big {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+}
+
+.leg-big small {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--c-text-dim);
+}
+
+.leg-arr {
+  padding-bottom: 3px;
+}
+
+.leg-k {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.leg-v {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* a number moved — amber, because nothing is wrong, it just isn't the plan */
+.leg-late {
+  color: var(--c-warn);
+}
+
+.leg-drift {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--c-warn);
+  border: 1px solid rgba(255, 180, 84, 0.5);
+  border-radius: var(--r-row);
+  padding: 0 5px;
+  margin-left: 5px;
+  vertical-align: 2px;
+}
+
+/* the far end: context, below a divider, never something you steer by */
+.leg-far {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--c-border);
+}
+
+.leg-far .leg-k {
+  display: inline;
+}
+
+.leg-far .leg-v {
+  font-size: 13px;
+}
+
+.leg-far-note {
+  font-size: 11px;
+  color: var(--c-text-dim);
+}
+
+.leg-note {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--c-warn);
+  line-height: 1.4;
+}
+
+.leg-note.leg-dim {
+  color: var(--c-text-faint);
+}
+
+/* ahead of the promise — worth knowing, but not a warning */
+.leg-drift.leg-early {
+  color: var(--c-track);
+  border-color: rgba(89, 224, 184, 0.5);
+}
+
+/* ---------- swipe up for more, with a real button for everyone else ---------- */
+
+.grab {
+  display: block;
+  width: 100%;
+  padding: 3px 0 5px;
+}
+
+.grab i {
+  display: block;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  margin: 0 auto;
+  background: var(--c-border-strong);
+}
+
+.grab:active i {
+  background: var(--c-accent);
+}
+
+/* the card's only action is Start trip now — Details moved to the swipe.
+   Slimmer than the panel version: the dock card is fighting for chart room. */
+.tb-actions .btn-primary:only-child {
+  flex: 1;
+  padding: 9px;
+  font-size: 14px;
+}
+
+/* ---------- one dock surface, two detents (§2.3) ---------- */
+
+/* Raised, the SAME card grows — this replaced the route drawer that used to
+   open on top of it. The chrome above the scroll area (head, chips, facts)
+   stays put; everything the raise revealed scrolls inside, and the cap keeps
+   a band of chart visible even at full height. */
+.tripbuilder.tb-raised {
+  /* stops short of the outlook strip: it stays visible because it is still
+     the window chips' keypad while the card is up */
+  max-height: calc(62vh - var(--sab));
+}
+
+.tb-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--c-border);
+  margin-top: 2px;
+  padding-top: 4px;
+}
+
+/* ---------- saved-trip admin: the tail of the raised list ---------- */
+
+.saved-pick {
+  padding: 8px 0 2px;
+}
+
+.saved-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.saved-head .panel-section {
+  margin-top: 10px;
+}
+
+.saved-actions {
+  display: inline-flex;
+  gap: 14px;
+  font-size: 12px;
+}
+
+.linklike.danger {
+  color: var(--c-danger);
+}
+
+
+/* §6.5 — motion stops for anyone who asked for less of it. The map's comet
+   already checked this in JS; the chrome did not, so the record dot went on
+   pulsing and every panel kept sliding in. That also broke "one thing moves":
+   under way, the comet and the dot were both going. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* The MapLibre attribution sat under the tab dock and wrapped into three
+   broken lines on every screen. Lift it clear of the bottom chrome. */
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  bottom: calc(var(--barh, 0px) + var(--sab) + 6px);
+}
+
+.maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0 8px 0 8px;
+}
+
+/* ============================== Places sheet ==============================
+   WHICH PLACE, superseding the dock's old "Here" bar. Rows are square tiles
+   in a column: name (+ the hand-written note), the one badge number on the
+   ramp, a limits dot. No forecasts here — the strip owns the days. */
+
+.places-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.place-here {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-tile);
+  background: rgba(16, 31, 47, 0.45);
+  padding: 7px 9px 8px;
+  color: var(--c-text);
+  text-align: left;
+}
+
+.place-here .pg-top {
+  gap: 8px;
+}
+
+.place-here .nm {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.place-here .meta {
+  color: var(--c-text-dim);
+  font-size: 11.5px;
+  margin-left: auto;
+}
+
+.place-here b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.place-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.place-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.place-row .trip-name-input {
+  flex: 1;
+}
+
+.place-current .place-go {
+  outline: 1.5px solid var(--c-accent);
+}
+
+.place-go {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 3px;
+  /* the row and its route button are one unit — same height, by decree */
+  min-height: 48px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-tile);
+  background: rgba(16, 31, 47, 0.45);
+  padding: 5px 9px;
+  color: var(--c-text);
+  text-align: left;
+}
+
+.pg-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.place-go .nm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pg-top > b {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* the second line: how far, and what the water is doing now */
+.pg-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+
+.pg-info b {
+  font-weight: 700;
+}
+
+/* the sky, top-right of the row: icon + droplet + bolt when earned */
+.pg-sky {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--c-text-dim);
+}
+
+.pg-sky em {
+  font-style: normal;
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* the route button: the one action a row offers besides looking — sized for
+   a thumb on a moving boat */
+.place-route {
+  align-self: stretch;
+  width: 48px;
+  min-height: 48px;
+  flex: none;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-tile);
+  background: rgba(16, 31, 47, 0.45);
+  color: var(--c-accent);
+}
+
+.place-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--c-text-faint);
+  border: 1px dashed var(--c-border);
+  border-radius: var(--r-tile);
+  padding: 7px;
+}
+
+/* the water-tap popup's two square actions: Go explores, Save keeps */
+
+.pp-acts {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.pp-acts button {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 0;
+  border-radius: var(--r-tile);
+  cursor: pointer;
+}
+
+.pp-go {
+  background: var(--c-accent);
+  border: 1px solid var(--c-accent);
+  color: #07141f;
+}
+
+.pp-save {
+  background: transparent;
+  border: 1px solid var(--c-border-strong);
+  color: var(--c-text);
+}
+
+/* the Places sheet's edit mode: one toggle curates the whole list */
+
+.places-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 2px;
+}
+
+.places-tools .linklike {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.place-row-edit {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-tile);
+  background: rgba(16, 31, 47, 0.45);
+  padding: 6px 8px 6px 10px;
+}
+
+.pe-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+
+.pe-name {
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+  padding: 2px 0;
+}
+
+.pe-name.pe-fixed {
+  color: var(--c-text);
+}
+
+.pe-note {
+  text-align: left;
+  font-size: 10.5px;
+  color: var(--c-text-dim);
+  padding: 1px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pe-note.pe-empty {
+  color: var(--c-text-faint);
+  font-style: italic;
+}
+
+.place-row-hidden {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.place-row-edit .trip-name-input {
+  width: 100%;
+}
+
+/* the Offline tab once everything is downloaded: a check and a calm tint —
+   reassurance, not an alert */
+.tab-ready {
+  color: var(--c-accent);
+  opacity: 0.85;
 }

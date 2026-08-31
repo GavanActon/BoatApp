@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { DESTINATIONS } from '../config'
 import type { SavedTrip } from '../tracking/db'
 import type { RouteResult } from './waterRouter'
 import type { TripPlan } from './tripPlan'
@@ -34,8 +33,6 @@ interface RouteState {
   setCruiseKn: (v: number) => void
   stayMin: number // MINIMUM time at destination worth going for (round trips)
   setStayMin: (v: number) => void
-  plannedStayMin: number | null // stay adopted from a trip option; null = just the minimum
-  setPlannedStay: (v: number | null) => void
   backByHour: number | null // latest hour-of-day to be home / off the water; null = no limit
   setBackBy: (h: number | null) => void
 
@@ -50,21 +47,22 @@ interface RouteState {
   picking: 'dest' | 'start' | null
   setPicking: (v: 'dest' | 'start' | null) => void
 
-  // the map-facing trip card — the trip's home on the nav screen: 'choose'
-  // asks where-from/where-to, 'trip' is the planned/under-way card that stays
-  // docked over the map. null = dismissed (the top chip stands in).
-  card: 'choose' | 'trip' | null
-  setCard: (v: 'choose' | 'trip' | null) => void
+  // the map-facing trip card — the trip's home on the nav screen. 'trip' is
+  // the planned/under-way card docked over the map; null = dismissed (the top
+  // chip stands in). With no destination the dock always shows the home card
+  // regardless — there is no separate chooser to be in any more (§2.3).
+  card: 'trip' | null
+  setCard: (v: 'trip' | null) => void
 
   // trip under way (persisted so an iOS PWA reload mid-trip resumes monitoring)
   tripStartedAt: number | null
   tripOrigin: [number, number] | null // where the boat left from, for the ride home
+  // What the trip promised as it cast off, so a slipping arrival has something
+  // honest to be measured against. See legReadout.capturePromise.
+  promisedArriveMs: number | null
+  promisedHomeMs: number | null
   startTrip: (origin: [number, number]) => void
   endTrip: () => void
-
-  // timeline leg expanded to its full-day forecast (index into plan.samples)
-  expandedIdx: number | null
-  setExpandedIdx: (i: number | null) => void
 
   // route dot the top forecast strip is pointed at (one at a time)
   focusPoint: { lon: number; lat: number; label: string } | null
@@ -81,11 +79,42 @@ interface RouteState {
   setPlanning: (v: boolean) => void
 }
 
+/** What actually reaches localStorage — picked off RouteState so partialize
+ *  and migrate can't drift apart. */
+type PersistedTrip = Pick<
+  RouteState,
+  | 'roundTrip'
+  | 'cruiseKn'
+  | 'stayMin'
+  | 'backByHour'
+  | 'destination'
+  | 'startPoint'
+  | 'viaPoints'
+  | 'tripStartedAt'
+  | 'tripOrigin'
+  | 'promisedArriveMs'
+  | 'promisedHomeMs'
+> & { flowV: number }
+
+/**
+ * Which generation of the trip FLOW wrote this storage.
+ *
+ * Not zustand's `version`, and it can't be: zustand only runs `migrate` when
+ * the stored version is already a number, so storage written before any
+ * version existed is handed straight through and never migrated. That is
+ * precisely the storage that needs fixing, so the marker has to live inside
+ * the persisted state where `merge` — which always runs — can see it.
+ */
+const FLOW_V = 1
+
 export const useRouteStore = create<RouteState>()(
   persist(
     (set) => ({
-      // the Sandies out of the box; a persisted trip (or a cleared one) wins on reload
-      destination: { ...DESTINATIONS[0] },
+      // No trip out of the box. The app opens on the WATER — what the spots
+      // are doing — and a route is what you get once you've picked one of
+      // them. Shipping a pre-plotted run to the Sandies answered a question
+      // nobody had asked yet. A persisted trip still wins on reload.
+      destination: null,
       // one trip at a time: a new destination replaces the old trip wholesale,
       // including course points, the focused strip dot and any adopted stay time
       setDestination: (destination) =>
@@ -95,8 +124,6 @@ export const useRouteStore = create<RouteState>()(
           picking: null,
           editing: false, // a new trip is not a course you were part-way through editing
           focusPoint: null,
-          expandedIdx: null,
-          plannedStayMin: null,
         }),
       moveDestination: (lon, lat) =>
         set((s) => (s.destination ? { destination: { ...s.destination, lon, lat } } : {})),
@@ -114,15 +141,14 @@ export const useRouteStore = create<RouteState>()(
         set((s) => ({ viaPoints: s.viaPoints.map((p, i) => (i === idx ? pt : p)) })),
       removeVia: (idx) => set((s) => ({ viaPoints: s.viaPoints.filter((_, i) => i !== idx) })),
       roundTrip: true,
-      setRoundTrip: (roundTrip) => set({ roundTrip, plannedStayMin: null }),
+      setRoundTrip: (roundTrip) => set({ roundTrip }),
       cruiseKn: 15,
       // stored in knots; kept fractional so whole-number km/h and mph steps survive
       setCruiseKn: (v) => set({ cruiseKn: Math.min(45, Math.max(4, v)) }),
+      // the shortest stay the week-long sweep counts as worth going for; the
+      // trip's actual time there comes from the window (appStore.planEndMs)
       stayMin: 90,
-      // changing the minimum drops any option-adopted stay
-      setStayMin: (stayMin) => set({ stayMin, plannedStayMin: null }),
-      plannedStayMin: null,
-      setPlannedStay: (plannedStayMin) => set({ plannedStayMin }),
+      setStayMin: (stayMin) => set({ stayMin }),
       backByHour: 17, // home by 5 pm unless told otherwise
       setBackBy: (backByHour) => set({ backByHour }),
 
@@ -132,17 +158,22 @@ export const useRouteStore = create<RouteState>()(
       picking: null,
       setPicking: (picking) => set({ picking }),
 
-      // the default destination ships with its card showing
+      // the dock is always present; with no destination it rests on the spots
       card: 'trip',
       setCard: (card) => set({ card }),
 
       tripStartedAt: null,
       tripOrigin: null,
+      promisedArriveMs: null,
+      promisedHomeMs: null,
       startTrip: (tripOrigin) => set({ tripStartedAt: Date.now(), tripOrigin }),
-      endTrip: () => set({ tripStartedAt: null, tripOrigin: null }),
-
-      expandedIdx: null,
-      setExpandedIdx: (expandedIdx) => set({ expandedIdx }),
+      endTrip: () =>
+        set({
+          tripStartedAt: null,
+          tripOrigin: null,
+          promisedArriveMs: null,
+          promisedHomeMs: null,
+        }),
 
       focusPoint: null,
       setFocusPoint: (focusPoint) => set({ focusPoint }),
@@ -158,25 +189,53 @@ export const useRouteStore = create<RouteState>()(
     }),
     {
       name: 'sandies-route',
+      /**
+       * v1 moved the app to opening on the spots instead of on a trip.
+       *
+       * Changing the default wasn't enough: every install from before it has
+       * the old shipped trip to the Sandies sitting in its storage, and the
+       * merge below faithfully restores any saved destination — so the app
+       * kept plotting a route nobody had asked for. That destination was
+       * never chosen; it just came with the app. Drop it once.
+       *
+       * This does also clear a trip somebody genuinely picked, which is worth
+       * it: the spots list is the landing state now and any destination is one
+       * tap from it.
+       */
+      version: 1,
+      migrate: (persisted) => persisted as PersistedTrip,
       // the trip itself survives reloads (iOS reloads PWAs on app switch);
       // route + plan are recomputed from these on startup
-      partialize: (s) => ({
+      partialize: (s): PersistedTrip => ({
+        flowV: FLOW_V,
         roundTrip: s.roundTrip,
         cruiseKn: s.cruiseKn,
         stayMin: s.stayMin,
-        plannedStayMin: s.plannedStayMin,
         backByHour: s.backByHour,
         destination: s.destination,
         startPoint: s.startPoint,
         viaPoints: s.viaPoints,
         tripStartedAt: s.tripStartedAt,
         tripOrigin: s.tripOrigin,
+        promisedArriveMs: s.promisedArriveMs,
+        promisedHomeMs: s.promisedHomeMs,
       }),
       // the card isn't persisted: it simply shows whenever a trip came back
       merge: (persisted, current) => {
-        const p = persisted as Partial<RouteState> | undefined
+        const p = persisted as Partial<PersistedTrip> | undefined
         const merged = { ...current, ...p }
-        merged.card = merged.destination ? 'trip' : null
+        if (p && p.flowV !== FLOW_V) {
+          // Storage from before the spots-first flow carries the trip to the
+          // Sandies that used to ship with the app. It was never chosen — it
+          // just came in the box — so restoring it meant every launch plotted
+          // a route nobody asked for. Drop it once. A destination the user
+          // actually picked is one tap away in the spots list.
+          merged.destination = null
+          merged.viaPoints = []
+        }
+        // come back to the trip you had; without one the dock shows the home
+        // card anyway — 'trip' just means "not dismissed"
+        merged.card = 'trip'
         return merged
       },
     },
@@ -195,5 +254,14 @@ export function applySavedTrip(t: SavedTrip) {
   if (t.backBy !== undefined) s.setBackBy(t.backBy)
   s.setStartPoint(t.start ?? null) // trips remember where they launch from
   s.setDestination({ name: t.name, lon: t.lon, lat: t.lat })
+  // after setDestination, which clears the previous trip's focus: the strip
+  // must describe the place you just chose (§0.2), however it was chosen
+  s.setFocusPoint({ lon: t.lon, lat: t.lat, label: t.name })
   if (t.vias?.length) s.setViaPoints(t.vias)
+}
+
+// dev-only handle, the same convention as MapView's window.__map — lets the
+// verify harness read the live plan, which is never persisted
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __route?: unknown }).__route = useRouteStore
 }

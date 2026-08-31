@@ -9,11 +9,16 @@ import { refreshWeatherGrid } from '../../weather/weatherLayer'
 import { IconLocate, IconRefresh } from '../icons'
 import ForecastCharts from './ForecastCharts'
 import HourlyDetail from './HourlyDetail'
+import SevenDay from './SevenDay'
 
 /**
- * Pure forecast reference — the hourly table for the selected day and the
- * 7-day charts, nothing else. Time is picked on the outlook strip (the
- * app-wide planning time); map-overlay toggles live in Layers.
+ * Pure forecast reference, deepest first. The seven days lead — which day is
+ * worth going out is the question the tab gets asked — and picking one drops
+ * the hourly table beneath it into that day. The charts under that are the
+ * same week as a trend, for reading how a change arrives.
+ *
+ * Time is picked here or on the outlook strip (the same app-wide planning
+ * time); map-overlay toggles live in Layers.
  */
 
 function ageLabel(fetchedAt: number): string {
@@ -74,19 +79,10 @@ export default function WeatherPanel() {
 
   return (
     <div className="panel">
-      {forecast && (
-        <>
-          <div className="panel-section">
-            {isToday(selDayMs) ? 'Next 12 hours' : `${dayLabel(selDayMs)} hour by hour`}
-            {spot && <em className="age-badge">at {spot}</em>}
-          </div>
-          <HourlyDetail forecast={forecast} dayStartMs={selDayMs} />
-        </>
-      )}
-
-      <div className="panel-section fc-header">
+      <div className="panel-section panel-section-first fc-header">
         <span>
           7-day forecast
+          {spot && <em className="age-badge">at {spot}</em>}
           {forecast && (
             <em className={stale ? 'age-badge stale' : 'age-badge'}>
               {stale ? `offline · ${ageLabel(forecast.fetchedAt)}` : ageLabel(forecast.fetchedAt)}
@@ -116,9 +112,22 @@ export default function WeatherPanel() {
         </span>
       </div>
 
-      {loading && <div className="empty">Loading forecast…</div>}
+      {loading && !forecast && <div className="empty">Loading forecast…</div>}
       {error && !forecast && <div className="empty">{error}</div>}
-      {forecast && <ForecastCharts forecast={forecast} />}
+
+      {forecast && (
+        <>
+          <SevenDay forecast={forecast} />
+
+          <div className="panel-section">
+            {isToday(selDayMs) ? 'Next 12 hours' : `${dayLabel(selDayMs)} hour by hour`}
+          </div>
+          <HourlyDetail forecast={forecast} dayStartMs={selDayMs} />
+
+          <div className="panel-section">Wind &amp; wave trend</div>
+          <ForecastCharts forecast={forecast} />
+        </>
+      )}
     </div>
   )
 }

@@ -75,6 +75,13 @@ export const IconPlus = (p: IconProps) => (
   </svg>
 )
 
+export const IconPlaces = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+    <path d="M3 6.5 L9 4 L15 6.5 L21 4 V17.5 L15 20 L9 17.5 L3 20 Z" />
+    <path d="M9 4v13.5M15 6.5V20" opacity="0.55" strokeLinecap="round" />
+  </svg>
+)
+
 export const IconPin = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 21.5 C 12 21.5, 5 14.8, 5 9.8 A 7 7 0 0 1 19 9.8 C 19 14.8, 12 21.5, 12 21.5 Z" />
@@ -85,6 +92,13 @@ export const IconPin = (p: IconProps) => (
 export const IconDownload = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5" />
+    <path d="M4 19.5h16" />
+  </svg>
+)
+
+export const IconDownloadDone = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6.5 10.5 11 15l7-8" />
     <path d="M4 19.5h16" />
   </svg>
 )
@@ -218,6 +232,13 @@ export const IconRuler = (p: IconProps) => (
       <rect x="1.6" y="8.5" width="20.8" height="7" rx="1.6" />
       <path d="M6 8.5v3M10 8.5v4M14 8.5v3M18 8.5v4" />
     </g>
+  </svg>
+)
+
+export const IconEdit = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 20l1-4.3L16.4 4.3a1.9 1.9 0 0 1 2.7 0l.6.6a1.9 1.9 0 0 1 0 2.7L8.3 19 4 20Z" />
+    <path d="M14.5 6.2l3.3 3.3" />
   </svg>
 )
 

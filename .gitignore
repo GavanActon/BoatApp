@@ -7,3 +7,6 @@ pipeline/tools/
 *.log
 # Raw CHS NONNA bathymetry (login-gated download, non-navigational license — keep out of the public repo)
 external/
+
+# dev-only Open-Meteo response cache
+app/.om-cache/

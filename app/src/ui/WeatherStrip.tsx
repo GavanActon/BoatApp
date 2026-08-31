@@ -1,24 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { HOME } from '../config'
 import { getMap } from '../map/mapController'
+import { adoptWindow } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
 import type { HourRating } from '../routing/tripPlan'
 import { useAppStore } from '../state/appStore'
 import { dayLabel, durationLabel, floorHourMs, startOfDayMs } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import {
-  conditionFor,
   dailyOutlook,
   dayHours,
   fetchPointForecast,
   formatPeriod,
   nextHours,
   skyLabel,
-  type Condition,
   type HourRow,
   type PointForecast,
 } from '../weather/openMeteo'
 import { speedUnitLabel, windSpeed } from '../units'
+import { seaColor, seaName } from '../weather/seaState'
 import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
 /**
@@ -54,17 +54,18 @@ function hourLabel(d: Date): string {
   return `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`
 }
 
-/** A trip verdict on the day chips wears the same colors as hour conditions. */
-function verdictCond(v: 'go' | 'caution' | 'nogo'): Condition {
-  return v === 'go' ? 'good' : v === 'caution' ? 'mod' : 'rough'
-}
-
 export default function WeatherStrip() {
   const enabled = useAppStore((s) => s.wxStrip)
   const weatherOn = useAppStore((s) => s.layers.weather)
   const setLayer = useAppStore((s) => s.setLayer)
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const setPlanTime = useAppStore((s) => s.setPlanTime)
+  const planEndMs = useAppStore((s) => s.planEndMs)
+  const setPlanWindow = useAppStore((s) => s.setPlanWindow)
+  // set on the trip card; while it's set this strip is that chip's keypad
+  const setPlanPicked = useAppStore((s) => s.setPlanPicked)
+  const armedEnd = useAppStore((s) => s.armedEnd)
+  const setArmedEnd = useAppStore((s) => s.setArmedEnd)
   const showPeriod = useAppStore((s) => s.wavePeriod)
   const windUnit = useAppStore((s) => s.windUnit)
   const online = useAppStore((s) => s.online)
@@ -77,7 +78,6 @@ export default function WeatherStrip() {
   const startPoint = useRouteStore((s) => s.startPoint)
   const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
   const plan = useRouteStore((s) => s.plan)
-  const setPlannedStay = useRouteStore((s) => s.setPlannedStay)
 
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
@@ -129,12 +129,11 @@ export default function WeatherStrip() {
   const tripRated = destination != null && plan != null && plan.days.length > 0
   const days = useMemo(() => {
     if (tripRated) {
-      return plan.days.map((d) => ({
-        dayStartMs: d.dayStartMs,
-        cond: d.best == null ? null : verdictCond(d.best),
-      }))
+      // the chip carries the day, not a grade of it — the outlook's own
+      // conditions decide its colour, the same as when no trip is planned
+      return plan.days.map((d) => ({ dayStartMs: d.dayStartMs }))
     }
-    return outlook
+    return outlook.map((o) => ({ dayStartMs: o.dayStartMs }))
   }, [tripRated, plan, outlook])
 
   const rows: HourRow[] = useMemo(() => {
@@ -158,6 +157,7 @@ export default function WeatherStrip() {
   const planHourMs = planTimeMs == null ? null : floorHourMs(planTimeMs)
 
   function pickDay(dayStartMs: number) {
+    setPlanPicked(true)
     if (dayStartMs === todayMs) {
       setPlanTime(null)
       return
@@ -166,8 +166,7 @@ export default function WeatherStrip() {
     const opts = tripRated ? plan!.days.find((d) => d.dayStartMs === dayStartMs)?.options : undefined
     const best = opts?.find((o) => o.verdict === 'go') ?? opts?.[0]
     if (best) {
-      setPlanTime(best.departMs)
-      setPlannedStay(best.stayMin)
+      adoptWindow(best.departMs, best.stayMin)
     } else {
       setPlanTime(dayStartMs + 9 * 3600_000)
     }
@@ -200,34 +199,38 @@ export default function WeatherStrip() {
           const wx = wxByDay.get(d.dayStartMs)
           const wxCode = wx?.weatherCode ?? null
           const wxTemp = wx?.tempMaxC ?? null
+          // rain and lightning are first-class (§0.6): a droplet on a day
+          // likely to rain, an amber ⚡ on a day that calls thunder — marks,
+          // not new rows, because these cells are the app's densest surface
+          const wet = wx?.precipMaxPct != null && wx.precipMaxPct >= 40
+          const thunder = wx?.thunder === true
           return (
             <button
               key={d.dayStartMs}
-              className={`wxday wx-${d.cond ?? 'na'}${sel ? ' wxday-on' : ''}`}
+              className={`wxday${sel ? ' wxday-on' : ''}`}
+              style={{ borderTopColor: seaColor(wx?.waveMaxM ?? null) }}
               onClick={() => pickDay(d.dayStartMs)}
               role="tab"
               aria-selected={sel}
               aria-label={`${dayLabel(d.dayStartMs)}: ${
-                d.cond == null
-                  ? 'beyond the forecast'
-                  : d.cond === 'good'
-                    ? tripRated
-                      ? 'good day for this trip'
-                      : 'good boating day'
-                    : d.cond === 'mod'
-                      ? 'usable with caution'
-                      : 'rough'
+                wx?.waveMaxM != null ? `${seaName(wx.waveMaxM)}, ${wx.waveMaxM.toFixed(1)} metres` : 'no wave data'
               }${
                 wxCode != null && wxTemp != null
                   ? `, ${skyLabel(wxCode)}, high ${Math.round(wxTemp)} degrees`
                   : ''
-              }`}
+              }${wet ? ', rain likely' : ''}${thunder ? ', thunder' : ''}`}
             >
               <span className="wxday-name">{dayLabel(d.dayStartMs)}</span>
               {wxCode != null && wxTemp != null && (
                 <span className="wxday-wx">
                   <IconSky code={wxCode} size={11} />
                   <b className="numeral">{Math.round(wxTemp)}°</b>
+                </span>
+              )}
+              {(wet || thunder) && (
+                <span className="wxday-marks" aria-hidden="true">
+                  {wet && '💧'}
+                  {thunder && <i className="wx-bolt">⚡</i>}
                 </span>
               )}
             </button>
@@ -251,48 +254,71 @@ export default function WeatherStrip() {
             const rating = tripHours
               ? (ratedAt(cellMs) ?? (isNowCell ? ratedAt(cellMs + 3600_000) : undefined))
               : undefined
-            const cond: Condition | 'na' = tripHours
-              ? isNowCell && planTimeMs == null && plan
-                ? verdictCond(plan.verdict) // the current plan IS "leave now"
-                : rating?.verdict != null
-                  ? verdictCond(rating.verdict)
-                  : 'na'
-              : conditionFor(r.windKn, r.gustKn, r.waveM)
+            // The cell shows the WATER at that hour, on the sea-state ramp.
+            // It used to be recoloured by the trip's verdict for that departure
+            // — the strip grading your options — which is exactly what the ramp
+            // replaced.
             const active = planTimeMs == null ? isNowCell : cellMs === planHourMs
+            // With a chip armed, only the hours that would still leave a
+            // window are offered — so a tap can never produce a nonsense one,
+            // and the other end holds still.
+            const armable =
+              armedEnd === 'out'
+                ? planEndMs == null || cellMs < planEndMs
+                : armedEnd === 'back'
+                  // no departure picked yet means "leaving now", so the ride
+                  // home is still choosable — this used to disable all ten
+                  // cells and leave cancel as the only way out
+                  ? cellMs > (planTimeMs ?? Date.now())
+                  : false
             const period = showPeriod ? formatPeriod(r.wavePeriodS) : null
             const wxText =
               `wind ${windSpeed(windUnit, r.windKn)} ${speedUnitLabel(windUnit)}, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
-              (showPeriod && r.wavePeriodS != null ? ` at ${Math.round(r.wavePeriodS)} seconds` : '')
+              (showPeriod && r.wavePeriodS != null ? ` at ${Math.round(r.wavePeriodS)} seconds` : '') +
+              (r.weatherCode >= 95 ? ', thunder' : '')
             return (
               <button
                 key={cellMs}
-                className={`wxcell wx-${cond}${active ? ' wx-active' : ''}`}
+                className={
+                  `wxcell${active ? ' wx-active' : ''}` +
+                  (armedEnd ? (armable ? ' wx-armable' : ' wx-unarmable') : '')
+                }
+                style={{ borderTopColor: seaColor(r.waveM) }}
                 onClick={() => {
+                  // any accepted time-tap moves the app from exploring to
+                  // planning — including "Now", which is a choice, not a default
+                  setPlanPicked(true)
+                  if (armedEnd) {
+                    if (!armable) return
+                    if (armedEnd === 'out') setPlanWindow(cellMs, planEndMs)
+                    else setPlanWindow(planTimeMs, cellMs)
+                    setArmedEnd(null)
+                    return
+                  }
                   if (active) {
                     // second tap on the selected hour toggles the map preview
                     setLayer('weather', !weatherOn)
                     return
                   }
-                  setPlanTime(isNowCell ? null : cellMs)
-                  // leaving then gets that departure's maximized time there
-                  if (tripHours) setPlannedStay(isNowCell ? null : (rating?.stayMin ?? null))
+                  // leaving then gets that departure's maximized time there —
+                  // as a window, so the ride home lands where it should
+                  if (isNowCell) setPlanTime(null)
+                  else if (tripHours) adoptWindow(cellMs, rating?.stayMin ?? null)
+                  else setPlanTime(cellMs)
                   if (!weatherOn) setLayer('weather', true)
                 }}
                 aria-label={
-                  tripHours
-                    ? `Leave ${isNowCell ? 'now' : `at ${hourLabel(r.time)}`}: ${
-                        cond === 'good'
-                          ? 'good for this trip'
-                          : cond === 'mod'
-                            ? 'usable with caution'
-                            : cond === 'rough'
-                              ? 'not recommended'
-                              : 'beyond what can be rated'
-                      }${rating?.stayMin != null ? `, ${durationLabel(rating.stayMin)} there` : ''}, ${wxText}`
-                    : `${isNowCell ? 'Now' : hourLabel(r.time)}: ${wxText}`
+                  `${isNowCell ? 'Now' : hourLabel(r.time)}: ${wxText}` +
+                  (rating?.stayMin != null ? `, ${durationLabel(rating.stayMin)} there` : '')
                 }
               >
                 <span className="wxcell-h numeral">{isNowCell ? 'Now' : hourLabel(r.time)}</span>
+                {r.weatherCode >= 95 && (
+                  // an hour that calls thunder wears the one loud mark (§0.6)
+                  <i className="wx-bolt wxcell-bolt" aria-hidden="true">
+                    ⚡
+                  </i>
+                )}
                 <IconWindArrow deg={r.windDir + 180} size={12} />
                 <b className="numeral">{windSpeed(windUnit, r.windKn)}</b>
                 <span className="wxcell-wave numeral">
@@ -304,7 +330,13 @@ export default function WeatherStrip() {
           })}
         </div>
       ) : (
-        <div className="wxstrip-empty">No forecast this far out yet</div>
+        <div className="wxstrip-empty">—</div>
+      )}
+
+      {armedEnd && (
+        <button className="wxstrip-arm" onClick={() => setArmedEnd(null)}>
+          Pick an hour · cancel
+        </button>
       )}
 
       {stale && <i className="wxstrip-stale" title="Offline copy" />}

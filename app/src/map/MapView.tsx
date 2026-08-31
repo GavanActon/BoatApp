@@ -11,10 +11,12 @@ import { buildMapStyle, depthLabelExpr } from './mapStyle'
 import { registerAllDataFiles } from './pmtilesRegistry'
 import { useMeasureStore } from '../measure/measureStore'
 import { routeEditedRecently, sampleDotAt } from '../routing/routeLayer'
+import { spotBadgeAt } from '../routing/spotBadges'
 import { useRouteStore } from '../routing/routeStore'
 import { compass } from '../routing/tripPlan'
 import { floorHourMs } from '../time'
 import { formatPeriod } from '../weather/openMeteo'
+import { usePlacesStore } from '../state/placesStore'
 import { ensureWeatherGrid, gridConditionsAt, type GridConditions } from '../weather/weatherLayer'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -46,7 +48,10 @@ function tapPopupHtml(
       : '–<span>m</span>'
   return (
     `<div class="depth-popup-value">${formatDepth(depth, unit)}<span>${unit}</span></div>` +
-    `<div class="depth-popup-wx"><span class="wx-item">${arrow}${wind}</span><span class="wx-item">${wave}</span></div>`
+    `<div class="depth-popup-wx"><span class="wx-item">${arrow}${wind}</span><span class="wx-item">${wave}</span></div>` +
+    // Go = the point becomes the subject (explore rules — nothing asks when);
+    // Save = it becomes a place: a badge on the chart and a Places row (§0.2)
+    `<div class="pp-acts"><button class="pp-go">Go</button><button class="pp-save">Save</button></div>`
   )
 }
 
@@ -131,7 +136,12 @@ export default function MapView() {
           if (routeState.picking === 'start') {
             routeState.setStartPoint({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
           } else {
+            // a fresh subject starts at exploring, and the strip must
+            // describe the place just chosen (§0.2, §0.4) — every way of
+            // selecting a destination retargets it
+            useAppStore.getState().setPlanPicked(false)
             routeState.setDestination({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
+            routeState.setFocusPoint({ lon: e.lngLat.lng, lat: e.lngLat.lat, label: 'Pinned spot' })
           }
           // back to the trip card, not the sheet — the whole point of
           // picking on the map is seeing the run drawn on it
@@ -140,11 +150,16 @@ export default function MapView() {
         }
         // taps near route leg dots focus the leg forecast, not the depth popup
         if (sampleDotAt(map!, e.point)) return
+        // taps near a spot badge change the subject, not the depth readout
+        if (spotBadgeAt(map!, e.point)) return
         const { depthUnit, planTimeMs, wavePeriod } = useAppStore.getState()
         const d = depthAt(e.lngLat.lng, e.lngLat.lat)
         popup?.remove()
         if (d == null) return
         const { lng, lat } = e.lngLat
+        // anywhere you tap, the strip follows: the tapped point becomes the
+        // forecast focus — the chip's ✕ brings the strip back to the boat
+        routeState.setFocusPoint({ lon: lng, lat, label: 'Tapped point' })
         // same app-wide moment the weather layer and outlook strip show
         const wxTime = planTimeMs ?? floorHourMs()
         const p = new maplibregl.Popup({
@@ -157,6 +172,30 @@ export default function MapView() {
           .setHTML(tapPopupHtml(d, depthUnit, gridConditionsAt(lng, lat, wxTime), wavePeriod))
           .addTo(map!)
         popup = p
+        // one delegated listener on the container — it survives the setHTML
+        // refresh below, where listeners on the buttons themselves would not
+        p.getElement().addEventListener('click', (ev) => {
+          const t = ev.target as HTMLElement
+          const rs = useRouteStore.getState()
+          if (t.closest('.pp-go')) {
+            // tap-anywhere, go-anywhere: the same ladder a badge tap walks —
+            // subject set, lanes plot, strip retargets, still exploring (§0.4)
+            useAppStore.getState().setPlanPicked(false)
+            rs.setDestination({ name: null, lon: lng, lat })
+            rs.setFocusPoint({ lon: lng, lat, label: 'Pinned spot' })
+            rs.setCard('trip')
+            useAppStore.getState().setDetent('rest')
+            p.remove()
+          } else if (t.closest('.pp-save')) {
+            // a saved pin is a place like any other from here on. Save opens
+            // the Places sheet with the new name in edit — you name the spot
+            // while you still remember why you tapped it.
+            const place = usePlacesStore.getState().addPlace(lng, lat)
+            usePlacesStore.getState().setPendingEdit(place.name)
+            useAppStore.getState().setSheetTab('places')
+            p.remove()
+          }
+        })
         // grid may be absent (weather layer off) or stale — fill in once it lands
         void ensureWeatherGrid().then(() => {
           if (popup !== p || !p.isOpen()) return
@@ -184,6 +223,21 @@ export default function MapView() {
       setMap(map)
       // dev-only handle for driving the map in automated verification
       if (import.meta.env.DEV) (window as unknown as { __map?: unknown }).__map = map
+
+      // Compact attribution ships OPEN until the first interaction — three
+      // lines of licence text floating over the chart — and re-asserts the
+      // open state when the control attaches, so folding once at init raced
+      // it and lost (screenshots kept catching it expanded). Fold now, after
+      // load, and once more a beat later; the ⓘ still opens it on demand.
+      const foldAttribution = () => {
+        map!
+          .getContainer()
+          .querySelector('.maplibregl-ctrl-attrib')
+          ?.classList.remove('maplibregl-compact-show')
+      }
+      foldAttribution()
+      map!.once('load', foldAttribution)
+      window.setTimeout(foldAttribution, 1600)
     })()
 
     return () => {

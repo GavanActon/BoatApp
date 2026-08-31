@@ -12,16 +12,28 @@ import type {
 import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useMeasureStore } from '../measure/measureStore'
 import { useAppStore } from '../state/appStore'
-import { windSpeed, type SpeedUnit } from '../units'
 import { formatPeriod } from '../weather/openMeteo'
+import { seaBand, seaColor, SEA_UNKNOWN } from '../weather/seaState'
+import { lighten } from '../weather/seaShade'
+import { initRunAnimation, isRakeForced } from './runAnimation'
+import { initSpotBadges } from './spotBadges'
 import { useRouteStore } from './routeStore'
-import { condRank, timeLabel, type TripSample } from './tripPlan'
+import { timeLabel, type TripSample } from './tripPlan'
+import { haversineNm } from './waterRouter'
 
 /**
- * Draws the planned route on the map: the track itself, a dot at each leg
- * point labelled with the conditions there outbound AND on the way back
- * (coloured by the worse of the two), and the destination pin. Tapping a dot
- * points the forecast strip at the top of the map at that spot.
+ * Draws the planned run on the map.
+ *
+ * The run wears its own weather: two lanes, the way out and the way home,
+ * each carrying a gradient of the sea state at the minute the boat is on it.
+ * On this lake those are routinely two different afternoons, and a single
+ * number for the trip hides the half that usually bites.
+ *
+ * Over that sits the course itself — the accent line, unchanged, because it
+ * is the only thing on the chart saying where you are going. A dot marks each
+ * leg point, coloured by the rougher of its two passes, and exactly one of
+ * them is allowed a label: the roughest of the run. Tapping a dot points the
+ * forecast strip at the top of the map at that spot.
  *
  * The route is editable in place: press-drag the line to pull in a new course
  * point, drag a course point (or the destination pin) to move it, tap a
@@ -50,7 +62,20 @@ export function routeEditedRecently(withinMs = 600): boolean {
   return Date.now() - lastEditMs < withinMs
 }
 
-const COND_COLORS = { good: '#59e0b8', mod: '#ffb454', rough: '#ff6b6b' }
+/**
+ * The one label a leg point is ever allowed: how big the water is there, and
+ * when the boat is there. Nothing else.
+ *
+ * Every leg used to carry its own two-line "out ... / back ..." readout, which
+ * put ten labels over the water and made the chart unreadable. The two lanes
+ * carry the conditions now, so the label only has to name the moment — and the
+ * clock time says which leg it is without the word.
+ */
+function sampleLabel(s: TripSample, showPeriod: boolean): string {
+  const per = showPeriod ? formatPeriod(s.wavePeriodS) : null
+  const sea = s.waveM == null ? '' : `${s.waveM.toFixed(1)} m${per ? ` ${per}` : ''} · `
+  return `${sea}${timeLabel(s.atMs)}`
+}
 
 // Eight-point arrows pointing DOWNWIND — the way the wind arrows on the
 // weather layer, the outlook strip and the tap popup all point, so a glance
@@ -60,26 +85,6 @@ const WIND_ARROWS = ['↓', '↙', '←', '↖', '↑', '↗', '→', '↘']
 
 function windArrow(fromDeg: number): string {
   return WIND_ARROWS[Math.round(fromDeg / 45) % 8]
-}
-
-/**
- * What it will be like at one pass of a leg point — "↘ 12 · 0.4m 5s" — which
- * is what you look at a planned route for; the clock lives on the trip card.
- * Wind follows the Wind units preference, which is set apart from the boat's
- * own; the period rides along only when the Wave period preference is on, and
- * the sea drops out where the model has no data.
- *
- * The arrow comes back on its own because the label layer renders it a size up
- * — at body size the glyph is small enough to read as punctuation.
- */
-function wxParts(
-  s: TripSample,
-  showPeriod: boolean,
-  windUnit: SpeedUnit,
-): { arrow: string; text: string } {
-  const per = showPeriod ? formatPeriod(s.wavePeriodS) : null
-  const sea = s.waveM == null ? '' : ` · ${s.waveM.toFixed(1)}m${per ? ` ${per}` : ''}`
-  return { arrow: windArrow(s.windDir), text: ` ${windSpeed(windUnit, s.windKn)}${sea}` }
 }
 
 function emptyFc(): FeatureCollection {
@@ -127,6 +132,14 @@ function addLayers(map: MlMap) {
 
   map.addSource('route', { type: 'geojson', data: emptyFc() })
 
+  // The run's own source, separate from `route` so the editing interactions
+  // (drag handles, the fat hit target) keep working on untouched geometry.
+  // lineMetrics is what makes `line-progress` — and so `line-gradient` —
+  // available at all.
+  map.addSource('run', { type: 'geojson', lineMetrics: true, data: emptyFc() })
+  // the rake: crests combed off the run, an ADDITIVE layer over the lanes
+  map.addSource('rake', { type: 'geojson', data: emptyFc() })
+
   map.addLayer({
     id: 'route-line-casing',
     type: 'line',
@@ -134,6 +147,87 @@ function addLayers(map: MlMap) {
     filter: ROUTE_LINE_FILTER,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': 'rgba(8, 20, 34, 0.85)', 'line-width': 7 },
+  })
+
+  // Two lanes carrying the sea state at the minute the boat is on them: the
+  // way out and the way home, which on this lake are routinely two different
+  // afternoons. Both take the SAME positive offset — MapLibre offsets a line
+  // to the right of its own direction of travel, and the return geometry runs
+  // the other way, so they separate themselves onto opposite sides. Offset is
+  // in screen pixels, so the lanes stay equally spaced at every zoom.
+  for (const lane of ['out', 'back'] as const) {
+    map.addLayer({
+      id: `run-${lane}`,
+      type: 'line',
+      source: 'run',
+      filter: ['==', ['get', 'lane'], lane],
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        // Offset has to grow as the lanes thin out, or at bay zoom the two
+        // merge into a single band and the whole point of them is lost.
+        'line-offset': ['interpolate', ['linear'], ['zoom'], 8, 4, 11, 4.5, 15, 6],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2.6, 11, 3.4, 15, 6],
+        // replaced with a line-progress ramp whenever there's a plan
+        'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, SEA_UNKNOWN, 1, SEA_UNKNOWN],
+      },
+    })
+  }
+  // The wave rake. The lanes carry HEIGHT as colour; this carries which way
+  // the sea is running, which is the thing that decides how a crossing
+  // actually feels and which nothing else on the chart can say. Additive:
+  // turning it on doesn't turn the lanes off, because they use different
+  // channels. Off by default — it's for while you're deciding.
+  // Swell bands: a wide haze with a softer core over it, so each crest has a
+  // soft edge instead of a hard one. Blended, not stamped on — close enough to
+  // the water's own colour to read as texture in the chart rather than as
+  // notation lying over it. Height stays the lanes' job; this only says which
+  // way the sea runs.
+  map.addLayer({
+    id: 'run-rake-haze',
+    type: 'line',
+    source: 'rake',
+    filter: ['==', ['get', 'kind'], 'crest'],
+    layout: { 'line-cap': 'round', visibility: 'none' },
+    paint: {
+      'line-color': '#bcdcf0',
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.13, 13, 0.2],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 9, 9, 13, 16],
+    },
+  })
+  map.addLayer({
+    id: 'run-rake',
+    type: 'line',
+    source: 'rake',
+    filter: ['==', ['get', 'kind'], 'crest'],
+    layout: { 'line-cap': 'round', visibility: 'none' },
+    paint: {
+      'line-color': '#cfe6f5',
+      'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.24, 13, 0.36],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 9, 4, 13, 7],
+    },
+  })
+  // Wind, alongside the waves and deliberately NOT animated — two moving
+  // systems at once is unreadable, and on this lake the wind and the sea are
+  // routinely twenty or thirty degrees apart, which is the thing worth seeing.
+  map.addLayer({
+    id: 'run-wind',
+    type: 'symbol',
+    source: 'rake',
+    filter: ['==', ['get', 'kind'], 'wind'],
+    layout: {
+      visibility: 'none',
+      'text-field': ['get', 'arrow'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 15,
+      'text-allow-overlap': true,
+      // clear of the leg dot and its crests, which sit on the same point
+      'text-offset': [0, -1.3],
+    },
+    paint: {
+      'text-color': '#9fe8ff',
+      'text-halo-color': 'rgba(8, 20, 34, 0.85)',
+      'text-halo-width': 1.3,
+    },
   })
   map.addLayer({
     id: 'route-line',
@@ -186,33 +280,21 @@ function addLayers(map: MlMap) {
     id: 'route-sample-labels',
     type: 'symbol',
     source: 'route',
-    filter: ['==', ['get', 'kind'], 'sample'],
+    // The label budget. Every leg carrying its own two-line readout put ten
+    // labels over the water and made the chart unreadable; the lanes already
+    // say what the conditions are along the run. So: the roughest leg (and
+    // only when it actually stands above the rest), plus whichever dot you
+    // tapped. Everything else is a tap away.
+    filter: [
+      'all',
+      ['==', ['get', 'kind'], 'sample'],
+      ['boolean', ['get', 'showLabel'], false],
+    ],
     layout: {
-      // assembled here rather than baked into one string so the wind arrows can
-      // run a size up (see wxParts); every section is always a string, the
-      // empty ones collapsing the label to a single outbound line
-      'text-field': [
-        'format',
-        ['get', 'pOut'],
-        {},
-        ['get', 'aOut'],
-        { 'font-scale': 1.35 },
-        ['get', 'tOut'],
-        {},
-        ['get', 'sep'],
-        {},
-        ['get', 'pBack'],
-        {},
-        ['get', 'aBack'],
-        { 'font-scale': 1.35 },
-        ['get', 'tBack'],
-        {},
-      ],
+      'text-field': ['get', 'label'],
       'text-font': ['Noto Sans Regular'],
-      'text-size': 10.5,
-      // conditions run wider than the ETAs they replaced — without this the
-      // default 10-em wrap breaks every leg across two ragged lines
-      'text-max-width': 20,
+      'text-size': 11,
+      'text-max-width': 14,
       'text-offset': [0, 1.25],
       'text-anchor': 'top',
       'text-optional': true,
@@ -337,22 +419,41 @@ function buildFc(): FeatureCollection {
   }
   if (plan) {
     const focus = useRouteStore.getState().focusPoint
-    const { wavePeriod: showPeriod, windUnit } = useAppStore.getState()
+    const showPeriod = useAppStore.getState().wavePeriod
 
     // the return leg re-visits the outbound spots — pair them up so each dot
-    // carries both legs: conditions out on top, conditions back underneath
-    const nOut = plan.samples.filter(
-      (s) => s.phase === 'depart' || s.phase === 'outbound' || s.phase === 'arrive',
-    ).length
+    // can wear the rougher of its two passes
+    const nOut = outboundCount(plan)
+
+    // The roughest leg of the way out — the one label the budget always
+    // affords. It only earns it by standing a band above the rest of the run:
+    // on a flat day every leg is the same water and the gradient has said so
+    // already, so nothing gets labelled.
+    let peakIdx = -1
+    let peakBand = -1
+    let lowBand = Number.MAX_SAFE_INTEGER
+    for (let i = 0; i < nOut; i++) {
+      const b = seaBand(plan.samples[i].waveM)
+      if (b == null) continue
+      if (b > peakBand) {
+        peakBand = b
+        peakIdx = i
+      }
+      if (b < lowBand) lowBand = b
+    }
+    if (peakBand <= lowBand) peakIdx = -1
+
     for (let i = 0; i < nOut; i++) {
       const out = plan.samples[i]
       const backIdx = 2 * nOut - 2 - i
       const back = backIdx > i && backIdx < plan.samples.length ? plan.samples[backIdx] : null
-      const cond = back && condRank(back.cond) > condRank(out.cond) ? back.cond : out.cond
-      // one dot, two passes: ordering alone said which was which when these
-      // were clock times, but two lines of weather look alike
-      const o = wxParts(out, showPeriod, windUnit)
-      const b = back ? wxParts(back, showPeriod, windUnit) : null
+      // the dot wears the bigger of the two passes, on the sea-state ramp —
+      // a magnitude, not a verdict about the trip
+      const worstWave = Math.max(out.waveM ?? -1, back?.waveM ?? -1)
+      // The label names the rougher of the two passes. No "out"/"back" words
+      // are needed — the clock time already says which leg it is, and the two
+      // coloured lanes have said the rest.
+      const worst = back != null && (back.waveM ?? -1) > (out.waveM ?? -1) ? back : out
       const focused =
         focus != null && Math.abs(focus.lon - out.lon) < 1e-6 && Math.abs(focus.lat - out.lat) < 1e-6
 
@@ -361,14 +462,9 @@ function buildFc(): FeatureCollection {
         geometry: { type: 'Point', coordinates: [out.lon, out.lat] },
         properties: {
           kind: 'sample',
-          color: COND_COLORS[cond],
-          pOut: b ? 'out ' : '',
-          aOut: o.arrow,
-          tOut: o.text,
-          sep: b ? '\n' : '',
-          pBack: b ? 'back ' : '',
-          aBack: b?.arrow ?? '',
-          tBack: b?.text ?? '',
+          color: seaColor(worstWave < 0 ? null : worstWave),
+          showLabel: focused || i === peakIdx,
+          label: sampleLabel(worst, showPeriod),
           idx: i,
           focused,
         },
@@ -414,8 +510,303 @@ function buildFc(): FeatureCollection {
   return { type: 'FeatureCollection', features }
 }
 
+/** How many samples belong to the way out (the rest are the ride home). */
+function outboundCount(plan: { samples: TripSample[] }): number {
+  return plan.samples.filter(
+    (s) => s.phase === 'depart' || s.phase === 'outbound' || s.phase === 'arrive',
+  ).length
+}
+
+/**
+ * The two lanes. Same coordinates both ways — the ride home retraces the
+ * plotted course — with the return reversed so its direction of travel is
+ * genuinely opposite, which is what makes one shared `line-offset` put them
+ * on opposite sides.
+ */
+function buildRunFc(): FeatureCollection {
+  const { route, plan, roundTrip, tripStartedAt } = useRouteStore.getState()
+  if (!route || route.coords.length < 2) return emptyFc()
+
+  const features: Feature[] = [
+    {
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: route.coords },
+      properties: { lane: 'out' },
+    },
+  ]
+  // no second lane on a one-way run, and none once under way on the ride home:
+  // by then the outbound lane IS history and the plan has flipped to the return
+  const hasBack = roundTrip && tripStartedAt == null && plan != null && plan.homeMs != null
+  if (hasBack) {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [...route.coords].reverse() },
+      properties: { lane: 'back' },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}
+
+/**
+ * A `line-progress` colour ramp from the leg's samples.
+ *
+ * No resampling is needed to make this line up with the clock: line-progress
+ * is a fraction of DISTANCE along the feature, and at a constant cruise speed
+ * distance and time are the same axis — so a stop at fraction f is the sea the
+ * boat meets at depart + f x duration, wherever the router happened to put its
+ * sample points.
+ */
+function gradientStops(
+  samples: TripSample[],
+  fracOf: (s: TripSample) => number,
+  highlight: number | null = null,
+): (number | string)[] | null {
+  const base: [number, string][] = []
+  let last = -1
+  for (const s of samples) {
+    const f = Math.min(1, Math.max(0, fracOf(s)))
+    // strictly increasing, or MapLibre rejects the whole expression
+    if (f <= last) continue
+    last = f
+    base.push([f, seaColor(s.waveM)])
+  }
+  if (base.length < 2) return null
+  // anchor both ends so the ramp covers the full lane rather than fading out
+  if (base[0][0] !== 0) base.unshift([0, base[0][1]])
+  if (base[base.length - 1][0] !== 1) base.push([1, base[base.length - 1][1]])
+
+  /** The band colour at any fraction — needed so the highlight is a brighter
+   *  patch of THIS water rather than a colour of its own. */
+  const colourAt = (f: number): string => {
+    let c = base[0][1]
+    for (const [bf, bc] of base) {
+      if (bf > f) break
+      c = bc
+    }
+    return c
+  }
+
+  const pts: [number, string][] = [...base]
+  if (highlight != null) {
+    // A comet, not a symmetrical crest: the head is where the light is and the
+    // tail falls away behind it, which is what makes the direction readable
+    // without anything being drawn on top. Kept deliberately faint — the wave
+    // bands are the information, and this only has to move.
+    for (const [off, amt] of [
+      [-HL_TAIL, 0],
+      [-HL_TAIL * 0.55, HL_PEAK * 0.25],
+      [-HL_TAIL * 0.22, HL_PEAK * 0.6],
+      [0, HL_PEAK],
+      [HL_TAIL * 0.06, 0],
+    ]) {
+      const f = highlight + off
+      if (f <= 0 || f >= 1) continue
+      pts.push([f, amt === 0 ? colourAt(f) : lighten(colourAt(f), amt)])
+    }
+  }
+
+  pts.sort((a, b) => a[0] - b[0])
+  const stops: (number | string)[] = []
+  let prev = -1
+  for (const [f, c] of pts) {
+    // MapLibre needs strictly increasing stops; nudge ties rather than drop
+    // them, so a highlight landing on a band edge still renders
+    const v = f <= prev ? prev + 1e-4 : f
+    if (v >= 1 && stops.length >= 4) continue
+    prev = v
+    stops.push(v, c)
+  }
+  return stops.length >= 4 ? stops : null
+}
+
+const FLAT_UNKNOWN = ['interpolate', ['linear'], ['line-progress'], 0, SEA_UNKNOWN, 1, SEA_UNKNOWN]
+
+/** Half-length of a crest, in degrees of latitude. */
+const RAKE_HALF_DEG = 0.0062
+/** Arc spacing between crests along the course, in nautical miles. */
+const RAKE_STEP_NM = 0.3
+/** Ceiling on crests per run, so a long passage stays cheap. */
+const RAKE_MAX = 120
+
+/** Wave direction at the sample nearest a point — crests are laid along the
+ *  course, not at the samples, so each one looks its own sea up. */
+function seaDirAt(samples: TripSample[], lon: number, lat: number): number | null {
+  let best: number | null = null
+  let bestD = Infinity
+  for (const s of samples) {
+    if (s.waveDir == null) continue
+    const d = (s.lon - lon) ** 2 + (s.lat - lat) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = s.waveDir
+    }
+  }
+  return best
+}
+
+/** Cumulative arc length along a polyline, in nm. */
+function cumulative(coords: [number, number][]): number[] {
+  const cum = [0]
+  for (let i = 1; i < coords.length; i++) {
+    cum.push(
+      cum[i - 1] + haversineNm(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]),
+    )
+  }
+  return cum
+}
+
+/**
+ * The rake: crests combed off the course itself, all the way along it.
+ *
+ * Laying them ON the path rather than clustering them at the leg points is
+ * what makes it read — the run gets a texture instead of five clumps of
+ * diagonals, and every crest sits on water the boat will actually cross. Each
+ * is angled by the sea at that spot, so read against the course it tells you
+ * whether the sea lands on the nose or the beam.
+ *
+ * Every crest carries `d`, its fraction along the course. That is what lets
+ * the sweep reveal them as a trail: the layer's FILTER moves, which is cheap,
+ * instead of the geometry being rebuilt sixty times a second.
+ */
+function buildRakeFc(): FeatureCollection {
+  const { route, plan } = useRouteStore.getState()
+  if (!route || !plan || route.coords.length < 2) return emptyFc()
+  const coords = route.coords
+  const features: Feature[] = []
+
+  const cum = cumulative(coords)
+  const total = cum[cum.length - 1]
+  if (total <= 0) return emptyFc()
+
+  const step = Math.max(RAKE_STEP_NM, total / RAKE_MAX)
+  let seg = 1
+  for (let d = 0; d < total; d += step) {
+    while (seg < cum.length - 1 && cum[seg] < d) seg++
+    const t = (d - cum[seg - 1]) / Math.max(1e-9, cum[seg] - cum[seg - 1])
+    const lon = coords[seg - 1][0] + (coords[seg][0] - coords[seg - 1][0]) * t
+    const lat = coords[seg - 1][1] + (coords[seg][1] - coords[seg - 1][1]) * t
+
+    const dir = seaDirAt(plan.samples, lon, lat)
+    if (dir == null) continue
+    const kx = 1 / Math.cos((lat * Math.PI) / 180)
+    // A broad soft band lying across the way the sea travels — swell, not
+    // notation. Chevrons said the direction louder but read as road marking;
+    // a band is the shape water actually makes, and drawn wide and faint it
+    // sits in the chart instead of on top of it.
+    const crestRad = ((dir + 90) * Math.PI) / 180
+    const aLat = Math.cos(crestRad) * RAKE_HALF_DEG
+    const aLon = Math.sin(crestRad) * RAKE_HALF_DEG * kx
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [lon - aLon, lat - aLat],
+          [lon + aLon, lat + aLat],
+        ],
+      },
+      // `dir` rides along so an animation can move a crest the way its own
+      // sea travels, without re-deriving anything from the plan
+      properties: { kind: 'crest', d: d / total, dir },
+    })
+  }
+
+  // wind stays at the leg points and stays still — two moving systems at once
+  // is unreadable, and the wind is often well off the sea's own direction
+  for (const s of plan.samples) {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      properties: { kind: 'wind', arrow: windArrow(s.windDir) },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}
+
+/** How long the comet's tail is, as a fraction of the lane. */
+const HL_TAIL = 0.26
+/** How bright its head gets. Subtle on purpose: the swell bands carry the
+ *  information, and this only has to say which way and that it's live. */
+const HL_PEAK = 0.34
+
+/**
+ * Repaint both lanes.
+ *
+ * `highlight` (0..1, or null) slides a crest of light along each lane inside
+ * its own gradient — the lane brightens where the light is and settles back
+ * behind it. Motion carried by the colour ramp rather than by dashes riding on
+ * top: nothing is added to the chart, the water just moves. Each lane's
+ * geometry runs its own way, so one shared value sends the light out along one
+ * and home along the other.
+ */
+function renderRun(
+  map: MlMap,
+  highlight: number | null = null,
+  lane: 'out' | 'back' | 'both' = 'both',
+) {
+  const rakeSrc = map.getSource('rake') as GeoJSONSource | undefined
+  if (rakeSrc) {
+    rakeSrc.setData(buildRakeFc())
+    // the animation trial borrows the rake whatever the layer toggle says
+    const on = useAppStore.getState().layers.rake || isRakeForced()
+    for (const id of ['run-rake', 'run-rake-haze', 'run-wind']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
+    }
+  }
+
+  const src = map.getSource('run') as GeoJSONSource | undefined
+  if (!src) return
+  src.setData(buildRunFc())
+
+  const { plan } = useRouteStore.getState()
+  const setRamp = (id: string, stops: (number | string)[] | null) =>
+    map.setPaintProperty(id, 'line-gradient', stops
+      ? ['interpolate', ['linear'], ['line-progress'], ...stops]
+      : FLAT_UNKNOWN)
+
+  if (!plan || plan.samples.length < 2 || plan.oneWayNm <= 0) {
+    // a route with no forecast yet: neutral grey, never a pale ramp colour —
+    // pale reads as calm, and "we don't know" is not calm
+    setRamp('run-out', null)
+    setRamp('run-back', null)
+    return
+  }
+
+  const nOut = outboundCount(plan)
+  const out = plan.samples.slice(0, nOut)
+  setRamp(
+    'run-out',
+    gradientStops(out, (s) => s.distNm / plan.oneWayNm, lane !== 'back' ? highlight : null),
+  )
+
+  const back = plan.samples.slice(nOut)
+  const backSpan = plan.totalNm - plan.oneWayNm
+  setRamp(
+    'run-back',
+    backSpan > 0
+      ? gradientStops(
+          back,
+          (s) => (s.distNm - plan.oneWayNm) / backSpan,
+          lane !== 'out' ? highlight : null,
+        )
+      : null,
+  )
+}
+
+/** Slide the lanes' highlight without touching anything else. `lane` narrows
+ *  the light to one lane, for animations that take the run one way at a time. */
+export function setLaneHighlight(
+  map: MlMap,
+  highlight: number | null,
+  lane: 'out' | 'back' | 'both' = 'both',
+) {
+  if (layersOn !== map) return
+  renderRun(map, highlight, lane)
+}
+
 function render(map: MlMap) {
   if (layersOn !== map) return
+  renderRun(map)
   // the handles grow while the course is editable — the only on-map sign that
   // a press will now do something, and the thing you have to hit to drag
   const editing = useRouteStore.getState().editing
@@ -448,6 +839,10 @@ function fitToRoute(map: MlMap, breakFollow: boolean) {
     }
     const sheetOpen = useAppStore.getState().sheetTab != null
     const barH = document.querySelector('.bottombar')?.getBoundingClientRect().height ?? 120
+    // the outlook strip (plus its focus chip, which is exactly what a fresh
+    // route adds) is real chrome too — measure it, or the far end of the run
+    // frames underneath it
+    const topH = document.querySelector('.toparea')?.getBoundingClientRect().height ?? 110
     map.fitBounds(
       [
         [w, s],
@@ -455,7 +850,7 @@ function fitToRoute(map: MlMap, breakFollow: boolean) {
       ],
       {
         padding: {
-          top: 110,
+          top: Math.round(topH) + 24,
           left: 45,
           right: 45,
           // +30 leaves room for the verdict line that joins the card once
@@ -615,9 +1010,14 @@ function addEditHandlers(map: MlMap) {
   // bare line pulls a fresh course point out of it
   const startLine = (e: MapLayerMouseEvent | MapLayerTouchEvent) => {
     if (drag || !useRouteStore.getState().route) return
-    // dots riding the line (ETA dots, points, pin) keep their own gestures
+    // The endpoints and existing course points keep their own gestures. The
+    // ETA sample dots deliberately DON'T block here: beginDrag only acts in
+    // edit mode, and in edit mode those dots are just paint riding the line
+    // — they're the most visible thing on it, so pressing one is the natural
+    // way to grab the course. (Outside edit mode their tap still points the
+    // strip; this handler is inert then.)
     const covered = map.queryRenderedFeatures(e.point, {
-      layers: ['route-vias', 'route-dest', 'route-start', 'route-samples'],
+      layers: ['route-vias', 'route-dest', 'route-start'],
     })
     if (covered.length > 0) return
     const idx = insertionIndexAt(map, e.point)
@@ -649,6 +1049,7 @@ export function initRouteLayer() {
     addLayers(map)
     addEditHandlers(map)
     render(map)
+    initRunAnimation(map)
 
     // tap near a leg dot → point the top forecast strip at that spot
     // (tap again to release); padded hit-test so fingers don't have to be exact
@@ -681,6 +1082,10 @@ export function initRouteLayer() {
       setFocusPoint({ lon: s.lon, lat: s.lat, label })
     })
   })
+
+  // the watched spots as badges on the chart — the map is the selector
+  // (§0.2). After the dot handler above, so a leg dot wins a contested tap.
+  initSpotBadges()
 
   useRouteStore.subscribe((s, prev) => {
     // a new place to run to — either end, or the course between — earns a
@@ -745,9 +1150,15 @@ export function initRouteLayer() {
     if (s.card === 'trip' && prev.card !== 'trip') refit()
   })
   useAppStore.subscribe((s, prev) => {
-    if (s.sheetTab === 'route' && prev.sheetTab !== 'route') refit()
-    // the leg labels carry the period and the wind, so both have to reach them
-    if (s.wavePeriod !== prev.wavePeriod || s.windUnit !== prev.windUnit) {
+    // raising the dock is the route drawer's old "open the run" moment now
+    if (s.detent === 'raised' && prev.detent !== 'raised') refit()
+    // the leg labels carry the period and the wind, so both have to reach
+    // them; the rake toggle has to reach its own layer's visibility
+    if (
+      s.wavePeriod !== prev.wavePeriod ||
+      s.windUnit !== prev.windUnit ||
+      s.layers.rake !== prev.layers.rake
+    ) {
       const live = getMap()
       if (live && layersOn === live) render(live)
     }

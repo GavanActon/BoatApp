@@ -1,10 +1,11 @@
 import { HOME, REGION_BBOX } from '../config'
 import { useAppStore } from '../state/appStore'
 import { startRecording, stopRecording } from '../tracking/gpsService'
-import { useGpsStore } from '../tracking/gpsStore'
+import { resetSogAverage, useGpsStore } from '../tracking/gpsStore'
+import { capturePromise } from './legReadout'
 import { computeRoute } from './router'
 import { useRouteStore } from './routeStore'
-import { planTrip, type TripPlan } from './tripPlan'
+import { planTrip } from './tripPlan'
 import { haversineNm } from './waterRouter'
 
 /**
@@ -26,67 +27,31 @@ const PLAN_WX_CACHE_MS = 5 * 60_000 // planning tweaks (time, speed, stay) reuse
 const TICK_MS = 2 * 60_000
 const ARRIVED_NM = 0.5 // within this of the destination = "we're there"
 const TRIP_EXPIRY_MS = 12 * 3600_000 // a persisted "under way" older than this is over
-const DEFAULT_DEPART_H = 10 // no departure picked = "we leave at 10"
 
 let replanToken = 0
-let suggestedFor: string | null = null // destination we already auto-suggested a departure for
 
-/** The house default departure — 10 am on the day of `ms`. */
-function defaultDepartMs(ms: number): number {
-  const d = new Date(ms)
-  d.setHours(DEFAULT_DEPART_H, 0, 0, 0)
-  return d.getTime()
-}
-
-/**
- * First impressions assume the house habit: no departure chosen means "we
- * leave at 10", so adopt today's 10 am while it's still ahead and inside a
- * go window. Failing that, lead with the best time, not a warning: if right
- * now is either not good or not a sanctioned departure at all (late evening,
- * past back-by), adopt the week's best option — departing at 10 when that
- * day's window covers it. One-shot per destination — after that the user's
- * chosen time is always respected.
+/*
+ * There used to be a departure auto-suggester here ("no time picked means we
+ * leave at 10"), which planted a window the moment a destination landed —
+ * so tapping a spot to LOOK at its weather felt like being asked when you
+ * were leaving. The rule now: place taps explore, time taps plan. A window
+ * exists only once an hour or a day is picked on the strip; until then the
+ * plan is computed for "now" purely so the lanes describe leaving now.
  */
-function maybeSuggestDeparture(plan: TripPlan) {
-  const rs = useRouteStore.getState()
-  if (rs.tripStartedAt != null || !rs.destination || plan.days.length === 0) return
-  const key = `${rs.destination.lon},${rs.destination.lat}`
-  if (suggestedFor === key) return
-  suggestedFor = key
-  if (useAppStore.getState().planTimeMs != null) return // a time was already picked
 
-  const now = Date.now()
-  const all = plan.days.flatMap((d) => d.options)
-
-  const todayTen = defaultDepartMs(now)
-  if (todayTen > now) {
-    const win = all.find(
-      (o) => o.verdict === 'go' && o.windowStartMs <= todayTen && todayTen <= o.windowEndMs,
-    )
-    if (win) {
-      useAppStore.getState().setPlanTime(todayTen)
-      // an option's stay was maximized for its own departure hour — only
-      // adopt it when that hour is 10 itself
-      if (win.departMs === todayTen) useRouteStore.getState().setPlannedStay(win.stayMin)
-      return
-    }
-  }
-
-  const sanctioned = all.some((o) => o.windowStartMs <= now && now <= o.windowEndMs + 3_599_000)
-  if (plan.verdict === 'go' && sanctioned) return // leaving now IS the best answer
-
-  const future = all.filter((o) => o.departMs > now)
-  const pick = future.find((o) => o.verdict === 'go') ?? (sanctioned ? undefined : future[0])
-  if (!pick) return
-  const ten = defaultDepartMs(pick.departMs)
-  if (ten !== pick.departMs && ten > now && pick.windowStartMs <= ten && ten <= pick.windowEndMs) {
-    // that day's window covers the house 10 am — leave then, stay left at
-    // the minimum (the option's stay only fit its own departure hour)
-    useAppStore.getState().setPlanTime(ten)
+/** Take an option from the sweep as a WINDOW: leave then, that long there,
+ *  home after the ride back. One call so the two ends can never drift apart. */
+export function adoptWindow(departMs: number, stayMin: number | null) {
+  const s = useRouteStore.getState()
+  const nm = s.route?.distanceNm
+  const app = useAppStore.getState()
+  if (nm == null || stayMin == null) {
+    app.setPlanTime(departMs)
     return
   }
-  useAppStore.getState().setPlanTime(pick.departMs)
-  useRouteStore.getState().setPlannedStay(pick.stayMin)
+  const legMin = (nm / s.cruiseKn) * 60
+  const spanMin = (s.roundTrip ? 2 : 1) * legMin + stayMin
+  app.setPlanWindow(departMs, departMs + Math.round(spanMin) * 60_000)
 }
 
 function inRegion(lon: number, lat: number): boolean {
@@ -118,7 +83,6 @@ export async function replan(quiet = false): Promise<void> {
   if (!dest) {
     s.setRoute(null)
     s.setPlan(null)
-    suggestedFor = null // next destination gets a fresh suggestion
     return
   }
 
@@ -176,15 +140,29 @@ export async function replan(quiet = false): Promise<void> {
   }
 
   try {
+    const app = useAppStore.getState()
+    // the app-wide planning time is the departure; under way it's always "now"
+    const departMs = underWay ? Date.now() : (app.planTimeMs ?? Date.now())
+
+    // Time at the destination is DERIVED, not set: it's the window you asked
+    // for minus the running. Saying "we're out from five to nine" is how
+    // anyone actually describes an afternoon; "at least ninety minutes there"
+    // never was. Without a window we fall back to the old minimum.
+    const oneWayMin = (result.distanceNm / s.cruiseKn) * 60
+    const windowMin =
+      app.planEndMs != null && app.planEndMs > departMs
+        ? (app.planEndMs - departMs) / 60_000
+        : null
+    const derivedStay =
+      windowMin == null ? null : Math.max(0, Math.round(windowMin - (roundTrip ? 2 : 1) * oneWayMin))
+
     const plan = await planTrip(result, {
       cruiseKn: s.cruiseKn,
-      // the app-wide planning time is the departure; under way it's always "now"
-      departMs: underWay ? Date.now() : (useAppStore.getState().planTimeMs ?? Date.now()),
+      departMs,
       roundTrip,
-      // the timeline uses the option-adopted stay when there is one, else the minimum
-      stayMin: s.plannedStayMin ?? s.stayMin,
+      stayMin: derivedStay ?? s.stayMin,
       destName,
-      windUnit: useAppStore.getState().windUnit,
+      windUnit: app.windUnit,
       // under way, the trip is re-timed often but the forecast holds for 30 min
       maxWxCacheMs: underWay ? TRIP_WX_REFRESH_MS : PLAN_WX_CACHE_MS,
       windows: !underWay,
@@ -193,13 +171,13 @@ export async function replan(quiet = false): Promise<void> {
     })
     if (token !== replanToken) return
     useRouteStore.getState().setPlan(plan)
-    maybeSuggestDeparture(plan)
   } catch {
     if (token !== replanToken) return
     if (!quiet) {
-      useRouteStore
-        .getState()
-        .setPlan(null, 'No forecast available — connect to the internet once to fetch it.')
+      // Every planTrip failure used to flatten to "connect to the internet",
+      // which is wrong and unhelpful when the strip above is full of numbers.
+      // Say which it was; the UI shows it as a short label, not a sentence.
+      useRouteStore.getState().setPlan(null, navigator.onLine ? 'No forecast' : 'Offline')
     }
   }
 }
@@ -217,6 +195,7 @@ export function startTrip() {
       : sp
         ? [sp.lon, sp.lat]
         : HOME.center
+  capturePromise() // before the window is cleared — it IS the promise
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
   if (!useGpsStore.getState().recording) void startRecording()
@@ -225,6 +204,7 @@ export function startTrip() {
 
 export function endTrip() {
   useRouteStore.getState().endTrip()
+  resetSogAverage()
   void stopRecording()
   void replan()
 }
@@ -259,7 +239,6 @@ export function initRoutePlanner() {
       s.roundTrip !== prev.roundTrip ||
       s.cruiseKn !== prev.cruiseKn ||
       s.stayMin !== prev.stayMin ||
-      s.plannedStayMin !== prev.plannedStayMin ||
       s.backByHour !== prev.backByHour
     ) {
       void replan()
@@ -269,7 +248,9 @@ export function initRoutePlanner() {
   // the app-wide planning time IS the departure time — replan when it moves
   useAppStore.subscribe((s, prev) => {
     if (!useRouteStore.getState().destination) return
-    if (s.planTimeMs !== prev.planTimeMs) void replan()
+    // BOTH ends of the window are trip inputs — the far end decides the time
+    // at the destination, so moving it alone still has to re-time the trip
+    if (s.planTimeMs !== prev.planTimeMs || s.planEndMs !== prev.planEndMs) void replan()
     // the verdict quotes the wind, so its unit has to reach the headline
     else if (s.windUnit !== prev.windUnit) void replan(true)
   })
