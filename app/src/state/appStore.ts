@@ -206,7 +206,7 @@ export const useAppStore = create<AppState>()(
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
       setSatOpacity: (v) => set({ satOpacity: v }),
-      satVivid: false,
+      satVivid: true,
       setSatVivid: (v) => set({ satVivid: v }),
       windFlowOpacity: 0.8,
       setWindFlowOpacity: (v) => set({ windFlowOpacity: v }),
@@ -265,7 +265,7 @@ export const useAppStore = create<AppState>()(
       name: 'sandies-prefs',
       // v1 made metric the default. Prefs saved before it carry the old
       // knots/feet, so drop the unit keys once and let the defaults land.
-      version: 2,
+      version: 3,
       migrate: (persisted, from) => {
         const p = { ...(persisted as Partial<AppState>) }
         // versionless storage arrives as `undefined`, and `undefined < 1` is
@@ -286,6 +286,9 @@ export const useAppStore = create<AppState>()(
           delete l.depth
           p.layers = l as AppState['layers']
         }
+        // v3 made vivid satellite the default; the stored quiet-era value
+        // gets lifted once (switching after this sticks)
+        if (was < 3) delete p.satVivid
         // deliberately hands back a PARTIAL — merge below lays it over the
         // current state, so the dropped keys land on the new metric defaults.
         // migrate's signature can't say "partial", hence the cast.
