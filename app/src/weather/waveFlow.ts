@@ -56,6 +56,13 @@ interface WavePt {
   lenS: number // per-crest length variation
   bow: number // per-crest forward curvature
   pj: number // small phase jitter, so fronts are ragged, not machined
+  /** Stroke weights, baked from EFFECTIVE height: glassy water draws as a
+   *  hairline sheen, big water as bold crests. */
+  wCore: number
+  wHalo: number
+  /** Depth is felt: waves steep enough for the bottom under them (effective
+   *  height past ~0.72·depth) break — drawn as churned white spray. */
+  breaking: boolean
   /** True when this anchor's drift sweep grazes land — its crest is then
    *  water-tested per frame so nothing ever laps onto the shore. */
   edge: boolean
@@ -106,8 +113,32 @@ function buildPoints(map: MlMap, stepPx: number): WavePt[] {
       const wlM = 1.56 * T * T
       const ux = Math.sin(rad)
       const uy = -Math.cos(rad)
-      const wlPx = Math.min(220, Math.max(34, wlM / mPerPx))
-      const lenS = 0.65 + Math.random() * 0.85
+
+      // ---- shoaling: the wave feels the bottom (#4) ----
+      // In water shallower than about half a wavelength, crests shorten
+      // (L = L0·tanh(2πd/L0)), slow (c ∝ √that), and stack up taller
+      // (green's-law-ish Ks ≈ 1/√tanh, capped). Steep enough for the depth
+      // under it — H > ~0.72·d — and the crest BREAKS. All of it reads off
+      // the offline depth grid, so the bar off the Sandies wears real surf
+      // while the deep water behind it rolls easy.
+      const shoal = Math.tanh((2 * Math.PI * d) / wlM)
+      const Ks = Math.min(1.6, 1 / Math.sqrt(Math.max(0.15, shoal)))
+      const hEff = wx.waveM * Ks
+      const breaking = hEff > 0.72 * d
+
+      // ---- character: the sea's size decides how it draws (#1) ----
+      // Glassy: sparse, long, hairline sheen. Building: denser, shorter,
+      // choppier. Big: bold long-crested fronts. Density through a keep
+      // chance, so calm water isn't wallpapered with marks.
+      const keep = Math.min(1, 0.4 + hEff / 1.3)
+      if (Math.random() > keep) continue
+      const sizeT = Math.min(1, hEff / 1.8)
+      const wCore = hEff < 0.35 ? 1.3 : 1.6 + 1.9 * sizeT
+      const wHalo = wCore * 2.9
+      const regimeLen = hEff < 0.35 ? 1.35 : hEff < 0.8 ? 0.9 : 1.12
+
+      const wlPx = Math.min(220, Math.max(26, (wlM * shoal) / mPerPx))
+      const lenS = (0.65 + Math.random() * 0.85) * regimeLen
 
       // The anchor is wet, but the crest is a BAND that also drifts up to
       // half a wavelength either way — near shore that sweep can lap onto
@@ -129,16 +160,22 @@ function buildPoints(map: MlMap, stepPx: number): WavePt[] {
       pts.push({
         x,
         y,
-        amp: Math.min(1, Math.max(0.3, wx.waveM / FULL_AMP_M)),
-        h: wx.waveM,
+        // effective (shoaled) height drives strength — a lower floor than
+        // before, so glassy water really is a whisper
+        amp: Math.min(1, Math.max(0.18, hEff / FULL_AMP_M)),
+        h: hEff,
         ux,
         uy,
         wlPx,
-        spdPx: Math.min(30, Math.max(6, (1.56 * T * TIME_SCALE) / mPerPx)),
+        // shoaled crests also slow down, the way real ones do
+        spdPx: Math.min(30, Math.max(5, (1.56 * T * TIME_SCALE * Math.sqrt(shoal)) / mPerPx)),
         seed: Math.random() * Math.PI * 2,
         lenS,
         bow: 0.12 + Math.random() * 0.22,
         pj: (Math.random() - 0.5) * 0.9,
+        wCore,
+        wHalo,
+        breaking,
         edge,
       })
     }
@@ -272,29 +309,38 @@ function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => 
         ctx.save()
         ctx.translate(sx, sy)
         ctx.strokeStyle = `rgba(5, 14, 26, ${(0.42 * a).toFixed(3)})`
-        ctx.lineWidth = 9
+        ctx.lineWidth = p.wHalo * 1.2
         arc(1)
         ctx.restore()
         ctx.strokeStyle = `rgba(214, 234, 248, ${(0.7 * a).toFixed(3)})`
-        ctx.lineWidth = 2
+        ctx.lineWidth = Math.max(1.2, p.wCore * 0.85)
         arc(0.9)
       } else if (palette === 'size') {
         const rgb = rgbOf(seaColor(p.h))
         ctx.strokeStyle = `rgba(${rgb}, ${(0.3 * a).toFixed(3)})`
-        ctx.lineWidth = 7
+        ctx.lineWidth = p.wHalo
         arc(1)
         ctx.strokeStyle = `rgba(${rgb}, ${(0.8 * a).toFixed(3)})`
-        ctx.lineWidth = 2.4
+        ctx.lineWidth = p.wCore
         arc(0.82)
       } else {
         // foam, but foam with a colour knob: hue/saturation from Settings,
         // lightness pinned high so the crests stay the white of broken water
         ctx.strokeStyle = `hsla(${tune.seaHue}, ${tune.seaSat * 0.8}%, 84%, ${(0.3 * a).toFixed(3)})`
-        ctx.lineWidth = 7
+        ctx.lineWidth = p.wHalo
         arc(1)
         ctx.strokeStyle = `hsla(${tune.seaHue}, ${tune.seaSat}%, 92%, ${(0.8 * a).toFixed(3)})`
-        ctx.lineWidth = 2.4
+        ctx.lineWidth = p.wCore
         arc(0.82)
+      }
+      if (p.breaking) {
+        // surf: the crest tumbles — a ragged bright spray line just ahead
+        // of the front, the one place the sea gets to be louder than data
+        ctx.setLineDash([2.5, 4])
+        ctx.strokeStyle = `rgba(244, 250, 254, ${(0.85 * a).toFixed(3)})`
+        ctx.lineWidth = 1.5
+        arc(0.62)
+        ctx.setLineDash([])
       }
     }
     ctx.restore()
