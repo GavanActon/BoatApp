@@ -1,13 +1,5 @@
 import { depthAt, getDepthGridRaw, loadDepthGrid } from '../map/depthGrid'
-import {
-  buildNavMask,
-  cellToLonLat,
-  haversineNm,
-  routeOnGrid,
-  snapToWater,
-  type NavMask,
-  type RouteResult,
-} from './waterRouter'
+import { buildNavMask, NODATA, routeOnGrid, type NavMask, type RouteResult } from './waterRouter'
 
 /** Binds the pure water router to the app's loaded depth grid. */
 
@@ -25,30 +17,48 @@ export async function ensureNav(): Promise<NavMask | null> {
   return nav
 }
 
-const AFLOAT_TOLERANCE_M = 1500
+const AFLOAT_RADIUS_M = 1000
 
 /**
- * Is the boat actually on the water here? A different question from "can this
- * point be snapped to water", and the two were being conflated: routeOnGrid's
- * snap reaches 13.4 km, which is the right latitude for a destination tapped
- * roughly on the map and badly wrong for deciding where the BOAT is. Ashore,
- * it slides the start 6-7 km onto the lake and quotes the trip from there.
+ * Is the boat on the water here? A different question from "can this point be
+ * snapped to water", and the two were conflated: routeOnGrid's snap reaches
+ * 13.4 km, which is the right latitude for a destination tapped roughly on the
+ * map and badly wrong for deciding where the BOAT is. Ashore, it slid the
+ * start 6-7 km onto the lake and quoted the whole trip from out there.
  *
- * Charted water is the strong signal. The tolerance covers water the depth
- * grid doesn't reach: Batchawana Bay — one of this app's own destinations —
- * sits 1.2 km from the nearest navigable cell. Inland positions in this region
- * run 5 km and up, so 1.5 km separates the two references cleanly. Between
- * them is a grey band no distance can resolve, which is why the trip card now
- * names the start it used and one tap overrides it.
+ * Within a kilometre of CHARTED water, measured on the depth grid — not
+ * navigable water. Water too shallow for the nav mask is still water you can
+ * float on: Batchawana Bay, one of this app's own destinations, sits 0.53 km
+ * from charted water but 1.22 km from anything the router will cross, so
+ * measuring to navigable water would call a boat anchored there ashore.
+ * Genuinely inland positions have no charted water within reach at all.
  */
 export function isAfloat(lon: number, lat: number): boolean {
-  if (depthAt(lon, lat) != null) return true // over charted water
-  if (!nav) return false // grid not up yet: don't claim afloat on no evidence
-  const cell = snapToWater(nav, lon, lat)
-  if (!cell) return false
-  const [wlon, wlat] = cellToLonLat(nav, cell[0], cell[1])
-  return haversineNm(lon, lat, wlon, wlat) * 1852 <= AFLOAT_TOLERANCE_M
+  if (depthAt(lon, lat) != null) return true // standing on charted water
+  const raw = getDepthGridRaw()
+  if (!raw) return false // grid not up yet: don't claim afloat on no evidence
+  const { header, data } = raw
+  const { west, south, east, north, nx, ny } = header
+  if (lon < west || lon > east || lat < south || lat > north) return false
+  const mX = ((east - west) / nx) * 111320 * Math.cos((lat * Math.PI) / 180)
+  const mY = ((north - south) / ny) * 111320
+  const cx = Math.round(((lon - west) / (east - west)) * (nx - 1))
+  const cy = Math.round(((north - lat) / (north - south)) * (ny - 1))
+  const rx = Math.ceil(AFLOAT_RADIUS_M / mX)
+  const ry = Math.ceil(AFLOAT_RADIUS_M / mY)
+  for (let dy = -ry; dy <= ry; dy++) {
+    const y = cy + dy
+    if (y < 0 || y >= ny) continue
+    for (let dx = -rx; dx <= rx; dx++) {
+      const x = cx + dx
+      if (x < 0 || x >= nx) continue
+      if (data[y * nx + x] === NODATA) continue
+      if (Math.hypot(dx * mX, dy * mY) <= AFLOAT_RADIUS_M) return true
+    }
+  }
+  return false
 }
+
 
 export async function computeRoute(
   start: [number, number],
