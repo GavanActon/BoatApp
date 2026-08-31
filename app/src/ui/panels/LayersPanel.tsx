@@ -79,6 +79,8 @@ export default function LayersPanel() {
   const headingUp = useAppStore((s) => s.headingUp)
   const setHeadingUp = useAppStore((s) => s.setHeadingUp)
   const satOpacity = useAppStore((s) => s.satOpacity)
+  const satVivid = useAppStore((s) => s.satVivid)
+  const setSatVivid = useAppStore((s) => s.setSatVivid)
   const setSatOpacity = useAppStore((s) => s.setSatOpacity)
   const windFlowOpacity = useAppStore((s) => s.windFlowOpacity)
   const setWindFlowOpacity = useAppStore((s) => s.setWindFlowOpacity)
@@ -107,19 +109,32 @@ export default function LayersPanel() {
             />
           </label>
           {l.key === 'satellite' && layers.satellite && (
-            <div className="row layer-opacity">
-              <div className="row-text">
-                <span className="row-desc">Opacity · {Math.round(satOpacity * 100)}%</span>
+            <>
+              <div className="row layer-opacity">
+                <div className="row-text">
+                  <span className="row-desc">Opacity · {Math.round(satOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={Math.round(satOpacity * 100)}
+                  onChange={(e) => setSatOpacity(Number(e.target.value) / 100)}
+                />
               </div>
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={5}
-                value={Math.round(satOpacity * 100)}
-                onChange={(e) => setSatOpacity(Number(e.target.value) / 100)}
-              />
-            </div>
+              <label className="row layer-opacity">
+                <div className="row-text">
+                  <span className="row-desc">Vivid — true colour for reading beaches</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="switch"
+                  checked={satVivid}
+                  onChange={(e) => setSatVivid(e.target.checked)}
+                />
+              </label>
+            </>
           )}
           {l.key === 'windFlow' && layers.windFlow && (
             <>

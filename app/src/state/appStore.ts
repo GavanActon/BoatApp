@@ -75,6 +75,11 @@ interface AppState {
   setLayer: (k: keyof LayerVisibility, v: boolean) => void
   satOpacity: number // 0..1 satellite layer opacity
   setSatOpacity: (v: number) => void
+  // Quiet land, living water: by default the satellite is heavily desaturated
+  // and dimmed so it reads as "shore" and the data layers own the contrast.
+  // Vivid restores true colour for reading beaches and anchorages.
+  satVivid: boolean
+  setSatVivid: (v: boolean) => void
   windFlowOpacity: number // 0..1 wind-flow particle strength
   setWindFlowOpacity: (v: number) => void
   flowTuning: FlowTuning
@@ -161,6 +166,7 @@ type PersistedPrefs = Pick<
   | 'windUnit'
   | 'layers'
   | 'satOpacity'
+  | 'satVivid'
   | 'windFlowOpacity'
   | 'flowTuning'
   | 'headingUp'
@@ -200,6 +206,8 @@ export const useAppStore = create<AppState>()(
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
       setSatOpacity: (v) => set({ satOpacity: v }),
+      satVivid: false,
+      setSatVivid: (v) => set({ satVivid: v }),
       windFlowOpacity: 0.8,
       setWindFlowOpacity: (v) => set({ windFlowOpacity: v }),
       flowTuning: FLOW_TUNING_DEFAULTS,
@@ -289,6 +297,7 @@ export const useAppStore = create<AppState>()(
         windUnit: s.windUnit,
         layers: s.layers,
         satOpacity: s.satOpacity,
+        satVivid: s.satVivid,
         windFlowOpacity: s.windFlowOpacity,
         flowTuning: s.flowTuning,
         headingUp: s.headingUp,

@@ -7,7 +7,7 @@ import type { SpeedUnit } from '../units'
 import { loadContours } from './contoursData'
 import { depthAt, formatDepth, loadDepthGrid } from './depthGrid'
 import { applyLayerVisibility, getMap, setMap } from './mapController'
-import { buildMapStyle, depthLabelExpr } from './mapStyle'
+import { buildMapStyle, depthLabelExpr, satTreatment } from './mapStyle'
 import { registerAllDataFiles } from './pmtilesRegistry'
 import { useMeasureStore } from '../measure/measureStore'
 import { routeEditedRecently, sampleDotAt } from '../routing/routeLayer'
@@ -96,7 +96,7 @@ export default function MapView() {
         .setOfflineReady(BUNDLES[0].files.every((f) => storedNames.has(f)))
       if (disposed || !containerRef.current) return
 
-      const { layers, depthUnit, satOpacity } = useAppStore.getState()
+      const { layers, depthUnit, satOpacity, satVivid } = useAppStore.getState()
       const saved = loadSavedView()
       map = new maplibregl.Map({
         container: containerRef.current,
@@ -107,6 +107,7 @@ export default function MapView() {
           showSeamarks: layers.seamarks,
           showSatellite: layers.satellite,
           satOpacity,
+          satVivid,
           available,
           contoursData,
           depthUnit,
@@ -262,6 +263,13 @@ export default function MapView() {
           const map = getMap()
           if (map?.getLayer('satellite')) {
             map.setPaintProperty('satellite', 'raster-opacity', s.satOpacity)
+          }
+        }
+        if (s.satVivid !== prev.satVivid) {
+          const map = getMap()
+          if (map?.getLayer('satellite')) {
+            const t = satTreatment(s.satVivid)
+            for (const [k, v] of Object.entries(t)) map.setPaintProperty('satellite', k, v)
           }
         }
         if (s.depthUnit !== prev.depthUnit) {

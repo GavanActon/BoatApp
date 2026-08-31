@@ -48,6 +48,7 @@ export interface StyleOpts {
   showSeamarks: boolean
   showSatellite: boolean
   satOpacity: number
+  satVivid: boolean
   /** which pmtiles sources are reachable (from registerAllDataFiles) */
   available: Set<string>
   /** contour + sounding GeoJSON, if loaded */
@@ -145,6 +146,11 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
   // Satellite sits above every vector fill (real imagery of land and water) but
   // below contours, soundings, basemap labels and seamarks, so chart info stays
   // readable on top. Opacity is user-adjustable to blend imagery with the chart.
+  //
+  // Quiet land, living water: the default treatment desaturates and dims the
+  // imagery hard, so land reads as "shore" and the contrast budget belongs to
+  // the layers that carry decisions — depth, sea state, the run. Vivid mode
+  // restores true colour for reading a beach or an anchorage.
   const satelliteLayer: LayerSpecification = {
     id: 'satellite',
     type: 'raster',
@@ -153,6 +159,7 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
     paint: {
       'raster-opacity': opts.satOpacity,
       'raster-resampling': 'linear',
+      ...satTreatment(opts.satVivid),
     },
   }
 
@@ -222,4 +229,15 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
     sources,
     layers: allLayers,
   }
+}
+
+/** The satellite's two moods — quiet chart furniture, or true colour. */
+export function satTreatment(vivid: boolean): {
+  'raster-saturation': number
+  'raster-brightness-max': number
+  'raster-contrast': number
+} {
+  return vivid
+    ? { 'raster-saturation': 0, 'raster-brightness-max': 1, 'raster-contrast': 0 }
+    : { 'raster-saturation': -0.85, 'raster-brightness-max': 0.55, 'raster-contrast': -0.05 }
 }

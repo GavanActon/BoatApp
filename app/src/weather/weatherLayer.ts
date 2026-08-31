@@ -306,7 +306,12 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
  * on every pan, and the whole field crawls across the map with you.
  */
 function latticeStep(native: number, want: number): number {
-  const steps = Math.max(0, Math.round(Math.log2(Math.abs(native) / want)))
+  // Negative steps COARSEN — doubling the native spacing rather than halving
+  // it. Zoomed out past the region every native cell used to land on screen,
+  // a wall of arrows; power-of-two multiples keep the coarser lattice
+  // anchored on the same grid origin, so arrows still hold still while you
+  // pan. Capped at 8× native (~100 km) — beyond that the region is a dot.
+  const steps = Math.max(-3, Math.round(Math.log2(Math.abs(native) / want)))
   return Math.abs(native) / 2 ** steps
 }
 
