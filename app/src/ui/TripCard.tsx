@@ -24,7 +24,7 @@ import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn, windS
 import { fetchPointForecast, type PointForecast } from '../weather/openMeteo'
 import { seaColor } from '../weather/seaState'
 import { ensureWeatherGrid, gridConditionsAt, onWeatherHour, weatherGridInfo } from '../weather/weatherLayer'
-import { IconClose, IconMinus, IconPlus } from './icons'
+import { IconClose, IconLocate, IconMinus, IconPlus, IconStar } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
 
@@ -399,10 +399,11 @@ function StandingFacts({ lon, lat }: { lon: number; lat: number }) {
  * otherwise without going through the map's start pin.
  *
  * A chip row, the same swipeable line every other question here gets, so the
- * places run left and right under a thumb. "Here" is the boat and leads,
- * because most runs start where you float; it reads "Home base" when that's
- * what the plan actually fell back to, so the chip never claims to be your
- * position while standing in for it.
+ * places run left and right under a thumb. The automatic one leads, because
+ * most runs start where you float — and it says which it means rather than
+ * an unqualified "Here": a locate crosshair and "Current location" while
+ * you're on the water, the home base's own star and "Home base" once you're
+ * not. The chip never claims to be your position while standing in for it.
  */
 function FromRow() {
   const startPoint = useRouteStore((s) => s.startPoint)
@@ -419,7 +420,17 @@ function FromRow() {
           className={`dest-chip ${startPoint == null ? 'on' : ''}`}
           onClick={() => setStartPoint(null)}
         >
-          {startFrom === 'home' ? 'Home base' : 'Here'}
+          {startFrom === 'home' ? (
+            // it resolved to the home base, so it wears the same star Places
+            // marks that base with — a locate crosshair here would be a lie
+            <>
+              <IconStar size={12} /> Home base
+            </>
+          ) : (
+            <>
+              <IconLocate size={13} /> Current location
+            </>
+          )}
         </button>
         {places.map((p) => (
           <button
