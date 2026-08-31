@@ -23,30 +23,46 @@ export default function BottomSheet({
   const [heightPct, setHeightPct] = useState(halfPct)
   const drag = useRef<{ startY: number; startPct: number } | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
+  // the live height during a drag. React state would re-render the whole
+  // panel on every pointermove — with the places list inside that recomputes
+  // conditions for every spot per frame, which is what made the drag chunky
+  const livePct = useRef(halfPct)
+
+  /** Write the height straight to the node: a drag has to track the finger,
+   *  and a render per frame cannot. */
+  function applyHeight(pct: number) {
+    livePct.current = pct
+    const el = sheetRef.current
+    if (el) el.style.height = `calc(${pct}dvh + var(--sab))`
+  }
 
   useEffect(() => {
     setHeightPct(halfPct)
+    applyHeight(halfPct)
   }, [title, halfPct])
 
   function onPointerDown(e: React.PointerEvent) {
-    drag.current = { startY: e.clientY, startPct: heightPct }
+    drag.current = { startY: e.clientY, startPct: livePct.current }
+    // the resting height animates to its snap; under the finger it must not,
+    // or every frame restarts a 180ms transition and the sheet chases you
+    sheetRef.current?.classList.add('sheet-dragging')
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return
     const dyPct = ((drag.current.startY - e.clientY) / window.innerHeight) * 100
-    setHeightPct(Math.min(88, Math.max(15, drag.current.startPct + dyPct)))
+    applyHeight(Math.min(88, Math.max(15, drag.current.startPct + dyPct)))
   }
   function onPointerUp() {
     if (!drag.current) return
     drag.current = null
-    setHeightPct((h) => {
-      if (h < halfPct - 14) {
-        setSheetTab(null)
-        return halfPct
-      }
-      return h < 68 ? halfPct : 88
-    })
+    sheetRef.current?.classList.remove('sheet-dragging')
+    const h = livePct.current
+    // dragged well below where it rests: that's a dismiss
+    const snap = h < halfPct - 14 ? halfPct : h < 68 ? halfPct : 88
+    if (h < halfPct - 14) setSheetTab(null)
+    applyHeight(snap)
+    setHeightPct(snap)
   }
 
   return (
@@ -62,7 +78,19 @@ export default function BottomSheet({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
-        <div className="sheet-handle" />
+        {/* a real button, not just a grab strip: a swipe is invisible to a
+            keyboard, to VoiceOver, and to anyone who hasn't guessed it — the
+            trip dock's handle makes the same argument for the same reason */}
+        <button
+          className="sheet-handle"
+          onClick={() => {
+            const next = livePct.current >= 68 ? halfPct : 88
+            applyHeight(next)
+            setHeightPct(next)
+          }}
+          aria-expanded={heightPct >= 68}
+          aria-label={heightPct >= 68 ? 'Collapse' : 'Expand'}
+        />
         <div className="sheet-titlerow">
           <h2>{title}</h2>
           <button className="sheet-close" onClick={() => setSheetTab(null)} aria-label="Close">

@@ -552,8 +552,14 @@
   border-bottom: none;
   display: flex;
   flex-direction: column;
-  animation: rise-in 0.28s cubic-bezier(0.3, 1, 0.4, 1);
+  /* 0.28s read as a wait on the way in; the curve still lands it softly */
+  animation: rise-in 0.2s cubic-bezier(0.3, 1, 0.4, 1);
   transition: height 0.18s ease-out;
+}
+
+/* under the finger the height must not animate — see BottomSheet */
+.sheet-dragging {
+  transition: none;
 }
 
 .sheet-grab {
@@ -563,11 +569,23 @@
 }
 
 .sheet-handle {
+  display: block;
   width: 40px;
   height: 4px;
   border-radius: 2px;
   background: var(--c-border-strong);
-  margin: 8px auto 2px;
+  padding: 0;
+  box-sizing: content-box;
+  cursor: pointer;
+  /* The bar stays 40x4. The BUTTON is 100x28, grown with transparent borders
+     and clipped back to the padding box, so a thumb has something to hit
+     without the handle looking like a slab. Negative margins keep the row the
+     same 14px tall it was when this was an undraggable div. */
+  border: 12px solid transparent;
+  border-left-width: 30px;
+  border-right-width: 30px;
+  background-clip: padding-box;
+  margin: -4px auto -10px;
 }
 
 .sheet-titlerow {
