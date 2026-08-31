@@ -93,7 +93,6 @@ type PersistedTrip = Pick<
   | 'stayMin'
   | 'backByHour'
   | 'destination'
-  | 'startPoint'
   | 'viaPoints'
   | 'tripStartedAt'
   | 'tripOrigin'
@@ -221,7 +220,6 @@ export const useRouteStore = create<RouteState>()(
         stayMin: s.stayMin,
         backByHour: s.backByHour,
         destination: s.destination,
-        startPoint: s.startPoint,
         viaPoints: s.viaPoints,
         tripStartedAt: s.tripStartedAt,
         tripOrigin: s.tripOrigin,
@@ -230,8 +228,14 @@ export const useRouteStore = create<RouteState>()(
       }),
       // the card isn't persisted: it simply shows whenever a trip came back
       merge: (persisted, current) => {
-        const p = persisted as Partial<PersistedTrip> | undefined
+        const p = persisted as (Partial<PersistedTrip> & { startPoint?: RouteState['startPoint'] }) | undefined
         const merged = { ...current, ...p }
+        // The pinned start is a PER-SESSION override, never a saved lifestyle:
+        // the durable "trips start here" is the starred home base in Places.
+        // Persisting the pin created two homes — a stale "Home" dot that beat
+        // the GPS and the star forever, invisibly. Old storage still carries
+        // the key, so it is dropped on every load.
+        merged.startPoint = null
         if (p && p.flowV !== FLOW_V) {
           // Storage from before the spots-first flow carries the trip to the
           // Sandies that used to ship with the app. It was never chosen — it
