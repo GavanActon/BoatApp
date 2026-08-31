@@ -101,6 +101,12 @@ interface AppState {
   // baseline, so an overnight shift still greets the morning open.
   wxShift: string | null
   setWxShift: (v: string | null) => void
+
+  // The sheet stretched to full height because a text field inside it is
+  // being edited — the phone keyboard covers the bottom half of the screen,
+  // and a half-height sheet disappears entirely behind it. Transient.
+  sheetTall: boolean
+  setSheetTall: (v: boolean) => void
   offlineReady: boolean // all region files present in local storage
   setOfflineReady: (v: boolean) => void
 
@@ -223,6 +229,9 @@ export const useAppStore = create<AppState>()(
 
       wxShift: null,
       setWxShift: (v) => set({ wxShift: v }),
+
+      sheetTall: false,
+      setSheetTall: (v) => set({ sheetTall: v }),
       offlineReady: false,
       setOfflineReady: (v) => set({ offlineReady: v }),
 

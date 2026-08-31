@@ -17,6 +17,9 @@ export default function BottomSheet({
   halfPct?: number
 }) {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
+  // a text field in edit stretches the sheet to full — the keyboard eats the
+  // bottom half of the screen, and a half-height sheet vanishes behind it
+  const tall = useAppStore((s) => s.sheetTall)
   const [heightPct, setHeightPct] = useState(halfPct)
   const drag = useRef<{ startY: number; startPct: number } | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
@@ -50,7 +53,7 @@ export default function BottomSheet({
     <div
       ref={sheetRef}
       className="sheet glass"
-      style={{ height: `calc(${heightPct}dvh + var(--sab))` }}
+      style={{ height: `calc(${tall ? 88 : heightPct}dvh + var(--sab))` }}
     >
       <div
         className="sheet-grab"

@@ -1,4 +1,5 @@
 import { HOME } from '../config'
+import { homeCenter } from '../state/placesStore'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { dayLabel, floorHourMs } from '../time'
@@ -47,7 +48,8 @@ function target(): { lon: number; lat: number } {
   if (dest) return { lon: dest.lon, lat: dest.lat }
   const fix = useGpsStore.getState().fix
   if (fix) return { lon: fix.lon, lat: fix.lat }
-  return { lon: HOME.center[0], lat: HOME.center[1] }
+  const home = homeCenter() ?? HOME.center
+  return { lon: home[0], lat: home[1] }
 }
 
 /** The hours that matter: the planned window, else tomorrow's boating day. */

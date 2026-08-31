@@ -3,7 +3,7 @@ import { HOME } from '../../config'
 import { withMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { allPlaces, usePlacesStore } from '../../state/placesStore'
+import { allPlaces, homeCenter, usePlacesStore } from '../../state/placesStore'
 import { timeLabel } from '../../time'
 import { haversineNm } from '../../routing/waterRouter'
 import { useGpsStore } from '../../tracking/gpsStore'
@@ -12,7 +12,7 @@ import { byCalmest, spotConditionsAt } from '../../weather/spotConditions'
 import { sunTimes } from '../../weather/sun'
 import { ensureWeatherGrid, gridConditionsAt } from '../../weather/weatherLayer'
 import { distanceUnitFor, runDistance, speedUnitLabel, windSpeed } from '../../units'
-import { IconClose, IconLocate, IconPlus, IconRoute, IconSky, IconWindArrow } from '../icons'
+import { IconClose, IconLocate, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
 import LimitsRow from '../LimitsRow'
 import SavedAdmin from '../SavedAdmin'
 
@@ -59,6 +59,8 @@ export default function PlacesPanel() {
   const startPoint = useRouteStore((s) => s.startPoint)
   const fix = useGpsStore((s) => s.fix)
   const saved = usePlacesStore((s) => s.saved)
+  const homeName = usePlacesStore((s) => s.homeName)
+  const setHome = usePlacesStore((s) => s.setHome)
   const hidden = usePlacesStore((s) => s.hidden)
   const removePlace = usePlacesStore((s) => s.removePlace)
   const renamePlace = usePlacesStore((s) => s.renamePlace)
@@ -78,6 +80,15 @@ export default function PlacesPanel() {
   const [editing, setEditing] = useState<{ name: string; field: 'name' | 'note' } | null>(null)
   const [editVal, setEditVal] = useState('')
 
+  // While a field is in edit the phone keyboard covers the bottom half of
+  // the screen — and this sheet rests IN that half, so saving a pin used to
+  // mean typing blind. Stretch the sheet to full for the duration.
+  const setSheetTall = useAppStore((s) => s.setSheetTall)
+  useEffect(() => {
+    setSheetTall(editing != null)
+    return () => setSheetTall(false)
+  }, [editing, setSheetTall])
+
   // Save on the water-tap popup lands here in edit mode with the fresh pin's
   // name selected — you name the spot while you still remember why you tapped
   const pendingEdit = usePlacesStore((s) => s.pendingEdit)
@@ -92,8 +103,8 @@ export default function PlacesPanel() {
   // where you are: the chosen start beats the fix beats the home waters
   const here = startPoint ?? (fix ? { name: null, lon: fix.lon, lat: fix.lat } : null) ?? {
     name: null,
-    lon: HOME.center[0],
-    lat: HOME.center[1],
+    lon: (homeCenter() ?? HOME.center)[0],
+    lat: (homeCenter() ?? HOME.center)[1],
   }
   const hereWx = gridConditionsAt(here.lon, here.lat, Date.now())
   const { sunsetMs } = sunTimes(Date.now(), here.lat, here.lon)
@@ -177,7 +188,14 @@ export default function PlacesPanel() {
       className="trip-name-input"
       value={editVal}
       autoFocus
-      onFocus={(e) => e.currentTarget.select()}
+      onFocus={(e) => {
+        e.currentTarget.select()
+        // after the keyboard's slide-in, ride the row to the TOP of the
+        // sheet — the keyboard owns the bottom half of the screen, and
+        // centred is exactly where its top edge lands
+        const el = e.currentTarget
+        setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300)
+      }}
       onChange={(e) => setEditVal(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -241,6 +259,11 @@ export default function PlacesPanel() {
                   <span className="nm">
                     {r.clears && <i className="spot-clear" aria-hidden="true" />}
                     {r.spot.name}
+                    {homeName === r.spot.name && (
+                      <em className="pg-home" title="Home base" aria-label="home base">
+                        <IconStar size={11} />
+                      </em>
+                    )}
                   </span>
                   <span className="pg-sky" aria-hidden="true">
                     {r.precipProbPct != null && r.precipProbPct >= 40 && <em className="pg-wet">💧</em>}
@@ -278,12 +301,34 @@ export default function PlacesPanel() {
         </div>
       ) : (
         <div className="place-list">
-          {rows.map((r) => {
+          {/* the row in edit rides to the TOP: the phone keyboard owns the
+              bottom half of the screen, and at full sheet height the list
+              doesn't scroll — position is the only way to stay visible */}
+          {(editing
+            ? [...rows].sort((a, b) =>
+                a.spot.name === editing.name ? -1 : b.spot.name === editing.name ? 1 : 0,
+              )
+            : rows
+          ).map((r) => {
             const isPin = savedNames.has(r.spot.name)
             const editingName = editing?.name === r.spot.name && editing.field === 'name'
             const editingNote = editing?.name === r.spot.name && editing.field === 'note'
             return (
               <div key={r.spot.name} className="place-row place-row-edit">
+                {/* the home base star: where trips depart from when the GPS
+                    doesn't know better — the dock, the cottage, the rental's
+                    launch. One star; starring here moves house. */}
+                <button
+                  className={`icon-btn pe-star${homeName === r.spot.name ? ' pe-star-on' : ''}`}
+                  onClick={() => setHome(homeName === r.spot.name ? null : r.spot.name)}
+                  aria-label={
+                    homeName === r.spot.name
+                      ? `${r.spot.name} is your home base — tap to unset`
+                      : `Make ${r.spot.name} your home base`
+                  }
+                >
+                  <IconStar size={15} />
+                </button>
                 <div className="pe-fields">
                   {editingName ? (
                     editInput

@@ -38,6 +38,14 @@ interface PlacesState {
    *  the water-tap popup, consumed by the sheet. Transient, never persisted. */
   pendingEdit: string | null
   setPendingEdit: (name: string | null) => void
+  /**
+   * HOME BASE: the name of the place trips depart from when the GPS doesn't
+   * know better — the dock, the cottage, the rental's launch. Starred in the
+   * sheet's edit mode; null means the app has no opinion and must ask before
+   * routing blind. Persisted, because home is the most durable fact there is.
+   */
+  homeName: string | null
+  setHome: (name: string | null) => void
 }
 
 export const usePlacesStore = create<PlacesState>()(
@@ -58,7 +66,12 @@ export const usePlacesStore = create<PlacesState>()(
         set((s) => {
           const notes = { ...s.notes }
           delete notes[name]
-          return { saved: s.saved.filter((p) => p.name !== name), notes }
+          return {
+            saved: s.saved.filter((p) => p.name !== name),
+            notes,
+            // a removed home base is no home base — never a dangling name
+            homeName: s.homeName === name ? null : s.homeName,
+          }
         }),
       renamePlace: (from, to) =>
         set((s) => {
@@ -70,6 +83,7 @@ export const usePlacesStore = create<PlacesState>()(
           return {
             saved: s.saved.map((p) => (p.name === from ? { ...p, name: to } : p)),
             notes,
+            homeName: s.homeName === from ? to : s.homeName,
           }
         }),
       hidePlace: (name) =>
@@ -84,13 +98,31 @@ export const usePlacesStore = create<PlacesState>()(
         }),
       pendingEdit: null,
       setPendingEdit: (pendingEdit) => set({ pendingEdit }),
+      homeName: null,
+      setHome: (homeName) => set({ homeName }),
     }),
     {
       name: 'sandies-places',
-      partialize: (s) => ({ saved: s.saved, hidden: s.hidden, notes: s.notes }),
+      partialize: (s) => ({ saved: s.saved, hidden: s.hidden, notes: s.notes, homeName: s.homeName }),
     },
   ),
 )
+
+/** The starred home base, resolved to coordinates — or null when none is
+ *  set. Hidden built-ins still count: hiding a spot curates the list, it
+ *  doesn't move house. */
+export function homeBase(): SavedPlace | null {
+  const s = usePlacesStore.getState()
+  if (!s.homeName) return null
+  const p = [...s.saved, ...DESTINATIONS].find((d) => d.name === s.homeName)
+  return p ? { name: p.name, lon: p.lon, lat: p.lat } : null
+}
+
+/** Home base as a [lon, lat], for the fallback chains. */
+export function homeCenter(): [number, number] | null {
+  const h = homeBase()
+  return h ? [h.lon, h.lat] : null
+}
 
 /** A place's note: the user's own wording wins over the config's. */
 export function noteFor(name: string): string | null {

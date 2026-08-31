@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { HOME } from '../config'
+import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
 import { endTrip, startTrip } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
@@ -266,8 +267,8 @@ export default function TripCard() {
   // where "here" is: the chosen start beats the fix beats the home waters
   const here = startPoint ?? (fix ? { name: null, lon: fix.lon, lat: fix.lat } : null) ?? {
     name: null,
-    lon: HOME.center[0],
-    lat: HOME.center[1],
+    lon: (homeCenter() ?? HOME.center)[0],
+    lat: (homeCenter() ?? HOME.center)[1],
   }
   // ONE subject at a time — and the dock only renders when there is one;
   // `here` stands in for the hooks' sake before the early return below

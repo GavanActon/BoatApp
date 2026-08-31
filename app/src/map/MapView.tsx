@@ -16,7 +16,7 @@ import { useRouteStore } from '../routing/routeStore'
 import { compass } from '../routing/tripPlan'
 import { floorHourMs } from '../time'
 import { formatPeriod } from '../weather/openMeteo'
-import { usePlacesStore } from '../state/placesStore'
+import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { ensureWeatherGrid, gridConditionsAt, type GridConditions } from '../weather/weatherLayer'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -112,7 +112,7 @@ export default function MapView() {
           contoursData,
           depthUnit,
         }),
-        center: saved?.center ?? HOME.center,
+        center: saved?.center ?? homeCenter() ?? HOME.center,
         zoom: saved?.zoom ?? HOME.zoom,
         bearing: saved?.bearing ?? 0,
         maxPitch: 60,

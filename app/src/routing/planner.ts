@@ -1,4 +1,5 @@
 import { HOME, REGION_BBOX } from '../config'
+import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { useAppStore } from '../state/appStore'
 import { startRecording, stopRecording } from '../tracking/gpsService'
 import { resetSogAverage, useGpsStore } from '../tracking/gpsStore'
@@ -59,19 +60,28 @@ function inRegion(lon: number, lat: number): boolean {
   return lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north
 }
 
-/** GPS fix when it's inside the charted region, otherwise home waters. */
-function boatPosition(): [number, number] {
+/** GPS fix when it's inside the charted region, else the starred home base.
+ *  Null when the app genuinely doesn't know where the boat lives — routing
+ *  then ASKS instead of guessing from the config. */
+function boatPosition(): [number, number] | null {
   const fix = useGpsStore.getState().fix
-  return fix && inRegion(fix.lon, fix.lat) ? [fix.lon, fix.lat] : HOME.center
+  if (fix && inRegion(fix.lon, fix.lat)) return [fix.lon, fix.lat]
+  return homeCenter()
 }
 
 /** Where the trip is planned from: the chosen start point while planning,
  *  the boat's live position once under way. */
-function planStart(underWay: boolean): [number, number] {
+function planStart(underWay: boolean): [number, number] | null {
   const sp = useRouteStore.getState().startPoint
   if (!underWay && sp) return [sp.lon, sp.lat]
   return boatPosition()
 }
+
+/** What routing says when it has a destination but no idea of the departure:
+ *  no fix on the water, no start point, no home base. Actionable, not
+ *  apologetic — both remedies are one tap away. */
+export const NO_START_MSG =
+  'Where from? Star a home base in Places (Edit → ★), or set a start point on the map.'
 
 /** Recompute route + trip weather. `quiet` keeps the current verdict visible
  *  while the new one is prepared (used by under-way progress ticks). */
@@ -89,6 +99,11 @@ export async function replan(quiet = false): Promise<void> {
   const underWay = s.tripStartedAt != null
   const fixedStart = !underWay && s.startPoint != null
   const start = planStart(underWay)
+  if (!start) {
+    s.setRoute(null, NO_START_MSG)
+    s.setPlan(null)
+    return
+  }
 
   // round trip + boat has reached the destination → plan the ride home
   let target: [number, number] = [dest.lon, dest.lat]
@@ -109,16 +124,18 @@ export async function replan(quiet = false): Promise<void> {
   }
 
   let result = await computeRoute(start, target, vias)
+  const home = homeCenter()
   if (
     'error' in result &&
     !fixedStart &&
-    (start[0] !== HOME.center[0] || start[1] !== HOME.center[1])
+    home &&
+    (start[0] !== home[0] || start[1] !== home[1])
   ) {
     // the fix exists but can't reach water (marina slip, on the road, GPS
-    // drift ashore) — plan the trip from home waters instead of failing.
+    // drift ashore) — plan the trip from the home base instead of failing.
     // A user-chosen start point is never second-guessed like this: the error
     // tells them to move it instead.
-    result = await computeRoute(HOME.center, target, vias)
+    result = await computeRoute(home, target, vias)
   }
   if (token !== replanToken) return
   if ('error' in result) {
@@ -189,12 +206,14 @@ export function startTrip() {
   const sp = useRouteStore.getState().startPoint
   // the ride home aims for the actual cast-off spot; without a fix, the
   // chosen start point beats the home-waters default
+  // a trip only starts once a route exists, and a route needed a start —
+  // so one of these always answers; config HOME is unreachable insurance
   const origin: [number, number] =
     fix && inRegion(fix.lon, fix.lat)
       ? [fix.lon, fix.lat]
       : sp
         ? [sp.lon, sp.lat]
-        : HOME.center
+        : (homeCenter() ?? HOME.center)
   capturePromise() // before the window is cleared — it IS the promise
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
@@ -230,6 +249,12 @@ export function initRoutePlanner() {
   if (resumed.tripStartedAt != null && !useGpsStore.getState().recording) {
     void startRecording()
   }
+
+  // starring (or moving) the home base changes where trips depart from —
+  // replan, which also clears the "where from?" ask the moment it's answered
+  usePlacesStore.subscribe((s, prev) => {
+    if (s.homeName !== prev.homeName && useRouteStore.getState().destination) void replan()
+  })
 
   useRouteStore.subscribe((s, prev) => {
     if (

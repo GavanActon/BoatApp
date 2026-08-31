@@ -2179,6 +2179,32 @@
   padding: 6px 8px 6px 10px;
 }
 
+/* The home-base star: hollow until this place is home, then filled and warm.
+   One per list — starring elsewhere moves house. */
+.pe-star {
+  color: var(--c-text-faint);
+  flex-shrink: 0;
+}
+
+.pe-star.pe-star-on {
+  color: var(--c-warn);
+}
+
+.pe-star.pe-star-on svg {
+  fill: currentColor;
+}
+
+/* the quiet star beside the home place's name in the everyday list */
+.pg-home {
+  display: inline-flex;
+  color: var(--c-warn);
+  margin-left: 4px;
+}
+
+.pg-home svg {
+  fill: currentColor;
+}
+
 .pe-fields {
   flex: 1;
   min-width: 0;

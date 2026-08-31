@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { HOME } from '../config'
+import { homeCenter } from '../state/placesStore'
 import { getMap } from '../map/mapController'
 import { adoptWindow } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
@@ -106,8 +107,9 @@ export default function WeatherStrip() {
     const load = async () => {
       const fix = useGpsStore.getState().fix
       const c = getMap()?.getCenter()
-      const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? HOME.center[0]
-      const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? HOME.center[1]
+      const home = homeCenter() ?? HOME.center
+      const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? home[0]
+      const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? home[1]
       try {
         const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat)
         if (alive) {
