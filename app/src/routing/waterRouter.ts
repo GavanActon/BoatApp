@@ -2,7 +2,9 @@
  * Automatic over-water routing on the offline depth grid.
  *
  * The .dgrid raster (~65–90 m cells) is downsampled 2× into a navigable mask
- * (all four fine cells must be water at least MIN_NAV_DEPTH_M deep, which also
+ * (all four fine cells must carry charted water; at least MIN_NAV_DEPTH_M
+ * everywhere makes the cell preferred, merely SHALLOW_NAV_DEPTH_M makes it
+ * routable at a steep penalty — the chart under-reads near shore, which also
  * bakes in roughly one fine cell of shore clearance). A* runs over the mask
  * with a soft cost penalty next to shore so routes stand off land where the
  * water allows, then the cell path is string-pulled down to a few waypoints.
@@ -22,7 +24,14 @@ export interface GridHeader {
 
 export const NODATA = 32767
 const DOWN = 2 // downsample factor: routing cell = DOWN×DOWN fine cells
-const MIN_NAV_DEPTH_M = 2 // don't route through water shallower than this
+const MIN_NAV_DEPTH_M = 2 // preferred water: routes live here when they can
+// The chart under-reads close to shore — the old DEM smears shallows and
+// NONNA is shoal-biased by design, so cells habitually say 0 where a boat
+// floats fine. Charted water between these bounds is therefore ROUTABLE,
+// just expensive: the router threads it only when no deep path exists (a
+// dock approach, a river mouth), never to cut a corner.
+const SHALLOW_NAV_DEPTH_M = 0.6
+const SHALLOW_PENALTY = 4 // cost multiplier inside the shallow tier
 const SHORE_PENALTY = 1.6 // cost multiplier for cells touching non-navigable cells
 const SNAP_RADIUS_CELLS = 60 // how far a start/dest may be from navigable water
 
@@ -30,7 +39,7 @@ export interface NavMask {
   header: GridHeader
   rnx: number
   rny: number
-  mask: Uint8Array // 1 = navigable
+  mask: Uint8Array // 0 = no; 1 = deep (preferred); 2 = shallow (penalized)
   nearShore: Uint8Array // 1 = navigable but touching a non-navigable cell
   mpcX: number // metres per routing cell, east-west
   mpcY: number // metres per routing cell, north-south
@@ -42,20 +51,24 @@ export function buildNavMask(header: GridHeader, data: Int16Array): NavMask {
   const rny = Math.floor(ny / DOWN)
   const mask = new Uint8Array(rnx * rny)
   const minDm = MIN_NAV_DEPTH_M * 10
+  const shallowDm = SHALLOW_NAV_DEPTH_M * 10
 
   for (let cy = 0; cy < rny; cy++) {
     for (let cx = 0; cx < rnx; cx++) {
-      let ok = 1
-      for (let sy = 0; sy < DOWN && ok; sy++) {
+      // the WORST of the four fine cells decides the tier: one dry or
+      // uncharted cell sinks it, one merely-shallow cell demotes it
+      let worst = Infinity
+      for (let sy = 0; sy < DOWN && worst > -1; sy++) {
         for (let sx = 0; sx < DOWN; sx++) {
           const v = data[(cy * DOWN + sy) * nx + (cx * DOWN + sx)]
-          if (v === NODATA || v < minDm) {
-            ok = 0
+          if (v === NODATA || v < shallowDm) {
+            worst = -1
             break
           }
+          if (v < worst) worst = v
         }
       }
-      mask[cy * rnx + cx] = ok
+      mask[cy * rnx + cx] = worst < shallowDm ? 0 : worst >= minDm ? 1 : 2
     }
   }
 
@@ -215,7 +228,8 @@ export function findCellPath(
       const ni = y * rnx + x
       if (!mask[ni] || closed[ni]) continue
       const base = k < 2 ? mpcX : k < 4 ? mpcY : dCost
-      const cost = base * (nearShore[ni] ? SHORE_PENALTY : 1)
+      // shallow costs the most; near-shore deep water a little — never both
+      const cost = base * (mask[ni] === 2 ? SHALLOW_PENALTY : nearShore[ni] ? SHORE_PENALTY : 1)
       const ng = g[cur] + cost
       if (ng < g[ni]) {
         g[ni] = ng
@@ -233,14 +247,17 @@ export function findCellPath(
   return path
 }
 
-/** True if the straight segment between two cells stays in navigable water. */
+/** True if the straight segment between two cells stays in DEEP water.
+ *  Deliberately not the shallow tier: A* paid a premium for every shallow
+ *  cell it threaded, and smoothing must not cut a shallow corner for free —
+ *  shallow sections keep their exact cell path. */
 function lineOfSight(nav: NavMask, a: [number, number], b: [number, number]): boolean {
   const steps = Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])) / 0.35)
   for (let s = 1; s < steps; s++) {
     const t = s / steps
     const x = Math.round(a[0] + (b[0] - a[0]) * t)
     const y = Math.round(a[1] + (b[1] - a[1]) * t)
-    if (!nav.mask[y * nav.rnx + x]) return false
+    if (nav.mask[y * nav.rnx + x] !== 1) return false
   }
   return true
 }
