@@ -7,7 +7,7 @@ import { useRouteStore } from '../routing/routeStore'
 import type { TripPlan } from '../routing/tripPlan'
 import { haversineNm } from '../routing/waterRouter'
 import { useAppStore } from '../state/appStore'
-import { noteFor } from '../state/placesStore'
+import { allPlaces, noteFor } from '../state/placesStore'
 import {
   dayLabel,
   dayShort,
@@ -366,6 +366,7 @@ export default function TripCard() {
       </div>
       {raised ? (
         <div className="tb-scroll">
+          {destination && <FromRow />}
           {destination?.name != null && (
             // the hand-written exposure note — content, not chrome, and the
             // one sentence the interface allows itself (§1.5)
@@ -387,6 +388,51 @@ function StandingFacts({ lon, lat }: { lon: number; lat: number }) {
   const water = gridConditionsAt(lon, lat, Date.now())?.waterTempC ?? null
   if (water == null) return null
   return <span className="meta numeral">water {Math.round(water)}°</span>
+}
+
+/**
+ * Where the run starts FROM, at L2.
+ *
+ * The dock's subject is the far end; this is the near one, and it had no
+ * home on any surface. The plan quietly used your position, or the home base
+ * when you're ashore, and nothing said which — nor offered a way to say
+ * otherwise without going through the map's start pin.
+ *
+ * A chip row, the same swipeable line every other question here gets, so the
+ * places run left and right under a thumb. "Here" is the boat and leads,
+ * because most runs start where you float; it reads "Home base" when that's
+ * what the plan actually fell back to, so the chip never claims to be your
+ * position while standing in for it.
+ */
+function FromRow() {
+  const startPoint = useRouteStore((s) => s.startPoint)
+  const setStartPoint = useRouteStore((s) => s.setStartPoint)
+  const destination = useRouteStore((s) => s.destination)
+  const startFrom = useRouteStore((s) => s.startFrom)
+  // routing from the destination to itself is not a run
+  const places = allPlaces().filter((p) => p.name !== destination?.name)
+  return (
+    <div className="from-row">
+      <span className="from-label">From</span>
+      <div className="tb-chips">
+        <button
+          className={`dest-chip ${startPoint == null ? 'on' : ''}`}
+          onClick={() => setStartPoint(null)}
+        >
+          {startFrom === 'home' ? 'Home base' : 'Here'}
+        </button>
+        {places.map((p) => (
+          <button
+            key={p.name}
+            className={`dest-chip ${startPoint?.name === p.name ? 'on' : ''}`}
+            onClick={() => setStartPoint({ name: p.name, lon: p.lon, lat: p.lat })}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /** The spot's hand-written exposure note, at L2 only — the user's own
