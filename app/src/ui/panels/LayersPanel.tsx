@@ -1,9 +1,6 @@
 import { Fragment } from 'react'
-import { getMap } from '../../map/mapController'
 import { FLOW_TUNING_DEFAULTS, useAppStore, type FlowTuning } from '../../state/appStore'
 import { SPEED_UNITS } from '../../units'
-import { playBriefing } from '../../weather/windFlow'
-import { IconWind } from '../icons'
 
 /** One tuning slider row — the motion layers are dialled in on the water,
  *  not in code, so every parameter that shapes the look gets one of these. */
@@ -64,13 +61,6 @@ const LAYER_DEFS = [
     name: 'Sea flow',
     desc: 'Swell fronts marching on the water',
   },
-  {
-    key: 'rake',
-    name: 'Wave rake',
-    // adds to the coloured lanes rather than replacing them: they carry how
-    // big, this carries which way
-    desc: 'Sea direction along the run',
-  },
 ] as const
 
 export default function LayersPanel() {
@@ -94,7 +84,6 @@ export default function LayersPanel() {
   const setWindFlowOpacity = useAppStore((s) => s.setWindFlowOpacity)
   const tune = useAppStore((s) => s.flowTuning)
   const setFlowTuning = useAppStore((s) => s.setFlowTuning)
-  const setSheetTab = useAppStore((s) => s.setSheetTab)
 
   const set = (k: keyof FlowTuning) => (v: number) => setFlowTuning({ [k]: v })
   const tuned = (Object.keys(FLOW_TUNING_DEFAULTS) as (keyof FlowTuning)[]).some(
@@ -270,22 +259,6 @@ export default function LayersPanel() {
         </button>
       )}
 
-      <button
-        className="row row-action"
-        onClick={() => {
-          // the performance needs the chart, so the sheet steps aside first
-          setSheetTab(null)
-          const map = getMap()
-          if (map) void playBriefing(map)
-        }}
-      >
-        <div className="row-text">
-          <span className="row-title">Play briefing</span>
-          <span className="row-desc">Ten seconds of wind and sea over your run, then quiet</span>
-        </div>
-        <IconWind size={20} />
-      </button>
-
       <label className="row">
         <div className="row-text">
           <span className="row-title">Outlook strip</span>
@@ -379,6 +352,7 @@ export default function LayersPanel() {
           onChange={(e) => setHeadingUp(e.target.checked)}
         />
       </label>
+
     </div>
   )
 }

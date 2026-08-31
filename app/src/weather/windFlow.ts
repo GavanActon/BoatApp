@@ -114,6 +114,9 @@ interface EngineOpts {
   /** Stroke strength right now, 0..1 — polled every frame, so a slider or a
    *  briefing's fade drives it live. */
   level: () => number
+  /** Called when the camera has changed shape (zoom/bearing/pitch) for over
+   *  a second with no moveend in sight — the owner should rebuild. */
+  resync: () => void
 }
 
 interface Engine {
@@ -184,9 +187,34 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
   let last = born
   let raf = 0
 
+  // Geographic anchoring: the field and every particle live in the screen
+  // frame of the moment the engine started. Each frame the camera's drift is
+  // measured by re-projecting a reference point, and the drawing is simply
+  // translated by it — so pans and auto-follow's endless little eases slide
+  // the wind WITH the chart instead of stopping it (the engines used to
+  // stand down on movestart, and under follow moveend can stay away for
+  // minutes — the "animation stops after a few seconds" bug). A zoom, bearing
+  // or pitch change is a real invalidation: the canvas clears, and moveend —
+  // or a 1.2 s timeout for eases that never end — rebuilds the engine.
+  const refLL = map.unproject([0, 0])
+  const camKey = () =>
+    `${map.getZoom().toFixed(3)}|${map.getBearing().toFixed(1)}|${map.getPitch().toFixed(1)}`
+  const cam0 = camKey()
+  let invalidSince = 0
+
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
+
+    if (camKey() !== cam0) {
+      ctx.clearRect(0, 0, w, h)
+      invalidSince ||= now
+      if (now - invalidSince > 1200) opts.resync() // an ease that never ends
+      else raf = requestAnimationFrame(frame)
+      return
+    }
+    invalidSince = 0
+    const drift = map.project(refLL)
 
     // trails fade instead of clearing — that IS the streak. Fade rate is a
     // live knob: read per frame so the Settings slider answers immediately.
@@ -194,6 +222,9 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
     ctx.fillStyle = `rgba(0, 0, 0, ${useAppStore.getState().flowTuning.windTrail})`
     ctx.fillRect(0, 0, w, h)
     ctx.globalCompositeOperation = 'source-over'
+
+    ctx.save()
+    ctx.translate(drift.x, drift.y)
 
     // a short rise from nothing, so switching the layer on breathes in
     const level = opts.level() * Math.min(1, (now - born) / 900)
@@ -227,6 +258,7 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
       px[i] = nx
       py[i] = ny
     }
+    ctx.restore()
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
@@ -243,17 +275,27 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
 // ---------- the ambient layer (Settings → Wind flow) ----------
 
 let ambient: Engine | null = null
-let cameraMoving = false
 let briefingActive = false
+let resyncQueued = false
 
 function reducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 }
 
+/** A resync requested from inside an engine's own frame — defer a tick so
+ *  the engine isn't torn down while it's still drawing. */
+function queueResync(map: MlMap) {
+  if (resyncQueued) return
+  resyncQueued = true
+  setTimeout(() => {
+    resyncQueued = false
+    syncAmbient(map)
+  }, 0)
+}
+
 function syncAmbient(map: MlMap) {
   const want =
     useAppStore.getState().layers.windFlow &&
-    !cameraMoving &&
     !briefingActive &&
     !reducedMotion() &&
     document.visibilityState === 'visible'
@@ -265,11 +307,12 @@ function syncAmbient(map: MlMap) {
   if (!want) return
   void ensureWeatherGrid().then(() => {
     // conditions may have changed while the grid loaded
-    if (ambient || cameraMoving || briefingActive) return
+    if (ambient || briefingActive) return
     if (!useAppStore.getState().layers.windFlow) return
     const eng = startEngine(map, {
       corridor: false,
       level: () => useAppStore.getState().windFlowOpacity,
+      resync: () => queueResync(map),
     })
     if (eng.dead) return // no grid data — onWeatherGrid will retry us
     ambient = eng
@@ -285,16 +328,9 @@ export function initWindFlow() {
   wired = true
   withMap((map) => {
     syncAmbient(map)
-    // a moving camera invalidates the screen-space field — stand down, come
-    // back when it settles
-    map.on('movestart', () => {
-      cameraMoving = true
-      syncAmbient(map)
-    })
-    map.on('moveend', () => {
-      cameraMoving = false
-      syncAmbient(map)
-    })
+    // engines ride camera translation live (geographic anchoring); a
+    // finished move is when the field resamples for the new viewport
+    map.on('moveend', () => syncAmbient(map))
     map.on('resize', () => syncAmbient(map))
     document.addEventListener('visibilitychange', () => syncAmbient(map))
     useAppStore.subscribe((s, prev) => {
@@ -352,6 +388,7 @@ export async function playBriefing(map: MlMap, variant: BriefingVariant = 'ensem
   const engine = startEngine(map, {
     corridor: variant === 'corridor',
     level: () => level(performance.now() - start),
+    resync: () => {}, // a performance is seconds long — ride out any move
   })
 
   let lastCrest = 0

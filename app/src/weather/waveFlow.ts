@@ -191,15 +191,25 @@ type SwellPalette = 'foam' | 'size' | 'shadow'
  * anchors, varied lengths, a slight forward bow and a touch of phase raggedness
  * keep it water rather than ruling.
  */
-function runSwell(map: MlMap, palette: SwellPalette): () => void {
+function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => {}): () => void {
   const pts = buildPoints(map, useAppStore.getState().flowTuning.seaSpacing)
   const { canvas, ctx, w, h } = makeCanvas(map, 1)
-  // the per-frame shoreline check for edge-flagged anchors only
+  let drift = { x: 0, y: 0 }
+  // the per-frame shoreline check for edge-flagged anchors only. Anchors
+  // live in the START frame; drift maps them to today's screen, and only
+  // there does unproject speak the truth.
   const waterAt = (sx: number, sy: number): boolean => {
-    const q = map.unproject([sx, sy])
+    const q = map.unproject([sx + drift.x, sy + drift.y])
     const dq = depthAt(q.lng, q.lat)
     return dq != null && dq >= MIN_WATER_M
   }
+  // geographic anchoring, same scheme as the wind engine: translation rides
+  // along live, a reshaped camera clears and waits for a rebuild
+  const refLL = map.unproject([0, 0])
+  const camKey = () =>
+    `${map.getZoom().toFixed(3)}|${map.getBearing().toFixed(1)}|${map.getPitch().toFixed(1)}`
+  const cam0 = camKey()
+  let invalidSince = 0
   let raf = 0
   // the sea's own clock: advanced by dt × the speed knob, so dragging the
   // slider changes pace smoothly instead of teleporting every crest
@@ -211,6 +221,16 @@ function runSwell(map: MlMap, palette: SwellPalette): () => void {
     last = now
     clock += dt * tune.seaSpeed
     ctx.clearRect(0, 0, w, h)
+    if (camKey() !== cam0) {
+      invalidSince ||= now
+      if (now - invalidSince > 1200) resync()
+      else raf = requestAnimationFrame(frame)
+      return
+    }
+    invalidSince = 0
+    drift = map.project(refLL)
+    ctx.save()
+    ctx.translate(drift.x, drift.y)
     for (const p of pts) {
       const k = (2 * Math.PI) / p.wlPx
       // spdPx was baked at TIME_SCALE; divide back to the true phase speed —
@@ -277,6 +297,7 @@ function runSwell(map: MlMap, palette: SwellPalette): () => void {
         arc(0.82)
       }
     }
+    ctx.restore()
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
@@ -343,11 +364,22 @@ function runBobbers(map: MlMap): () => void {
 // ---------- the ambient layer (Settings → Sea flow) ----------
 
 let seaStop: (() => void) | null = null
-let seaMoving = false
 let seaWired = false
+let seaResyncQueued = false
 
 function reducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+}
+
+/** A rebuild requested from inside the engine's own frame — defer a tick so
+ *  it isn't torn down mid-draw. */
+function queueSeaResync(map: MlMap) {
+  if (seaResyncQueued) return
+  seaResyncQueued = true
+  setTimeout(() => {
+    seaResyncQueued = false
+    syncSea(map)
+  }, 0)
 }
 
 function syncSea(map: MlMap) {
@@ -356,14 +388,13 @@ function syncSea(map: MlMap) {
   const want =
     useAppStore.getState().layers.seaFlow &&
     current === 'off' && // a console trial owns the water while it runs
-    !seaMoving &&
     !reducedMotion() &&
     document.visibilityState === 'visible'
   if (!want) return
   void ensureWeatherGrid().then(() => {
-    if (seaStop || seaMoving || current !== 'off') return
+    if (seaStop || current !== 'off') return
     if (!useAppStore.getState().layers.seaFlow) return
-    seaStop = runSwell(map, 'foam')
+    seaStop = runSwell(map, 'foam', () => queueSeaResync(map))
   })
 }
 
@@ -374,16 +405,9 @@ export function initSeaFlow() {
   seaWired = true
   withMap((map) => {
     syncSea(map)
-    // same rule as the wind: a moving camera invalidates the screen-space
-    // anchors — stand down, come back when it settles
-    map.on('movestart', () => {
-      seaMoving = true
-      syncSea(map)
-    })
-    map.on('moveend', () => {
-      seaMoving = false
-      syncSea(map)
-    })
+    // same rule as the wind: translation rides along live (anchoring); a
+    // finished move is when the anchors resample for the new viewport
+    map.on('moveend', () => syncSea(map))
     map.on('resize', () => syncSea(map))
     document.addEventListener('visibilitychange', () => syncSea(map))
     useAppStore.subscribe((s, prev) => {

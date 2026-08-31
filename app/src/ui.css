@@ -308,7 +308,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 12px calc(var(--sab) + 10px);
+  /* 8px sides: every pane — strip, card, dock, sheet — shares one width */
+  padding: 0 8px calc(var(--sab) + 10px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -321,7 +322,9 @@
 }
 
 .tabdock {
-  align-self: center;
+  /* full strip width, tabs sharing it evenly — the dock used to shrink-wrap
+     and float centered, the one pane that didn't line up with the rest */
+  align-self: stretch;
   display: flex;
   gap: 2px;
   padding: 4px;
@@ -329,11 +332,12 @@
 }
 
 .tab {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  padding: 6px 14px;
+  padding: 6px 0;
   border-radius: var(--r-tile);
   color: var(--c-text-dim);
   font-size: 10px;
@@ -539,8 +543,9 @@
 
 .sheet {
   position: absolute;
-  left: 0;
-  right: 0;
+  /* the same 8px sides as the outlook strip and the dock */
+  left: 8px;
+  right: 8px;
   bottom: 0;
   z-index: 20;
   border-radius: 10px 10px 0 0;

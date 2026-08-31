@@ -747,8 +747,10 @@ function renderRun(
   const rakeSrc = map.getSource('rake') as GeoJSONSource | undefined
   if (rakeSrc) {
     rakeSrc.setData(buildRakeFc())
-    // the animation trial borrows the rake whatever the layer toggle says
-    const on = useAppStore.getState().layers.rake || isRakeForced()
+    // The rake has no user toggle any more — the sea-flow layer superseded
+    // it (crests on the whole lake, the run's water included). The layers
+    // stay for the crest-pass animation trials, which borrow them here.
+    const on = isRakeForced()
     for (const id of ['run-rake', 'run-rake-haze', 'run-wind']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
     }
@@ -843,6 +845,10 @@ function fitToRoute(map: MlMap, breakFollow: boolean) {
     // route adds) is real chrome too — measure it, or the far end of the run
     // frames underneath it
     const topH = document.querySelector('.toparea')?.getBoundingClientRect().height ?? 110
+    // ...and so is the FAB column: without this an endpoint that lands on the
+    // right edge sits BEHIND the locate button, and "zoom to see the whole
+    // run" quietly fails at exactly one screen edge
+    const fabW = document.querySelector('.fabstack')?.getBoundingClientRect().width ?? 46
     map.fitBounds(
       [
         [w, s],
@@ -851,8 +857,9 @@ function fitToRoute(map: MlMap, breakFollow: boolean) {
       {
         padding: {
           top: Math.round(topH) + 24,
-          left: 45,
-          right: 45,
+          // 56 keeps an endpoint's own label on screen, not just its dot
+          left: 56,
+          right: Math.max(56, Math.round(fabW) + 24),
           // +30 leaves room for the verdict line that joins the card once
           // the weather lands
           bottom: sheetOpen ? Math.round(window.innerHeight * 0.55) + 30 : Math.round(barH) + 30,
@@ -1152,13 +1159,8 @@ export function initRouteLayer() {
   useAppStore.subscribe((s, prev) => {
     // raising the dock is the route drawer's old "open the run" moment now
     if (s.detent === 'raised' && prev.detent !== 'raised') refit()
-    // the leg labels carry the period and the wind, so both have to reach
-    // them; the rake toggle has to reach its own layer's visibility
-    if (
-      s.wavePeriod !== prev.wavePeriod ||
-      s.windUnit !== prev.windUnit ||
-      s.layers.rake !== prev.layers.rake
-    ) {
+    // the leg labels carry the period and the wind, so both have to reach them
+    if (s.wavePeriod !== prev.wavePeriod || s.windUnit !== prev.windUnit) {
       const live = getMap()
       if (live && layersOn === live) render(live)
     }
