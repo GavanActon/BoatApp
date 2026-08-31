@@ -205,6 +205,7 @@ interface Sample {
   dir: number
   wave: number | null
   period: number | null
+  waveDir: number | null
   precip: number | null
   water: number | null
 }
@@ -241,6 +242,9 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
   let waterW = 0
   let precip = 0
   let precipW = 0
+  let wdU = 0
+  let wdV = 0
+  let wdW = 0
   for (const [c, w] of corners) {
     if (!c || !w) continue
     const kn = c.windKn[i] ?? 0
@@ -271,6 +275,14 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
       precip += pr * w
       precipW += w
     }
+    // like windDir: unit vectors, not degrees — and only corners that know
+    const wd = c.waveDir?.[i]
+    if (wd != null) {
+      const wr = (wd * Math.PI) / 180
+      wdU += Math.sin(wr) * w
+      wdV += Math.cos(wr) * w
+      wdW += w
+    }
   }
   return {
     wind,
@@ -279,6 +291,7 @@ function sampleField(g: GridForecast, f: Field, i: number, lon: number, lat: num
     // a partly-covered corner set still gives a height, just from what it had
     wave: waveW > 0 ? wave / waveW : null,
     period: periodW > 0 ? period / periodW : null,
+    waveDir: wdW > 0 ? ((Math.atan2(wdU, wdV) * 180) / Math.PI + 360) % 360 : null,
     water: waterW > 0 ? water / waterW : null,
     precip: precipW > 0 ? precip / precipW : null,
   }
@@ -418,6 +431,8 @@ export interface GridConditions {
   windDir: number
   waveM: number | null
   wavePeriodS: number | null
+  /** Where the sea comes FROM, like windDir. Null before it was fetched. */
+  waveDir: number | null
   /** Chance of precipitation, 0–100. Null for a grid cached before it was fetched. */
   precipProbPct: number | null
   waterTempC: number | null
@@ -450,6 +465,7 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
       windDir: s.dir,
       waveM: s.wave,
       wavePeriodS: s.period,
+      waveDir: s.waveDir,
       precipProbPct: s.precip,
       waterTempC: s.water,
       weatherCode: nearestCell(lon, lat)?.weatherCode?.[i] ?? null,
@@ -477,6 +493,7 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
     waveM: best.waveM[i] ?? null,
     // optional-chained: a grid cached before periods were fetched has no array
     wavePeriodS: best.wavePeriodS?.[i] ?? null,
+    waveDir: best.waveDir?.[i] ?? null,
     precipProbPct: best.precipProbPct?.[i] ?? null,
     waterTempC: best.waterTempC?.[i] ?? null,
     weatherCode: best.weatherCode?.[i] ?? null,
@@ -489,12 +506,57 @@ export function ensureWeatherGrid(): Promise<unknown> {
   return refreshWeatherGrid()
 }
 
+// ---------- the weather clock ----------
+
+// The forecast is HOURLY and everything drawn "at now" reads the hour
+// containing the moment — so at each top of the hour the hour steps and
+// anything holding a rendered field is a full hour stale at once.
+const hourListeners = new Set<() => void>()
+
+/** Run `cb` at every top-of-hour while the app is visible (and after a nap:
+ *  the first tick past a missed boundary fires it too). Returns unsubscribe. */
+export function onWeatherHour(cb: () => void): () => void {
+  hourListeners.add(cb)
+  return () => hourListeners.delete(cb)
+}
+
+/**
+ * One clock for the weather's whole cadence, matched to the data instead of
+ * to user interaction:
+ *
+ *  - each top of the hour: the hourly arrays step, so the overlay re-renders
+ *    and every hour listener (flow-layer fields, the strip's Now) re-reads;
+ *  - past GRID_MAX_AGE_MS: the grid quietly refetches, catching the upstream
+ *    model's ~6-hourly runs within half an hour of them landing.
+ *
+ * A 60 s tick, gated on visibility — a phone asleep spends nothing, and its
+ * first tick after waking covers everything missed. Event-driven refreshes
+ * (pan, toggle, planTime) still run; this is the floor under them, for the
+ * chartplotter that sits mounted and untouched.
+ */
+function startWeatherClock() {
+  let lastHour = Math.floor(Date.now() / 3600_000)
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return
+    const hr = Math.floor(Date.now() / 3600_000)
+    if (hr !== lastHour) {
+      lastHour = hr
+      withMap(render)
+      for (const cb of hourListeners) cb()
+    }
+    if (useAppStore.getState().online && grid && Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS) {
+      void refreshWeatherGrid() // success notifies gridListeners → layers resync
+    }
+  }, 60_000)
+}
+
 let inited = false
 
 /** Wire the layer into the map + store. Call once at startup. */
 export function initWeatherLayer() {
   if (inited) return // React StrictMode double effect-run in dev
   inited = true
+  startWeatherClock()
 
   onEachMap((map) => {
     addLayers(map)

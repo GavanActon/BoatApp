@@ -22,7 +22,7 @@ import { useGpsStore } from '../tracking/gpsStore'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn, windSpeed } from '../units'
 import { fetchPointForecast, type PointForecast } from '../weather/openMeteo'
 import { seaColor } from '../weather/seaState'
-import { ensureWeatherGrid, gridConditionsAt, weatherGridInfo } from '../weather/weatherLayer'
+import { ensureWeatherGrid, gridConditionsAt, onWeatherHour, weatherGridInfo } from '../weather/weatherLayer'
 import { IconClose, IconMinus, IconPlus } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
@@ -121,9 +121,11 @@ function useSubjectForecast(lon: number, lat: number): PointForecast | null {
         })
     void load()
     const t = setInterval(() => void load(), FC_REFRESH_MS)
+    const offHour = onWeatherHour(() => void load()) // hourly data steps hourly
     return () => {
       alive = false
       clearInterval(t)
+      offHour()
     }
   }, [lonKey, latKey])
   return fc

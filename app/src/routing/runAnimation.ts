@@ -341,6 +341,12 @@ export function initRunAnimation(map: MlMap) {
     void import('../weather/windFlow').then((m) => {
       w.__briefing = (v: string) => m.playBriefing(map, v as never)
     })
+    void import('../weather/waveFlow').then((m) => {
+      w.__waves = (v: string) => m.playWaveTrial(map, v as never)
+    })
+    void import('../weather/windFlow').then((m) => {
+      w.__windTint = m.setWindFlowTint
+    })
   }
   document.addEventListener('visibilitychange', () => syncRunAnimation(map))
   useRouteStore.subscribe((s, prev) => {

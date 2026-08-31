@@ -19,6 +19,7 @@ import {
 } from '../weather/openMeteo'
 import { speedUnitLabel, windSpeed } from '../units'
 import { seaColor, seaName } from '../weather/seaState'
+import { onWeatherHour } from '../weather/weatherLayer'
 import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
 /**
@@ -119,9 +120,13 @@ export default function WeatherStrip() {
     }
     void load()
     const t = setInterval(() => void load(), REFRESH_MS)
+    // and at each top of the hour: the Now cell floors to the current hour,
+    // so the boundary is when yesterday's row would otherwise linger
+    const offHour = onWeatherHour(() => void load())
     return () => {
       alive = false
       clearInterval(t)
+      offHour()
     }
     // re-fetch when connectivity returns so a stale strip heals itself
   }, [show, online, focusPoint, departFrom, hasFix])

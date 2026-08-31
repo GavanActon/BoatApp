@@ -17,6 +17,42 @@ interface LayerVisibility {
   /** Live wind streaming over the chart — particles advected by the forecast
    *  grid at the planning time. The always-on sibling of the briefing. */
   windFlow: boolean
+  /** The sea itself: swell fronts marching on the water, foam-white, clipped
+   *  to the shoreline by the depth grid. Composes with windFlow — white
+   *  water, coloured air. */
+  seaFlow: boolean
+}
+
+/** The motion layers' tuning knobs, all live-adjustable from Settings so the
+ *  look can be dialled in ON THE WATER rather than in code. Persisted. */
+export interface FlowTuning {
+  windDensity: number // particle count, 200–2500
+  windSpeed: number // multiplier on advection speed, 0.3–3
+  windTrail: number // per-frame fade 0.86–0.97 — higher = longer streaks
+  windHue: number // stroke hue, degrees (195 = just off the app accent, Gavan-tuned)
+  windSat: number // stroke saturation %, 0 = white threads
+  seaOpacity: number // crest strength 0..1
+  seaSpacing: number // px between crest anchors 24–72 — lower = denser
+  seaLength: number // crest length multiplier 0.5–2
+  seaSpeed: number // multiplier on TRUE phase speed, 1–8 (1 = honest, slow)
+  seaCurve: number // crest bow multiplier, 0 = dead straight
+  seaHue: number // crest hue, degrees
+  seaSat: number // crest saturation %, low = foam
+}
+
+export const FLOW_TUNING_DEFAULTS: FlowTuning = {
+  windDensity: 1100,
+  windSpeed: 1,
+  windTrail: 0.92,
+  windHue: 195,
+  windSat: 100,
+  seaOpacity: 0.8,
+  seaSpacing: 40,
+  seaLength: 1,
+  seaSpeed: 4,
+  seaCurve: 1.3,
+  seaHue: 203,
+  seaSat: 60,
 }
 
 interface AppState {
@@ -44,6 +80,8 @@ interface AppState {
   setSatOpacity: (v: number) => void
   windFlowOpacity: number // 0..1 wind-flow particle strength
   setWindFlowOpacity: (v: number) => void
+  flowTuning: FlowTuning
+  setFlowTuning: (t: Partial<FlowTuning>) => void
 
   // navigation state
   follow: boolean
@@ -120,6 +158,7 @@ type PersistedPrefs = Pick<
   | 'layers'
   | 'satOpacity'
   | 'windFlowOpacity'
+  | 'flowTuning'
   | 'headingUp'
   | 'wxStrip'
   | 'wavePeriod'
@@ -153,12 +192,15 @@ export const useAppStore = create<AppState>()(
         weather: false,
         rake: false,
         windFlow: true, // the moving air is the app's face — on unless turned off
+        seaFlow: true, // and the moving water beside it
       },
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
       setSatOpacity: (v) => set({ satOpacity: v }),
       windFlowOpacity: 0.8,
       setWindFlowOpacity: (v) => set({ windFlowOpacity: v }),
+      flowTuning: FLOW_TUNING_DEFAULTS,
+      setFlowTuning: (t) => set((s) => ({ flowTuning: { ...s.flowTuning, ...t } })),
 
       follow: false,
       setFollow: (v) => set({ follow: v }),
@@ -242,6 +284,7 @@ export const useAppStore = create<AppState>()(
         layers: s.layers,
         satOpacity: s.satOpacity,
         windFlowOpacity: s.windFlowOpacity,
+        flowTuning: s.flowTuning,
         headingUp: s.headingUp,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,
@@ -258,6 +301,8 @@ export const useAppStore = create<AppState>()(
           ...current,
           ...p,
           layers: { ...current.layers, ...p?.layers },
+          // same deep-merge: a knob added after prefs were saved keeps its default
+          flowTuning: { ...current.flowTuning, ...p?.flowTuning },
           // a planning time from a previous session that has already passed means "now"
           planTimeMs: p?.planTimeMs != null && p.planTimeMs > Date.now() ? p.planTimeMs : null,
           planEndMs: p?.planTimeMs != null && p.planTimeMs > Date.now() ? (p.planEndMs ?? null) : null,

@@ -37,6 +37,7 @@ import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 import { initWeatherLayer } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
+import { initSeaFlow } from './weather/waveFlow'
 
 // auto-follow waits for a fix at least this tight before trusting it…
 const GOOD_FIX_ACCURACY_M = 150
@@ -224,6 +225,7 @@ export default function App() {
     initMeasureLayer() // after the route layer, so measurements draw on top
     initRoutePlanner()
     initWindFlow()
+    initSeaFlow()
 
     // grab a position right away; follow it only when it's on our waters.
     // the first fix is often a coarse wifi/IP guess, so hold out for an

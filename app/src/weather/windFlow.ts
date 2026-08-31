@@ -3,7 +3,7 @@ import { withMap } from '../map/mapController'
 import { crestPassFrame, crestSettle, suspendRunAnimation } from '../routing/runAnimation'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
-import { ensureWeatherGrid, gridConditionsAt, onWeatherGrid } from './weatherLayer'
+import { ensureWeatherGrid, gridConditionsAt, onWeatherGrid, onWeatherHour } from './weatherLayer'
 
 /**
  * Wind made visible: particles advected by the real forecast grid at the
@@ -29,7 +29,16 @@ import { ensureWeatherGrid, gridConditionsAt, onWeatherGrid } from './weatherLay
 const LANE_MS = 4600
 const HOLD_MS = 900
 const FIELD_STEP = 28 // css px between wind samples
-const P_COLOR = '159, 232, 255' // #9fe8ff, the wind's colour everywhere else
+// White water, coloured air (chosen 2026-08-30): broken water is white, so
+// the sea-flow layer keeps foam; the AIR wears colour. The default hue/sat
+// in FLOW_TUNING_DEFAULTS is the app accent; both are Settings knobs.
+
+// trial seam: the composition mocks recolour the streaks; null = the knobs
+let tint: string | null = null
+
+export function setWindFlowTint(rgb: string | null) {
+  tint = rgb
+}
 const CORRIDOR_PX = 70 // trial staging: how far off the course particles live
 
 interface FieldGrid {
@@ -54,7 +63,8 @@ function buildField(map: MlMap, w: number, h: number, atMs: number): FieldGrid {
       if (!wx) continue
       // blows TOWARD dir+180; screen y grows downward, north is up
       const rad = ((wx.windDir + 180) * Math.PI) / 180
-      const pxps = Math.min(130, Math.max(12, wx.windKn * 4.5))
+      const speedMul = useAppStore.getState().flowTuning.windSpeed
+      const pxps = Math.min(220, Math.max(8, wx.windKn * 4.5 * speedMul))
       vx[r * cols + c] = Math.sin(rad) * pxps
       vy[r * cols + c] = -Math.cos(rad) * pxps
       live = true
@@ -142,7 +152,7 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
       : []
   const corridor = opts.corridor && routePts.length >= 2
 
-  const N = corridor ? 420 : 1100
+  const N = corridor ? 420 : Math.round(useAppStore.getState().flowTuning.windDensity)
   const px = new Float32Array(N)
   const py = new Float32Array(N)
   const age = new Float32Array(N)
@@ -178,9 +188,10 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
 
-    // trails fade instead of clearing — that IS the streak
+    // trails fade instead of clearing — that IS the streak. Fade rate is a
+    // live knob: read per frame so the Settings slider answers immediately.
     ctx.globalCompositeOperation = 'destination-in'
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.92)'
+    ctx.fillStyle = `rgba(0, 0, 0, ${useAppStore.getState().flowTuning.windTrail})`
     ctx.fillRect(0, 0, w, h)
     ctx.globalCompositeOperation = 'source-over'
 
@@ -201,7 +212,13 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
         continue
       }
       const spd = Math.hypot(vx, vy)
-      ctx.strokeStyle = `rgba(${P_COLOR}, ${(0.22 + (spd / 130) * 0.4) * level})`
+      const alpha = (0.22 + (spd / 130) * 0.4) * level
+      // colour is a knob: hue/saturation from Settings (lightness pinned so
+      // contrast on the dark chart survives any slider position)
+      const tn = useAppStore.getState().flowTuning
+      ctx.strokeStyle = tint
+        ? `rgba(${tint}, ${alpha})`
+        : `hsla(${tn.windHue}, ${tn.windSat}%, 62%, ${alpha})`
       ctx.lineWidth = 1.2
       ctx.beginPath()
       ctx.moveTo(px[i], py[i])
@@ -283,12 +300,18 @@ export function initWindFlow() {
     useAppStore.subscribe((s, prev) => {
       if (
         s.layers.windFlow !== prev.layers.windFlow ||
-        s.planTimeMs !== prev.planTimeMs // the field is a moment's wind
+        s.planTimeMs !== prev.planTimeMs || // the field is a moment's wind
+        // density and speed are baked into the running engine; the other
+        // knobs (trail, strength) are read live and need no restart
+        s.flowTuning.windDensity !== prev.flowTuning.windDensity ||
+        s.flowTuning.windSpeed !== prev.flowTuning.windSpeed
       ) {
         syncAmbient(map)
       }
     })
     onWeatherGrid(() => syncAmbient(map))
+    // the field is one hour's wind; when the hour steps, so does the field
+    onWeatherHour(() => syncAmbient(map))
   })
 }
 
