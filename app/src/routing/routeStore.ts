@@ -64,6 +64,11 @@ interface RouteState {
   startTrip: (origin: [number, number]) => void
   endTrip: () => void
 
+  // Which start the plan actually used, so the card can say so instead of
+  // claiming "Here" when the fix was ashore and home waters stood in.
+  startFrom: 'pinned' | 'fix' | 'home'
+  setStartFrom: (v: 'pinned' | 'fix' | 'home') => void
+
   // route dot the top forecast strip is pointed at (one at a time)
   focusPoint: { lon: number; lat: number; label: string } | null
   setFocusPoint: (p: { lon: number; lat: number; label: string } | null) => void
@@ -174,6 +179,9 @@ export const useRouteStore = create<RouteState>()(
           promisedArriveMs: null,
           promisedHomeMs: null,
         }),
+
+      startFrom: 'fix',
+      setStartFrom: (startFrom) => set({ startFrom }),
 
       focusPoint: null,
       setFocusPoint: (focusPoint) => set({ focusPoint }),

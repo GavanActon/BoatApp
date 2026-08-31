@@ -11,6 +11,7 @@ import type {
 } from 'maplibre-gl'
 import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useMeasureStore } from '../measure/measureStore'
+import { homeBase } from '../state/placesStore'
 import { useAppStore } from '../state/appStore'
 import { formatPeriod } from '../weather/openMeteo'
 import { seaBand, seaColor, SEA_UNKNOWN } from '../weather/seaState'
@@ -388,7 +389,7 @@ function addLayers(map: MlMap) {
 }
 
 function buildFc(): FeatureCollection {
-  const { route, plan, destination, viaPoints, startPoint } = useRouteStore.getState()
+  const { route, plan, destination, viaPoints, startPoint, startFrom } = useRouteStore.getState()
   const features: Feature[] = []
 
   // course points, with the in-flight drag applied; `idx` is the point's
@@ -483,6 +484,15 @@ function buildFc(): FeatureCollection {
       type: 'Feature',
       geometry: { type: 'Point', coordinates: startPos },
       properties: { kind: 'start', label: startPoint.name ?? 'Start' },
+    })
+  } else if (startFrom === 'home' && route) {
+    // the boat isn't on the water, so the run was planned from the home base.
+    // Unsaid, that reads as a trip from where you're standing — mark it.
+    const h = homeBase()
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: route.coords[0] },
+      properties: { kind: 'start', label: h ? `From ${h.name}` : 'From home base' },
     })
   }
   if (destination && destPos) {

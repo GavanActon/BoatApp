@@ -4,7 +4,7 @@ import { useAppStore } from '../state/appStore'
 import { startRecording, stopRecording } from '../tracking/gpsService'
 import { resetSogAverage, useGpsStore } from '../tracking/gpsStore'
 import { capturePromise } from './legReadout'
-import { computeRoute } from './router'
+import { computeRoute, ensureNav, isAfloat } from './router'
 import { useRouteStore } from './routeStore'
 import { planTrip } from './tripPlan'
 import { haversineNm } from './waterRouter'
@@ -60,21 +60,32 @@ function inRegion(lon: number, lat: number): boolean {
   return lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north
 }
 
-/** GPS fix when it's inside the charted region, else the starred home base.
- *  Null when the app genuinely doesn't know where the boat lives — routing
- *  then ASKS instead of guessing from the config. */
-function boatPosition(): [number, number] | null {
+/** GPS fix when the boat is actually ON the water, else the starred home
+ *  base. Null when the app genuinely doesn't know where the boat lives —
+ *  routing then ASKS instead of guessing from the config.
+ *
+ *  The region check alone wasn't enough: it passes a fix in the driveway,
+ *  and routeOnGrid's 13.4 km snap then slides the start 6-7 km onto the lake
+ *  and quotes the whole trip — distance, ETA, weather — from out there. */
+function boatPosition(): { at: [number, number] | null; afloat: boolean } {
   const fix = useGpsStore.getState().fix
-  if (fix && inRegion(fix.lon, fix.lat)) return [fix.lon, fix.lat]
-  return homeCenter()
+  if (fix && inRegion(fix.lon, fix.lat) && isAfloat(fix.lon, fix.lat)) {
+    return { at: [fix.lon, fix.lat], afloat: true }
+  }
+  return { at: homeCenter(), afloat: false }
 }
 
 /** Where the trip is planned from: the chosen start point while planning,
- *  the boat's live position once under way. */
-function planStart(underWay: boolean): [number, number] | null {
+ *  the boat's live position once under way — and which of the three it was,
+ *  so the map can name a fallback instead of leaving it unsaid. */
+function planStart(underWay: boolean): {
+  at: [number, number] | null
+  from: 'pinned' | 'fix' | 'home'
+} {
   const sp = useRouteStore.getState().startPoint
-  if (!underWay && sp) return [sp.lon, sp.lat]
-  return boatPosition()
+  if (!underWay && sp) return { at: [sp.lon, sp.lat], from: 'pinned' }
+  const boat = boatPosition()
+  return { at: boat.at, from: boat.afloat ? 'fix' : 'home' }
 }
 
 /** What routing says when it has a destination but no idea of the departure:
@@ -98,12 +109,15 @@ export async function replan(quiet = false): Promise<void> {
 
   const underWay = s.tripStartedAt != null
   const fixedStart = !underWay && s.startPoint != null
-  const start = planStart(underWay)
+  await ensureNav() // the on-water test reads the depth grid, which may still be loading
+  const started = planStart(underWay)
+  const start = started.at
   if (!start) {
     s.setRoute(null, NO_START_MSG)
     s.setPlan(null)
     return
   }
+  s.setStartFrom(started.from)
 
   // round trip + boat has reached the destination → plan the ride home
   let target: [number, number] = [dest.lon, dest.lat]
