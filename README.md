@@ -46,4 +46,6 @@ Pushing to `main` on GitHub builds and deploys via GitHub Pages
 **Pages → Source → GitHub Actions** (one-time).
 
 Data sources: NOAA NCEI Great Lakes Bathymetry · Copernicus Sentinel-2 ·
-OpenStreetMap/Protomaps · OpenSeaMap · Open-Meteo. Not for navigation — always carry official charts.
+OpenStreetMap/Protomaps · OpenSeaMap · weather via Open-Meteo, built on
+ECCC's HRDPS 2.5 km (wind) and RDWPS 1 km (waves) models.
+Not for navigation — always carry official charts.
