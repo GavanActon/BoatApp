@@ -337,6 +337,51 @@ async function cacheGet<T>(key: string): Promise<{ fetchedAt: number; payload: T
 
 // ---------- point forecast (7 days, for the forecast panel) ----------
 
+/**
+ * Two models in one call, blended per FIELD.
+ *
+ * Wind and direction come from HRDPS (gem_seamless: ECCC's 2.5 km model —
+ * the same physics family that forces the RDWPS waves, and the hyper-local
+ * signal a lake with headlands actually has). Gusts stay with best_match:
+ * HRDPS gusts through this API are degenerate — gust/wind ratio 1.00 across
+ * every hour checked, the sustained wind echoed back — and the comfort
+ * ratings live on gusts. Temperature, sky and rain chance also stay with
+ * best_match. The gust is clamped to at least the HRDPS wind so the blend
+ * can never claim gusts below the sustained breeze.
+ */
+const WIND_MODELS = '&models=best_match,gem_seamless'
+
+type ModelHourly = Record<string, (number | null)[] | undefined> & { time: string[] }
+
+function blendWind(h: ModelHourly): {
+  windKn: number[]
+  gustKn: number[]
+  windDir: number[]
+} {
+  const n = h.time.length
+  const gemW = h.wind_speed_10m_gem_seamless ?? []
+  const bmW = h.wind_speed_10m_best_match ?? h.wind_speed_10m ?? []
+  const gemD = h.wind_direction_10m_gem_seamless ?? []
+  const bmD = h.wind_direction_10m_best_match ?? h.wind_direction_10m ?? []
+  const bmG = h.wind_gusts_10m_best_match ?? h.wind_gusts_10m ?? []
+  const windKn: number[] = new Array(n)
+  const gustKn: number[] = new Array(n)
+  const windDir: number[] = new Array(n)
+  for (let i = 0; i < n; i++) {
+    const w = gemW[i] ?? bmW[i] ?? 0
+    windKn[i] = w
+    windDir[i] = gemD[i] ?? bmD[i] ?? 0
+    gustKn[i] = Math.max(bmG[i] ?? w, w)
+  }
+  return { windKn, gustKn, windDir }
+}
+
+/** A best_match field under the two-model call, tolerant of the unsuffixed
+ *  name so an old cached response still parses. */
+function bm(h: ModelHourly, key: string): (number | null)[] {
+  return h[`${key}_best_match`] ?? h[key] ?? []
+}
+
 function pointKey(lon: number, lat: number): string {
   return `point:${lon.toFixed(2)},${lat.toFixed(2)}`
 }
@@ -350,7 +395,7 @@ export async function fetchPointForecast(
     const windUrl =
       `${WIND_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
       `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code,precipitation_probability` +
-      `&wind_speed_unit=kn&forecast_days=7&timezone=auto`
+      `&wind_speed_unit=kn&forecast_days=7&timezone=auto${WIND_MODELS}`
     const marineUrl =
       `${MARINE_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
       `&hourly=wave_height,wave_period,wave_direction&forecast_days=7&timezone=auto`
@@ -359,21 +404,22 @@ export async function fetchPointForecast(
       Record<string, { time: string[]; [k: string]: unknown }>,
       Record<string, { time: string[]; [k: string]: unknown }>,
     ]
-    const wh = wind.hourly as unknown as Record<string, number[]> & { time: string[] }
+    const wh = wind.hourly as unknown as ModelHourly
     const mh = marine.hourly as unknown as Record<string, (number | null)[]> & { time: string[] }
 
+    const blended = blendWind(wh)
     const forecast: PointForecast = {
       lon,
       lat,
       fetchedAt: Date.now(),
       hourly: {
         time: wh.time,
-        windKn: wh.wind_speed_10m,
-        gustKn: wh.wind_gusts_10m,
-        windDir: wh.wind_direction_10m,
-        tempC: wh.temperature_2m,
-        weatherCode: wh.weather_code,
-        precipProbPct: wh.precipitation_probability ?? [],
+        windKn: blended.windKn,
+        gustKn: blended.gustKn,
+        windDir: blended.windDir,
+        tempC: bm(wh, 'temperature_2m') as number[],
+        weatherCode: bm(wh, 'weather_code') as number[],
+        precipProbPct: bm(wh, 'precipitation_probability'),
         waveM: mh.wave_height ?? [],
         wavePeriodS: mh.wave_period ?? [],
         waveDir: mh.wave_direction ?? [],
@@ -433,7 +479,7 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
     const windUrl =
       `${WIND_BASE}?latitude=${latStr}&longitude=${lonStr}` +
       `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation_probability,weather_code` +
-      `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
+      `&wind_speed_unit=kn&forecast_days=7&timezone=UTC${WIND_MODELS}`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
       `&hourly=wave_height,wave_period,wave_direction,sea_surface_temperature&forecast_days=7&timezone=UTC`
@@ -442,14 +488,7 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
       latitude: number
       longitude: number
-      hourly: {
-        time: string[]
-        wind_speed_10m: number[]
-        wind_gusts_10m: number[]
-        wind_direction_10m: number[]
-        precipitation_probability?: (number | null)[]
-        weather_code?: (number | null)[]
-      }
+      hourly: ModelHourly
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
       hourly?: {
@@ -460,19 +499,22 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       }
     }>
 
-    const cells: GridCell[] = windArr.map((w, i) => ({
-      lon: lons[i],
-      lat: lats[i],
-      windKn: w.hourly.wind_speed_10m,
-      gustKn: w.hourly.wind_gusts_10m,
-      windDir: w.hourly.wind_direction_10m,
-      waveM: marineArr[i]?.hourly?.wave_height ?? [],
-      wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
-      precipProbPct: w.hourly.precipitation_probability ?? [],
-      weatherCode: w.hourly.weather_code ?? [],
-      waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
-      waterTempC: marineArr[i]?.hourly?.sea_surface_temperature ?? [],
-    }))
+    const cells: GridCell[] = windArr.map((w, i) => {
+      const blended = blendWind(w.hourly)
+      return {
+        lon: lons[i],
+        lat: lats[i],
+        windKn: blended.windKn,
+        gustKn: blended.gustKn,
+        windDir: blended.windDir,
+        waveM: marineArr[i]?.hourly?.wave_height ?? [],
+        wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
+        precipProbPct: bm(w.hourly, 'precipitation_probability'),
+        weatherCode: bm(w.hourly, 'weather_code'),
+        waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
+        waterTempC: marineArr[i]?.hourly?.sea_surface_temperature ?? [],
+      }
+    })
 
     const grid: GridForecast = {
       fetchedAt: Date.now(),
@@ -528,20 +570,14 @@ export async function fetchRouteForecast(
     const windUrl =
       `${WIND_BASE}?latitude=${latStr}&longitude=${lonStr}` +
       `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,weather_code` +
-      `&wind_speed_unit=kn&forecast_days=7&timezone=UTC`
+      `&wind_speed_unit=kn&forecast_days=7&timezone=UTC${WIND_MODELS}`
     const marineUrl =
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
       `&hourly=wave_height,wave_period,wave_direction&forecast_days=7&timezone=UTC`
 
     const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
-      hourly: {
-        time: string[]
-        wind_speed_10m: number[]
-        wind_gusts_10m: number[]
-        wind_direction_10m: number[]
-        weather_code: number[]
-      }
+      hourly: ModelHourly
     }>
     const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
       hourly?: {
@@ -557,10 +593,8 @@ export async function fetchRouteForecast(
         lon: pts[i][0],
         lat: pts[i][1],
         time: w.hourly.time,
-        windKn: w.hourly.wind_speed_10m,
-        gustKn: w.hourly.wind_gusts_10m,
-        windDir: w.hourly.wind_direction_10m,
-        weatherCode: w.hourly.weather_code,
+        ...blendWind(w.hourly),
+        weatherCode: bm(w.hourly, 'weather_code') as number[],
         waveM: marineArr[i]?.hourly?.wave_height ?? [],
         wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
         // where the sea is running FROM — a separate field from the wind's,

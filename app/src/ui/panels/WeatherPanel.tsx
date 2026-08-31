@@ -175,7 +175,7 @@ function DataStatus() {
       <div className="row">
         <div className="row-text">
           <span className="row-title">Wind & weather</span>
-          <span className="row-desc">Open-Meteo forecast grid</span>
+          <span className="row-desc">HRDPS 2.5 km wind · Open-Meteo blend</span>
         </div>
         <em className={grid?.stale || !grid ? 'age-badge stale' : 'age-badge'}>
           {grid ? `${grid.stale ? 'offline copy · ' : ''}${agoLabel(Date.now() - grid.fetchedAt)}` : 'not loaded'}
