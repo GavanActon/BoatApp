@@ -82,6 +82,14 @@ export default function WeatherStrip() {
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
 
+  // While a window chip is armed, day taps steer the KEYPAD — which day's
+  // hours are offered — without touching the plan. That is what makes a
+  // multi-day window possible: arm Back, tap Sunday, pick an hour.
+  const [armDayMs, setArmDayMs] = useState<number | null>(null)
+  useEffect(() => {
+    if (!armedEnd) setArmDayMs(null) // disarming forgets the keypad's day
+  }, [armedEnd])
+
   const show = enabled || focusPoint != null // a focused dot always surfaces the strip
 
   // A trip planned from a pinned start (launch ramp, marina) is rated at the
@@ -119,7 +127,8 @@ export default function WeatherStrip() {
   }, [show, online, focusPoint, departFrom, hasFix])
 
   const todayMs = startOfDayMs(Date.now())
-  const selDayMs = startOfDayMs(planTimeMs ?? Date.now())
+  const selDayMs =
+    armedEnd && armDayMs != null ? armDayMs : startOfDayMs(planTimeMs ?? Date.now())
 
   // temp + sky per day always come from the point forecast, whatever rates the chips
   const outlook = useMemo(() => (forecast ? dailyOutlook(forecast) : []), [forecast])
@@ -157,6 +166,12 @@ export default function WeatherStrip() {
   const planHourMs = planTimeMs == null ? null : floorHourMs(planTimeMs)
 
   function pickDay(dayStartMs: number) {
+    // with a chip armed the day tap only turns the keypad's page — the plan
+    // moves when an HOUR is picked, and only the armed end of it
+    if (armedEnd) {
+      setArmDayMs(dayStartMs)
+      return
+    }
     setPlanPicked(true)
     if (dayStartMs === todayMs) {
       setPlanTime(null)

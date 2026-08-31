@@ -1704,13 +1704,15 @@
 
 /* while a chip is armed, the hours that would still make a window stand out
    and the ones that wouldn't stand down */
+/* armed keypad: the offer is carried by CONTRAST, not decoration — hours you
+   can pick stay crisp with a quiet lift, hours you can't fade out. The old
+   dashed outlines drew a fence around every cell and read as noise. */
 .wxcell.wx-armable {
-  border-color: var(--c-accent);
-  border-style: dashed;
+  background: rgba(63, 200, 255, 0.08);
 }
 
 .wxcell.wx-unarmable {
-  opacity: 0.32;
+  opacity: 0.25;
 }
 
 .wxstrip-arm {
