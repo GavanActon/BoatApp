@@ -152,7 +152,7 @@ export const useAppStore = create<AppState>()(
         satellite: true,
         weather: false,
         rake: false,
-        windFlow: false,
+        windFlow: true, // the moving air is the app's face — on unless turned off
       },
       setLayer: (k, v) => set((s) => ({ layers: { ...s.layers, [k]: v } })),
       satOpacity: 0.7,
@@ -209,7 +209,7 @@ export const useAppStore = create<AppState>()(
       name: 'sandies-prefs',
       // v1 made metric the default. Prefs saved before it carry the old
       // knots/feet, so drop the unit keys once and let the defaults land.
-      version: 1,
+      version: 2,
       migrate: (persisted, from) => {
         const p = { ...(persisted as Partial<AppState>) }
         // versionless storage arrives as `undefined`, and `undefined < 1` is
@@ -220,6 +220,15 @@ export const useAppStore = create<AppState>()(
           delete p.depthUnit
           delete p.speedUnit
           delete p.windUnit
+        }
+        // v2 turns wind flow and depth shading on by default; installs that
+        // stored the old values get the new defaults once (turning either
+        // off after this sticks)
+        if (was < 2 && p.layers) {
+          const l = { ...p.layers } as Partial<AppState['layers']>
+          delete l.windFlow
+          delete l.depth
+          p.layers = l as AppState['layers']
         }
         // deliberately hands back a PARTIAL — merge below lays it over the
         // current state, so the dropped keys land on the new metric defaults.
