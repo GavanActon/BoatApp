@@ -17,7 +17,7 @@ export async function ensureNav(): Promise<NavMask | null> {
   return nav
 }
 
-const AFLOAT_RADIUS_M = 1000
+const AFLOAT_RADIUS_M = 3000
 
 /**
  * Is the boat on the water here? A different question from "can this point be
@@ -26,12 +26,19 @@ const AFLOAT_RADIUS_M = 1000
  * map and badly wrong for deciding where the BOAT is. Ashore, it slid the
  * start 6-7 km onto the lake and quoted the whole trip from out there.
  *
- * Within a kilometre of CHARTED water, measured on the depth grid — not
- * navigable water. Water too shallow for the nav mask is still water you can
- * float on: Batchawana Bay, one of this app's own destinations, sits 0.53 km
- * from charted water but 1.22 km from anything the router will cross, so
- * measuring to navigable water would call a boat anchored there ashore.
- * Genuinely inland positions have no charted water within reach at all.
+ * Measured to CHARTED water on the depth grid — not navigable water. Water
+ * too shallow for the nav mask is still water you float on: Batchawana Bay,
+ * one of this app's own destinations, sits 0.53 km from charted water but
+ * 1.22 km from anything the router will cross.
+ *
+ * Three kilometres, which sounds far for "on the water" and isn't: the grid
+ * cannot see all the water. NODATA means land AND uncharted, and coverage is
+ * uneven — 98% of the Canadian shore near the Sandies is charted against 21%
+ * of the Michigan shore by Brimley. So a house 50 ft from a shallow bay can
+ * sit 2.2 km from the nearest cell the grid admits is water (Bay Mills), and
+ * a 1 km rule calls its owner inland. Measured across the region, the shore
+ * runs 0-2.21 km from charted water and genuine inland starts at 5.09 km, so
+ * 3 km is the gap between them rather than a round number.
  */
 export function isAfloat(lon: number, lat: number): boolean {
   if (depthAt(lon, lat) != null) return true // standing on charted water
