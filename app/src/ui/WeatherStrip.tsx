@@ -199,9 +199,11 @@ export default function WeatherStrip() {
           const wx = wxByDay.get(d.dayStartMs)
           const wxCode = wx?.weatherCode ?? null
           const wxTemp = wx?.tempMaxC ?? null
-          // rain and lightning are first-class (§0.6): a droplet on a day
-          // likely to rain, an amber ⚡ on a day that calls thunder — marks,
-          // not new rows, because these cells are the app's densest surface
+          // rain and lightning live in the SKY ICON (§0.6): the day's code is
+          // its worst hour, so a thunder day wears the storm icon and a wet
+          // day the rain cloud. The 💧/⚡ marks that used to ride alongside
+          // told the same story twice and went. Hour cells keep their ⚡ —
+          // they carry no sky icon. These stay for the spoken label:
           const wet = wx?.precipMaxPct != null && wx.precipMaxPct >= 40
           const thunder = wx?.thunder === true
           return (
@@ -225,12 +227,6 @@ export default function WeatherStrip() {
                 <span className="wxday-wx">
                   <IconSky code={wxCode} size={11} />
                   <b className="numeral">{Math.round(wxTemp)}°</b>
-                </span>
-              )}
-              {(wet || thunder) && (
-                <span className="wxday-marks" aria-hidden="true">
-                  {wet && '💧'}
-                  {thunder && <i className="wx-bolt">⚡</i>}
                 </span>
               )}
             </button>

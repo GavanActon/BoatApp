@@ -91,12 +91,14 @@ restyled to match** — the app must not read as two eras. (Circular map FABs
 are conventional chart furniture and exempt.)
 
 **0.6 MUST — Rain and lightning are first-class, in the strip.**
-Day chips carry a droplet mark when the day's precipitation chance is
-meaningful and an amber ⚡ when any hour calls thunder; thunder hours mark
-their hour cells. Lightning is the one thing allowed to be loud — amber
-accent, never the reserved red (§1.3). A thunder day TODAY may additionally
-surface an amber "⚡ 3p" chip on the dock's slim bar, because it changes
-whether you go at all.
+A day chip's SKY ICON carries them: the day's code is its worst hour, so a
+thunder day wears the storm icon and a rainy day the rain cloud — no 💧/⚡
+marks beside it, which told the same story twice (§0.1). Thunder hours mark
+their hour cells with an amber ⚡, because hour cells carry no sky icon.
+Lightning is the one thing allowed to be loud — amber accent, never the
+reserved red (§1.3). A thunder day TODAY may additionally surface an amber
+"⚡ 3p" chip on the dock's slim bar, because it changes whether you go at
+all.
 
 ---
 
