@@ -57,7 +57,17 @@ export default function PlacesPanel() {
   const setFocusPoint = useRouteStore((s) => s.setFocusPoint)
   const setCard = useRouteStore((s) => s.setCard)
   const startPoint = useRouteStore((s) => s.startPoint)
-  const fix = useGpsStore((s) => s.fix)
+  // The boat's position, rounded to about a hundred metres.
+  //
+  // The distance column is the only thing on this panel that moves with the
+  // boat, and it is quoted in tenths — 0.1 km. Subscribing to the raw fix
+  // re-rendered the whole list on every GPS update, which under way is once a
+  // second for as long as the sheet is open, and GPS jitter alone kept it
+  // going while tied up. Rounded, the list holds still until you have
+  // actually gone somewhere, and the column cannot show the difference.
+  const fixAt = useGpsStore((s) =>
+    s.fix ? `${s.fix.lon.toFixed(3)},${s.fix.lat.toFixed(3)}` : null,
+  )
   const saved = usePlacesStore((s) => s.saved)
   const homeName = usePlacesStore((s) => s.homeName)
   const setHome = usePlacesStore((s) => s.setHome)
@@ -101,7 +111,9 @@ export default function PlacesPanel() {
   }, [pendingEdit])
 
   // where you are: the chosen start beats the fix beats the home waters
-  const here = startPoint ?? (fix ? { name: null, lon: fix.lon, lat: fix.lat } : null) ?? {
+  const boat = fixAt ? fixAt.split(',') : null
+  const here = startPoint ??
+    (boat ? { name: null, lon: Number(boat[0]), lat: Number(boat[1]) } : null) ?? {
     name: null,
     lon: (homeCenter() ?? HOME.center)[0],
     lat: (homeCenter() ?? HOME.center)[1],

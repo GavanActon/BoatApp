@@ -73,7 +73,15 @@ function buildField(map: MlMap, w: number, h: number, atMs: number): FieldGrid {
   return { step: FIELD_STEP, cols, rows, vx, vy, live }
 }
 
-function sampleField(f: FieldGrid, x: number, y: number): [number, number] {
+/** Writes the sampled velocity into `out`. An allocating version returned a
+ *  fresh pair per particle per frame — at a few hundred particles and 60fps
+ *  that is tens of thousands of short-lived arrays a second, and the garbage
+ *  collector showed up in the profile because of it. */
+/** Streak alpha rides speed only, so a dozen bands are indistinguishable
+ *  from a per-particle colour and cost a dozen strokes instead of hundreds. */
+const ALPHA_BANDS = 12
+
+function sampleField(f: FieldGrid, x: number, y: number, out: Float32Array): void {
   const fx = Math.min(f.cols - 1.001, Math.max(0, x / f.step))
   const fy = Math.min(f.rows - 1.001, Math.max(0, y / f.step))
   const x0 = Math.floor(fx)
@@ -87,7 +95,8 @@ function sampleField(f: FieldGrid, x: number, y: number): [number, number] {
   const vy =
     (f.vy[i] * (1 - tx) + f.vy[i + 1] * tx) * (1 - ty) +
     (f.vy[i + f.cols] * (1 - tx) + f.vy[i + f.cols + 1] * tx) * ty
-  return [vx, vy]
+  out[0] = vx
+  out[1] = vy
 }
 
 /** Distance from a point to the route's screen polyline, in css px. */
@@ -158,6 +167,8 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
   const N = corridor ? 420 : Math.round(useAppStore.getState().flowTuning.windDensity)
   const px = new Float32Array(N)
   const py = new Float32Array(N)
+  const vel = new Float32Array(2) // sampleField's out-param, reused every particle
+  const bands: Path2D[] = new Array(ALPHA_BANDS)
   const age = new Float32Array(N)
   const life = new Float32Array(N)
 
@@ -205,6 +216,8 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
+    // read ONCE: this was a store read per particle per frame
+    const tune = useAppStore.getState().flowTuning
 
     if (camKey() !== cam0) {
       ctx.clearRect(0, 0, w, h)
@@ -219,7 +232,7 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
     // trails fade instead of clearing — that IS the streak. Fade rate is a
     // live knob: read per frame so the Settings slider answers immediately.
     ctx.globalCompositeOperation = 'destination-in'
-    ctx.fillStyle = `rgba(0, 0, 0, ${useAppStore.getState().flowTuning.windTrail})`
+    ctx.fillStyle = `rgba(0, 0, 0, ${tune.windTrail})`
     ctx.fillRect(0, 0, w, h)
     ctx.globalCompositeOperation = 'source-over'
 
@@ -228,9 +241,20 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
 
     // a short rise from nothing, so switching the layer on breathes in
     const level = opts.level() * Math.min(1, (now - born) / 900)
+    // Colour is a knob: hue/saturation from Settings (lightness pinned so
+    // contrast on the dark chart survives any slider position).
+    //
+    // Every streak used to set its own strokeStyle and run its own
+    // beginPath/stroke — a colour string built, parsed and a native stroke
+    // issued per particle per frame. Alpha only rides speed, so it bands
+    // without anyone seeing the joins: collect the segments into a dozen
+    // Path2Ds and stroke each once.
+    for (let b = 0; b < ALPHA_BANDS; b++) bands[b] = new Path2D()
     for (let i = 0; i < N; i++) {
       age[i] += dt
-      const [vx, vy] = sampleField(field, px[i], py[i])
+      sampleField(field, px[i], py[i], vel)
+      const vx = vel[0]
+      const vy = vel[1]
       const nx = px[i] + vx * dt
       const ny = py[i] + vy * dt
       const gone =
@@ -243,21 +267,22 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
         continue
       }
       const spd = Math.hypot(vx, vy)
-      const alpha = (0.22 + (spd / 130) * 0.4) * level
-      // colour is a knob: hue/saturation from Settings (lightness pinned so
-      // contrast on the dark chart survives any slider position)
-      const tn = useAppStore.getState().flowTuning
-      ctx.strokeStyle = tint
-        ? `rgba(${tint}, ${alpha})`
-        : `hsla(${tn.windHue}, ${tn.windSat}%, 62%, ${alpha})`
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.moveTo(px[i], py[i])
-      ctx.lineTo(nx, ny)
-      ctx.stroke()
+      const band = Math.min(ALPHA_BANDS - 1, ((spd / 130) * ALPHA_BANDS) | 0)
+      const path = bands[band]
+      path.moveTo(px[i], py[i])
+      path.lineTo(nx, ny)
       px[i] = nx
       py[i] = ny
     }
+    ctx.lineWidth = 1.2
+    for (let b = 0; b < ALPHA_BANDS; b++) {
+      const alpha = (0.22 + ((b + 0.5) / ALPHA_BANDS) * 0.4) * level
+      ctx.strokeStyle = tint
+        ? `rgba(${tint}, ${alpha})`
+        : `hsla(${tune.windHue}, ${tune.windSat}%, 62%, ${alpha})`
+      ctx.stroke(bands[b])
+    }
+
     ctx.restore()
     raf = requestAnimationFrame(frame)
   }
