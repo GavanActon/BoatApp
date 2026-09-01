@@ -106,7 +106,7 @@ export function waveOverlayStatus(): {
 // drinks from the DEPLOYED site first (Pages serves it with CORS *), and
 // only falls back to the local copy when offline.
 const WAVES_FILE = 'data/waves-superior.json'
-const DEPLOYED_WAVES = `https://gavanacton.github.io/BoatApp/${WAVES_FILE}`
+const DEPLOYED_WAVES = `https://sandies.app/${WAVES_FILE}`
 
 /** Fetch (or refresh) the overlay file; falls back to the cached copy. */
 export async function refreshWaveOverlay(): Promise<void> {

@@ -49,8 +49,7 @@ jobs:
 
       - name: Build
         working-directory: app
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+        # served at the domain root (sandies.app) — no BASE_PATH prefix
         run: npm run build
 
       - uses: actions/configure-pages@v5
