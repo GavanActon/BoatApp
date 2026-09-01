@@ -268,7 +268,15 @@ export interface SwellEngine {
   cam: string
 }
 
-function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => {}): SwellEngine {
+function runSwell(
+  map: MlMap,
+  palette: SwellPalette,
+  resync: () => void = () => {},
+  // reduced motion stills the water instead of erasing it: the crests are
+  // DATA — sea state, surf over the bar — not decoration. One frozen frame,
+  // redrawn only when the field changes.
+  animate = true,
+): SwellEngine {
   const stepPx = useAppStore.getState().flowTuning.seaSpacing
   const pts = buildPoints(map, stepPx)
   const tried = new Set<string>(pts.map((p) => p.key))
@@ -325,6 +333,7 @@ function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => 
         pts.splice(i, 1)
       }
     }
+    if (!animate) raf = requestAnimationFrame(frame) // one still frame, no loop
   }
   let invalidSince = 0
   let raf = 0
@@ -424,7 +433,7 @@ function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => 
       }
     }
     ctx.restore()
-    raf = requestAnimationFrame(frame)
+    if (animate) raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
   return {
@@ -522,13 +531,12 @@ function syncSea(map: MlMap) {
   const want =
     useAppStore.getState().layers.seaFlow &&
     current === 'off' && // a console trial owns the water while it runs
-    !reducedMotion() &&
     document.visibilityState === 'visible'
   if (!want) return
   void ensureWeatherGrid().then(() => {
     if (seaStop || current !== 'off') return
     if (!useAppStore.getState().layers.seaFlow) return
-    const eng = runSwell(map, 'foam', () => queueSeaResync(map))
+    const eng = runSwell(map, 'foam', () => queueSeaResync(map), !reducedMotion())
     seaStop = eng.stop
     seaExtend = eng.extend
     seaCam = eng.cam
