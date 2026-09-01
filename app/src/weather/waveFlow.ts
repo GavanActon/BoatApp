@@ -66,6 +66,9 @@ interface WavePt {
   /** True when this anchor's drift sweep grazes land — its crest is then
    *  water-tested per frame so nothing ever laps onto the shore. */
   edge: boolean
+  /** Lattice cell this anchor grew from (start-frame), so pruning a
+   *  far-offscreen crest also forgets the cell and it can regrow on return. */
+  key: string
 }
 
 const TIME_SCALE = 4 // real phase speed is a crawl at chart zoom
@@ -75,27 +78,127 @@ const MIN_WATER_M = 0.3
 let stopFn: (() => void) | null = null
 let current: WaveTrialVariant = 'off'
 
+/** Zoom, bearing and pitch bake into every anchor; same key = pure pan. */
+function camKeyOf(map: MlMap): string {
+  return `${map.getZoom().toFixed(3)}|${map.getBearing().toFixed(1)}|${map.getPitch().toFixed(1)}`
+}
+
+/** Metres per css px at the map centre, for wavelength→px. */
+function metresPerPx(map: MlMap): number {
+  const c = map.getCenter()
+  const p0 = map.project([c.lng, c.lat])
+  const ll1 = map.unproject([p0.x + 100, p0.y])
+  return (Math.abs(ll1.lng - c.lng) * 111320 * Math.cos((c.lat * Math.PI) / 180)) / 100 || 1
+}
+
+/**
+ * One crest anchor, or null where the sea declines to stand one. `x, y` are
+ * css px in the CALLER'S frame; `toLL` and `waterAt` translate that frame to
+ * the world — the initial build passes the live screen, the pan-extend
+ * passes the engine's start frame. Same recipe either way: depth, forecast,
+ * shoaling, character, and the shoreline envelope.
+ */
+function swellAnchor(
+  key: string,
+  x: number,
+  y: number,
+  atMs: number,
+  mPerPx: number,
+  lenMul: number,
+  toLL: (sx: number, sy: number) => { lng: number; lat: number },
+  waterAt: (sx: number, sy: number) => boolean,
+): WavePt | null {
+  const ll = toLL(x, y)
+  const d = depthAt(ll.lng, ll.lat)
+  if (d == null || d < MIN_WATER_M) return null // the shoreline is the edge
+  const wx = gridConditionsAt(ll.lng, ll.lat, atMs)
+  if (!wx || wx.waveM == null || wx.waveM <= 0.02 || wx.waveDir == null) return null
+  const T = wx.wavePeriodS ?? 3
+  const rad = ((wx.waveDir + 180) * Math.PI) / 180 // travels away from FROM
+  const wlM = 1.56 * T * T
+  const ux = Math.sin(rad)
+  const uy = -Math.cos(rad)
+
+  // ---- shoaling: the wave feels the bottom ----
+  // In water shallower than about half a wavelength, crests shorten
+  // (L = L0·tanh(2πd/L0)), slow (c ∝ √that), and stack up taller
+  // (green's-law-ish Ks ≈ 1/√tanh, capped). Steep enough for the depth
+  // under it — H > ~0.72·d — and the crest BREAKS. All of it reads off
+  // the offline depth grid, so the bar off the Sandies wears real surf
+  // while the deep water behind it rolls easy.
+  const shoal = Math.tanh((2 * Math.PI * d) / wlM)
+  const Ks = Math.min(1.6, 1 / Math.sqrt(Math.max(0.15, shoal)))
+  const hEff = wx.waveM * Ks
+  const breaking = hEff > 0.72 * d
+
+  // ---- character: the sea's size decides how it draws ----
+  // Glassy: sparse, long, hairline sheen. Building: denser, shorter,
+  // choppier. Big: bold long-crested fronts. Density through a keep
+  // chance, so calm water isn't wallpapered with marks.
+  const keep = Math.min(1, 0.4 + hEff / 1.3)
+  if (Math.random() > keep) return null
+  const sizeT = Math.min(1, hEff / 1.8)
+  const wCore = hEff < 0.35 ? 1.3 : 1.6 + 1.9 * sizeT
+  const wHalo = wCore * 2.9
+  const regimeLen = hEff < 0.35 ? 1.35 : hEff < 0.8 ? 0.9 : 1.12
+
+  const wlPx = Math.min(220, Math.max(26, (wlM * shoal) / mPerPx))
+  const lenS = (0.65 + Math.random() * 0.85) * regimeLen
+
+  // The anchor is wet, but the crest is a BAND that also drifts up to
+  // half a wavelength either way — near shore that sweep can lap onto
+  // land. The band at rest must be wholly wet or the anchor is dropped;
+  // an anchor whose full sweep grazes land is kept but flagged, and its
+  // crest is water-tested per frame instead.
+  const lenPx = Math.min(34, 8 + wlPx * 0.15) * lenS * lenMul
+  const bx = -uy * lenPx
+  const by = ux * lenPx
+  if (!waterAt(x + bx, y + by) || !waterAt(x - bx, y - by)) return null
+  const hw = wlPx / 2
+  const edge = [1, -1].some(
+    (sgn) =>
+      !waterAt(x + ux * hw * sgn + bx, y + uy * hw * sgn + by) ||
+      !waterAt(x + ux * hw * sgn - bx, y + uy * hw * sgn - by) ||
+      !waterAt(x + ux * hw * sgn, y + uy * hw * sgn),
+  )
+
+  return {
+    key,
+    x,
+    y,
+    // effective (shoaled) height drives strength — a lower floor than
+    // before, so glassy water really is a whisper
+    amp: Math.min(1, Math.max(0.18, hEff / FULL_AMP_M)),
+    h: hEff,
+    ux,
+    uy,
+    wlPx,
+    // shoaled crests also slow down, the way real ones do
+    spdPx: Math.min(30, Math.max(5, (1.56 * T * TIME_SCALE * Math.sqrt(shoal)) / mPerPx)),
+    seed: Math.random() * Math.PI * 2,
+    lenS,
+    bow: 0.12 + Math.random() * 0.22,
+    pj: (Math.random() - 0.5) * 0.9,
+    wCore,
+    wHalo,
+    breaking,
+    edge,
+  }
+}
+
 function buildPoints(map: MlMap, stepPx: number): WavePt[] {
   const el = map.getContainer()
   const w = el.clientWidth
   const h = el.clientHeight
   const atMs = useAppStore.getState().planTimeMs ?? Date.now()
-
-  // metres per css px at centre, for wavelength→px
-  const c = map.getCenter()
-  const p0 = map.project([c.lng, c.lat])
-  const ll1 = map.unproject([p0.x + 100, p0.y])
-  const mPerPx =
-    (Math.abs(ll1.lng - c.lng) * 111320 * Math.cos((c.lat * Math.PI) / 180)) / 100 || 1
-
-  /** Water (deep enough) at a SCREEN position — the shoreline test. */
+  const mPerPx = metresPerPx(map)
+  const lenMul = useAppStore.getState().flowTuning.seaLength
+  const toLL = (sx: number, sy: number) => map.unproject([sx, sy])
   const waterAt = (sx: number, sy: number): boolean => {
     const q = map.unproject([sx, sy])
     const dq = depthAt(q.lng, q.lat)
     return dq != null && dq >= MIN_WATER_M
   }
-
-  const lenMul = useAppStore.getState().flowTuning.seaLength
 
   const pts: WavePt[] = []
   for (let gy = stepPx / 2; gy < h; gy += stepPx) {
@@ -103,81 +206,8 @@ function buildPoints(map: MlMap, stepPx: number): WavePt[] {
       // jittered off the lattice — rows of marks read as ruling, water doesn't
       const x = gx + (Math.random() - 0.5) * stepPx * 0.8
       const y = gy + (Math.random() - 0.5) * stepPx * 0.8
-      const ll = map.unproject([x, y])
-      const d = depthAt(ll.lng, ll.lat)
-      if (d == null || d < MIN_WATER_M) continue // the shoreline is the edge
-      const wx = gridConditionsAt(ll.lng, ll.lat, atMs)
-      if (!wx || wx.waveM == null || wx.waveM <= 0.02 || wx.waveDir == null) continue
-      const T = wx.wavePeriodS ?? 3
-      const rad = ((wx.waveDir + 180) * Math.PI) / 180 // travels away from FROM
-      const wlM = 1.56 * T * T
-      const ux = Math.sin(rad)
-      const uy = -Math.cos(rad)
-
-      // ---- shoaling: the wave feels the bottom (#4) ----
-      // In water shallower than about half a wavelength, crests shorten
-      // (L = L0·tanh(2πd/L0)), slow (c ∝ √that), and stack up taller
-      // (green's-law-ish Ks ≈ 1/√tanh, capped). Steep enough for the depth
-      // under it — H > ~0.72·d — and the crest BREAKS. All of it reads off
-      // the offline depth grid, so the bar off the Sandies wears real surf
-      // while the deep water behind it rolls easy.
-      const shoal = Math.tanh((2 * Math.PI * d) / wlM)
-      const Ks = Math.min(1.6, 1 / Math.sqrt(Math.max(0.15, shoal)))
-      const hEff = wx.waveM * Ks
-      const breaking = hEff > 0.72 * d
-
-      // ---- character: the sea's size decides how it draws (#1) ----
-      // Glassy: sparse, long, hairline sheen. Building: denser, shorter,
-      // choppier. Big: bold long-crested fronts. Density through a keep
-      // chance, so calm water isn't wallpapered with marks.
-      const keep = Math.min(1, 0.4 + hEff / 1.3)
-      if (Math.random() > keep) continue
-      const sizeT = Math.min(1, hEff / 1.8)
-      const wCore = hEff < 0.35 ? 1.3 : 1.6 + 1.9 * sizeT
-      const wHalo = wCore * 2.9
-      const regimeLen = hEff < 0.35 ? 1.35 : hEff < 0.8 ? 0.9 : 1.12
-
-      const wlPx = Math.min(220, Math.max(26, (wlM * shoal) / mPerPx))
-      const lenS = (0.65 + Math.random() * 0.85) * regimeLen
-
-      // The anchor is wet, but the crest is a BAND that also drifts up to
-      // half a wavelength either way — near shore that sweep can lap onto
-      // land. The band at rest must be wholly wet or the anchor is dropped;
-      // an anchor whose full sweep grazes land is kept but flagged, and its
-      // crest is water-tested per frame instead.
-      const lenPx = Math.min(34, 8 + wlPx * 0.15) * lenS * lenMul
-      const bx = -uy * lenPx
-      const by = ux * lenPx
-      if (!waterAt(x + bx, y + by) || !waterAt(x - bx, y - by)) continue
-      const hw = wlPx / 2
-      const edge = [1, -1].some(
-        (s) =>
-          !waterAt(x + ux * hw * s + bx, y + uy * hw * s + by) ||
-          !waterAt(x + ux * hw * s - bx, y + uy * hw * s - by) ||
-          !waterAt(x + ux * hw * s, y + uy * hw * s),
-      )
-
-      pts.push({
-        x,
-        y,
-        // effective (shoaled) height drives strength — a lower floor than
-        // before, so glassy water really is a whisper
-        amp: Math.min(1, Math.max(0.18, hEff / FULL_AMP_M)),
-        h: hEff,
-        ux,
-        uy,
-        wlPx,
-        // shoaled crests also slow down, the way real ones do
-        spdPx: Math.min(30, Math.max(5, (1.56 * T * TIME_SCALE * Math.sqrt(shoal)) / mPerPx)),
-        seed: Math.random() * Math.PI * 2,
-        lenS,
-        bow: 0.12 + Math.random() * 0.22,
-        pj: (Math.random() - 0.5) * 0.9,
-        wCore,
-        wHalo,
-        breaking,
-        edge,
-      })
+      const pt = swellAnchor(`${gx}|${gy}`, x, y, atMs, mPerPx, lenMul, toLL, waterAt)
+      if (pt) pts.push(pt)
     }
   }
   return pts
@@ -228,8 +258,20 @@ type SwellPalette = 'foam' | 'size' | 'shadow'
  * anchors, varied lengths, a slight forward bow and a touch of phase raggedness
  * keep it water rather than ruling.
  */
-function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => {}): () => void {
-  const pts = buildPoints(map, useAppStore.getState().flowTuning.seaSpacing)
+export interface SwellEngine {
+  stop: () => void
+  /** After a PURE PAN: grow anchors into newly revealed water and prune the
+   *  far field — the crests already on screen are never touched, so a drag
+   *  never blinks the sea. Zoom/bearing/pitch changes still rebuild: the
+   *  wavelength and direction are baked in screen space. */
+  extend: () => void
+  cam: string
+}
+
+function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => {}): SwellEngine {
+  const stepPx = useAppStore.getState().flowTuning.seaSpacing
+  const pts = buildPoints(map, stepPx)
+  const tried = new Set<string>(pts.map((p) => p.key))
   const { canvas, ctx, w, h } = makeCanvas(map, 1)
   let drift = { x: 0, y: 0 }
   // the per-frame shoreline check for edge-flagged anchors only. Anchors
@@ -243,9 +285,47 @@ function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => 
   // geographic anchoring, same scheme as the wind engine: translation rides
   // along live, a reshaped camera clears and waits for a rebuild
   const refLL = map.unproject([0, 0])
-  const camKey = () =>
-    `${map.getZoom().toFixed(3)}|${map.getBearing().toFixed(1)}|${map.getPitch().toFixed(1)}`
+  const camKey = () => camKeyOf(map)
   const cam0 = camKey()
+
+  // Fill every untried lattice cell inside the CURRENT viewport (start-frame
+  // coords), then forget crests far outside it so a long cruise around the
+  // chart doesn't hoard anchors. Forgetting deletes the cell key too: sail
+  // back and the water regrows — offscreen, so nothing ever pops.
+  const atMs = useAppStore.getState().planTimeMs ?? Date.now()
+  const mPerPx = metresPerPx(map)
+  const lenMul = useAppStore.getState().flowTuning.seaLength
+  const extend = () => {
+    drift = map.project(refLL)
+    const x0 = -drift.x
+    const y0 = -drift.y
+    const gx0 = Math.floor(x0 / stepPx) * stepPx + stepPx / 2
+    const gy0 = Math.floor(y0 / stepPx) * stepPx + stepPx / 2
+    for (let gy = gy0; gy < y0 + h; gy += stepPx) {
+      for (let gx = gx0; gx < x0 + w; gx += stepPx) {
+        const key = `${gx}|${gy}`
+        if (tried.has(key)) continue
+        tried.add(key)
+        const x = gx + (Math.random() - 0.5) * stepPx * 0.8
+        const y = gy + (Math.random() - 0.5) * stepPx * 0.8
+        const pt = swellAnchor(
+          key, x, y, atMs, mPerPx, lenMul,
+          (sx, sy) => map.unproject([sx + drift.x, sy + drift.y]),
+          waterAt,
+        )
+        if (pt) pts.push(pt)
+      }
+    }
+    const keepR = Math.max(w, h) * 1.6
+    const cx = x0 + w / 2
+    const cy = y0 + h / 2
+    for (let i = pts.length - 1; i >= 0; i--) {
+      if (Math.abs(pts[i].x - cx) > keepR || Math.abs(pts[i].y - cy) > keepR) {
+        tried.delete(pts[i].key)
+        pts.splice(i, 1)
+      }
+    }
+  }
   let invalidSince = 0
   let raf = 0
   // the sea's own clock: advanced by dt × the speed knob, so dragging the
@@ -347,9 +427,13 @@ function runSwell(map: MlMap, palette: SwellPalette, resync: () => void = () => 
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
-  return () => {
-    cancelAnimationFrame(raf)
-    canvas.remove()
+  return {
+    stop: () => {
+      cancelAnimationFrame(raf)
+      canvas.remove()
+    },
+    extend,
+    cam: cam0,
   }
 }
 
@@ -410,6 +494,8 @@ function runBobbers(map: MlMap): () => void {
 // ---------- the ambient layer (Settings → Sea flow) ----------
 
 let seaStop: (() => void) | null = null
+let seaExtend: (() => void) | null = null
+let seaCam: string | null = null
 let seaWired = false
 let seaResyncQueued = false
 
@@ -431,6 +517,8 @@ function queueSeaResync(map: MlMap) {
 function syncSea(map: MlMap) {
   seaStop?.()
   seaStop = null
+  seaExtend = null
+  seaCam = null
   const want =
     useAppStore.getState().layers.seaFlow &&
     current === 'off' && // a console trial owns the water while it runs
@@ -440,7 +528,10 @@ function syncSea(map: MlMap) {
   void ensureWeatherGrid().then(() => {
     if (seaStop || current !== 'off') return
     if (!useAppStore.getState().layers.seaFlow) return
-    seaStop = runSwell(map, 'foam', () => queueSeaResync(map))
+    const eng = runSwell(map, 'foam', () => queueSeaResync(map))
+    seaStop = eng.stop
+    seaExtend = eng.extend
+    seaCam = eng.cam
   })
 }
 
@@ -451,9 +542,13 @@ export function initSeaFlow() {
   seaWired = true
   withMap((map) => {
     syncSea(map)
-    // same rule as the wind: translation rides along live (anchoring); a
-    // finished move is when the anchors resample for the new viewport
-    map.on('moveend', () => syncSea(map))
+    // a finished PAN extends the living field in place — the crests you
+    // dragged along must not blink out and respawn. Only a reshaped camera
+    // (zoom, bearing, pitch — geometry the anchors baked in) rebuilds.
+    map.on('moveend', () => {
+      if (seaStop && seaExtend && seaCam === camKeyOf(map)) seaExtend()
+      else syncSea(map)
+    })
     map.on('resize', () => syncSea(map))
     document.addEventListener('visibilitychange', () => syncSea(map))
     useAppStore.subscribe((s, prev) => {
@@ -489,5 +584,5 @@ export async function playWaveTrial(map: MlMap, variant: WaveTrialVariant): Prom
       ? runHeave(map)
       : variant === 'bobbers'
         ? runBobbers(map)
-        : runSwell(map, variant === 'swell-size' ? 'size' : variant === 'swell-shadow' ? 'shadow' : 'foam')
+        : runSwell(map, variant === 'swell-size' ? 'size' : variant === 'swell-shadow' ? 'shadow' : 'foam').stop
 }
