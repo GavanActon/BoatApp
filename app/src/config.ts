@@ -1,9 +1,21 @@
 // Central place for region + data-file configuration.
 // Adding a new cruising area = add its files here and regenerate with the pipeline.
 
+/**
+ * Where the app looks when it has nothing better: no GPS fix, no starred home
+ * base, no saved view. The last link in every `homeCenter() ?? HOME.center`
+ * chain — the opening chart, the outlook strip's forecast, the Here row.
+ *
+ * Batchawana Bay, Gavan's pick. It is water, it is inside the region, and it
+ * is somewhere you would actually go — the middle of Whitefish Bay was none
+ * of the second two.
+ *
+ * Routing does NOT use this: with no fix and no home base it still asks
+ * rather than plan a trip from a guess (see planner's NO_START_MSG).
+ */
 export const HOME = {
-  // Whitefish Bay, NE of Île Parisienne — the Sandies
-  center: [-84.58, 46.76] as [number, number],
+  // Batchawana Bay — 0.5 km from charted water, well inside the region
+  center: [-84.52, 46.93] as [number, number],
   zoom: 10.5,
 }
 
