@@ -199,6 +199,17 @@ export default function PlacesPanel() {
       className="trip-name-input"
       value={editVal}
       autoFocus
+      // A place name is not a login. Left unmarked, iOS reads a bare text
+      // field as something it might know about you and lays its AutoFill bar —
+      // passwords, cards, addresses — over the sheet the moment a pin is
+      // saved and this focuses. Say what the field is and it stays away.
+      type="text"
+      autoComplete="off"
+      autoCorrect="off"
+      spellCheck={false}
+      enterKeyHint="done"
+      name={editing?.field === 'note' ? 'spot-note' : 'spot-label'}
+      autoCapitalize={editing?.field === 'note' ? 'sentences' : 'words'}
       onFocus={(e) => {
         e.currentTarget.select()
         // after the keyboard's slide-in, ride the row to the TOP of the

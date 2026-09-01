@@ -168,6 +168,17 @@ export default function SavedAdmin() {
                 className="trip-name-input"
                 value={editName}
                 autoFocus
+                // A place name is not a login. Left unmarked, iOS reads a bare text
+                // field as something it might know about you and lays its AutoFill bar —
+                // passwords, cards, addresses — over the sheet the moment a pin is
+                // saved and this focuses. Say what the field is and it stays away.
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="done"
+                name="trip-label"
+                autoCapitalize="words"
                 onChange={(e) => setEditName(e.target.value)}
                 onBlur={() => void commitName(t)}
                 onKeyDown={(e) => {
@@ -224,6 +235,17 @@ export default function SavedAdmin() {
                 className="trip-name-input"
                 value={editStartName}
                 autoFocus
+                // A place name is not a login. Left unmarked, iOS reads a bare text
+                // field as something it might know about you and lays its AutoFill bar —
+                // passwords, cards, addresses — over the sheet the moment a pin is
+                // saved and this focuses. Say what the field is and it stays away.
+                type="text"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="done"
+                name="start-label"
+                autoCapitalize="words"
                 onChange={(e) => setEditStartName(e.target.value)}
                 onBlur={() => void commitStartName(sp)}
                 onKeyDown={(e) => {
