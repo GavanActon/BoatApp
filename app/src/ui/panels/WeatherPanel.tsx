@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { agoLabel, dayLabel, isToday, startOfDayMs } from '../../time'
+import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
 import { waveOverlayStatus } from '../../weather/rdwps'
@@ -143,6 +143,25 @@ export default function WeatherPanel() {
  * from a wrong forecast. Lives at the bottom of the Weather tab: provenance
  * belongs with the forecast it explains.
  */
+/** When the next NEW RDWPS run reaches the app: the model runs 00/06/12/18Z,
+ *  the site's scheduled fetch lands ~3½ h later (03:30/09:30/15:30/21:30 UTC),
+ *  and the app picks it up within its hourly check — so quote the fetch slot,
+ *  softened with a ~. */
+function nextWaveRunMs(): number {
+  const slotsUtcH = [3.5, 9.5, 15.5, 21.5]
+  const now = new Date()
+  const dayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  for (const h of slotsUtcH) {
+    const t = dayUtc + h * 3600_000 + 10 * 60_000 // + build & deploy minutes
+    if (t > Date.now()) return t
+  }
+  return dayUtc + 24 * 3600_000 + slotsUtcH[0] * 3600_000 + 10 * 60_000
+}
+
+/** The weather clock refetches the grid once it's this old (weatherLayer's
+ *  GRID_MAX_AGE_MS) — the wind row's "next check" is fetchedAt plus this. */
+const GRID_REFRESH_MS = 30 * 60_000
+
 function DataStatus() {
   // ages tick and fetches land while the sheet is open — re-render for both
   const [, setTick] = useState(0)
@@ -176,6 +195,13 @@ function DataStatus() {
         <div className="row-text">
           <span className="row-title">Wind & weather</span>
           <span className="row-desc">HRDPS 2.5 km wind · Open-Meteo blend</span>
+          {grid && (
+            <span className="row-desc">
+              {grid.fetchedAt + GRID_REFRESH_MS > Date.now()
+                ? `next check ${timeLabel(grid.fetchedAt + GRID_REFRESH_MS)}`
+                : 'checking…'}
+            </span>
+          )}
         </div>
         <em className={grid?.stale || !grid ? 'age-badge stale' : 'age-badge'}>
           {grid ? `${grid.stale ? 'offline copy · ' : ''}${agoLabel(Date.now() - grid.fetchedAt)}` : 'not loaded'}
@@ -185,6 +211,7 @@ function DataStatus() {
         <div className="row-text">
           <span className="row-title">Waves</span>
           <span className="row-desc">{waveDesc}</span>
+          <span className="row-desc">{`new run ~${timeLabel(nextWaveRunMs())}`}</span>
         </div>
         <em className={waveWarn ? 'age-badge stale' : 'age-badge'}>
           {waves.state === 'active'

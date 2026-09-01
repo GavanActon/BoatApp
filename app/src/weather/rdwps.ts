@@ -100,30 +100,50 @@ export function waveOverlayStatus(): {
   }
 }
 
+// Where the file lives. In production it deploys beside the app and CI
+// refreshes it 4×/day. A dev checkout only has whatever run was last
+// committed or generated locally — usually stale within a day — so dev
+// drinks from the DEPLOYED site first (Pages serves it with CORS *), and
+// only falls back to the local copy when offline.
+const WAVES_FILE = 'data/waves-superior.json'
+const DEPLOYED_WAVES = `https://gavanacton.github.io/BoatApp/${WAVES_FILE}`
+
 /** Fetch (or refresh) the overlay file; falls back to the cached copy. */
 export async function refreshWaveOverlay(): Promise<void> {
   fetchedAt = Date.now()
-  try {
-    // cache-bust hourly: the file changes 4×/day and Pages caches hard
-    const bust = Math.floor(Date.now() / 3600_000)
-    const resp = await fetch(`${import.meta.env.BASE_URL}data/waves-superior.json?t=${bust}`)
-    if (!resp.ok) throw new Error(`waves ${resp.status}`)
-    const o = (await resp.json()) as WaveOverlay
-    if (!usable(o)) return // wrong shape or stale run — keep what we had
-    overlay = o
+  // cache-bust hourly: the file changes 4×/day and Pages caches hard
+  const bust = Math.floor(Date.now() / 3600_000)
+  const local = `${import.meta.env.BASE_URL}${WAVES_FILE}?t=${bust}`
+  const urls = import.meta.env.DEV ? [`${DEPLOYED_WAVES}?t=${bust}`, local] : [local]
+  for (const url of urls) {
     try {
-      await db.forecasts.put({ key: CACHE_KEY, fetchedAt: Date.now(), payload: o })
-    } catch {
-      /* cache is best-effort */
-    }
-  } catch {
-    if (!overlay) {
-      try {
-        const row = await db.forecasts.get(CACHE_KEY)
-        if (row) overlay = row.payload as WaveOverlay
-      } catch {
-        /* stay on Open-Meteo */
+      const resp = await fetch(url)
+      if (!resp.ok) continue
+      const o = (await resp.json()) as WaveOverlay
+      if (!o || o.cols == null) continue // not even the right file
+      // Keep it EVEN IF the run is too old to apply — usable() gates every
+      // application, and holding the file is what lets the status row say
+      // "run too old" (the pipeline's down) instead of "unavailable" (the
+      // fetch failed), which are different problems with different fixes.
+      overlay = o
+      if (usable(o)) {
+        try {
+          await db.forecasts.put({ key: CACHE_KEY, fetchedAt: Date.now(), payload: o })
+        } catch {
+          /* cache is best-effort */
+        }
       }
+      return
+    } catch {
+      /* try the next source */
+    }
+  }
+  if (!overlay) {
+    try {
+      const row = await db.forecasts.get(CACHE_KEY)
+      if (row) overlay = row.payload as WaveOverlay
+    } catch {
+      /* stay on Open-Meteo */
     }
   }
 }
