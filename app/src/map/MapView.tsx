@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl'
 import { useEffect, useRef } from 'react'
-import { BUNDLES, HOME } from '../config'
+import { BUNDLES, DATA_FILES, HOME } from '../config'
 import { listStored } from '../offline/fileStore'
 import { useAppStore } from '../state/appStore'
 import type { SpeedUnit } from '../units'
@@ -94,6 +94,14 @@ export default function MapView() {
       useAppStore
         .getState()
         .setOfflineReady(BUNDLES[0].files.every((f) => storedNames.has(f)))
+      // An archive that will not open is dropped from the style, and its
+      // layers simply are not drawn — which looks exactly like a chart that
+      // never arrived, with nothing to say why. Name them instead: a stale or
+      // half-written offline copy is the usual cause, and re-downloading is
+      // the cure.
+      useAppStore
+        .getState()
+        .setMissingCharts(DATA_FILES.filter((d) => !available.has(d.key)).map((d) => d.label))
       if (disposed || !containerRef.current) return
 
       const { layers, depthUnit, satOpacity, satVivid } = useAppStore.getState()

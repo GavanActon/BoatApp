@@ -157,6 +157,7 @@ function ShiftChip() {
 function TopBar() {
   const online = useAppStore((s) => s.online)
   const offlineReady = useAppStore((s) => s.offlineReady)
+  const missingCharts = useAppStore((s) => s.missingCharts)
   const gpsStatus = useGpsStore((s) => s.status)
   const gpsError = useGpsStore((s) => s.lastError)
 
@@ -165,6 +166,11 @@ function TopBar() {
       {!online && (
         <span className={`chip ${offlineReady ? 'chip-ok' : 'chip-warn'}`}>
           {offlineReady ? 'Offline · charts ready' : 'Offline · charts not downloaded'}
+        </span>
+      )}
+      {missingCharts.length > 0 && (
+        <span className="chip chip-warn">
+          {missingCharts.join(', ')} didn't load — re-download in Offline
         </span>
       )}
       <ForecastAgeChip />

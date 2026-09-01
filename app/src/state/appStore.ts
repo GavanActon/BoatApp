@@ -107,6 +107,10 @@ interface AppState {
   // and a half-height sheet disappears entirely behind it. Transient.
   sheetTall: boolean
   setSheetTall: (v: boolean) => void
+  /** Chart archives that would not open — a blank chart with a reason.
+   *  Empty is the normal case. */
+  missingCharts: string[]
+  setMissingCharts: (v: string[]) => void
   offlineReady: boolean // all region files present in local storage
   setOfflineReady: (v: boolean) => void
 
@@ -232,6 +236,8 @@ export const useAppStore = create<AppState>()(
 
       sheetTall: false,
       setSheetTall: (v) => set({ sheetTall: v }),
+      missingCharts: [],
+      setMissingCharts: (missingCharts) => set({ missingCharts }),
       offlineReady: false,
       setOfflineReady: (v) => set({ offlineReady: v }),
 
