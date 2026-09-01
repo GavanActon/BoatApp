@@ -180,10 +180,8 @@ function PlanBlock() {
 
   const lanes = laneWaves(plan)
   const soon = planTimeMs == null || planTimeMs - Date.now() < START_SOON_MS
-  // Place taps explore, TIME taps plan — but the window RIDES the card from
-  // the first moment, ghosted: em-dashes, never questions. Planning is one
-  // visible tap (arm a chip), and until then nothing asks anything.
-  const planningStarted = useAppStore((s) => s.planPicked)
+  // Place taps explore, TIME taps plan — the window rides the card ghosted
+  // (em-dashes, never questions) until a chip is woken; see WindowChips.
 
   return (
     <>
@@ -224,7 +222,10 @@ function PlanBlock() {
           <span className="tb-dim">{planError}</span>
         ) : null}
       </div>
-      {planningStarted && soon ? (
+      {soon ? (
+        // leaving now (or within the hour) always gets the real button — no
+        // return time required, no ceremony. Only a trip planned for LATER
+        // keeps Start quiet, so a Saturday plan never nags on Thursday.
         <div className="tb-actions">
           <button className="btn-primary" disabled={!plan} onClick={() => startTrip()}>
             Start trip
@@ -236,7 +237,7 @@ function PlanBlock() {
         // right now, rebasing the window to this moment. The primary button
         // above is just this control grown loud because its time has come.
         <div className="tb-actions tb-actions-quiet">
-          {planningStarted && planTimeMs != null && (
+          {planTimeMs != null && (
             <span className="plan-note numeral">planned · {dayLabel(planTimeMs)}</span>
           )}
           <button

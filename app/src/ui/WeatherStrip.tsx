@@ -310,15 +310,12 @@ export default function WeatherStrip() {
             // With a chip armed, only the hours that would still leave a
             // window are offered — so a tap can never produce a nonsense one,
             // and the other end holds still.
-            const armable =
-              armedEnd === 'out'
-                ? planEndMs == null || cellMs < planEndMs
-                : armedEnd === 'back'
-                  // no departure picked yet means "leaving now", so the ride
-                  // home is still choosable — this used to disable all ten
-                  // cells and leave cancel as the only way out
-                  ? cellMs > (planTimeMs ?? Date.now())
-                  : false
+            // Every hour is on offer while a chip is armed. Fences used to
+            // grey out hours past the other end, which made multi-day picks
+            // impossible; now an inconsistent pick simply CARRIES the other
+            // end along, keeping the window's span — the way dragging the
+            // departure always has.
+            const armable = armedEnd != null
             const period = showPeriod ? formatPeriod(r.wavePeriodS) : null
             const wxText =
               `wind ${windSpeed(windUnit, r.windKn)} ${speedUnitLabel(windUnit)}, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
@@ -327,19 +324,30 @@ export default function WeatherStrip() {
             return (
               <button
                 key={cellMs}
-                className={
-                  `wxcell${active ? ' wx-active' : ''}` +
-                  (armedEnd ? (armable ? ' wx-armable' : ' wx-unarmable') : '')
-                }
+                className={`wxcell${active ? ' wx-active' : ''}${armable ? ' wx-armable' : ''}`}
                 style={{ borderTopColor: seaColor(r.waveM) }}
                 onClick={() => {
                   // any accepted time-tap moves the app from exploring to
                   // planning — including "Now", which is a choice, not a default
                   setPlanPicked(true)
                   if (armedEnd) {
-                    if (!armable) return
-                    if (armedEnd === 'out') setPlanWindow(cellMs, planEndMs)
-                    else setPlanWindow(planTimeMs, cellMs)
+                    const span =
+                      planTimeMs != null && planEndMs != null
+                        ? planEndMs - planTimeMs
+                        : useAppStore.getState().usualOutingMin * 60_000
+                    if (armedEnd === 'out') {
+                      // out past the current back? back comes along, span kept
+                      setPlanWindow(
+                        cellMs,
+                        planEndMs != null && cellMs < planEndMs ? planEndMs : cellMs + span,
+                      )
+                    } else {
+                      // back before the current out? out follows, span kept
+                      setPlanWindow(
+                        planTimeMs != null && cellMs > planTimeMs ? planTimeMs : cellMs - span,
+                        cellMs,
+                      )
+                    }
                     setArmedEnd(null)
                     return
                   }

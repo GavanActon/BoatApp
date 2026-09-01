@@ -84,10 +84,14 @@ strip becomes that chip's keypad. The same grammar governs space: the
 sentence's From/To chips arm, and the chart's badges, the open water and the
 Places sheet become that slot's keypad (a banner names the listening slot,
 with cancel). One gesture everywhere; nothing auto-suggests a departure.
-**Start is never out of reach**: a quiet control (a control, not a prompt)
-starts the trip at any time, rebasing the window to now — and it grows into
-the primary "Start trip" button when the tested out-time falls within 60
-minutes, because that plan's time has come.
+**Start is never out of reach**: whenever leaving now is possible — no time
+picked, or an out-time within 60 minutes — the card shows the real primary
+"Start trip" button, no return time required. Only a trip planned for LATER
+keeps Start as a quiet control (a control, not a prompt) that starts anyway,
+rebasing the window to now — so a Saturday plan never nags on Thursday, and
+going is never more than one visible tap. Cast-off stands every armed keypad
+down. While Out is armed no hour is fenced off: a pick past the other end
+simply carries that end along, span kept.
 
 **0.5 MUST — One visual language, everywhere.**
 Square sections: ~6 px radius tiles, ~5 px rows. No pill-shaped controls. The

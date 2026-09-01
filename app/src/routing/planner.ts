@@ -219,6 +219,10 @@ export async function replan(quiet = false): Promise<void> {
 /** Start monitoring: freeze the origin for the ride home, record the track,
  *  and re-time everything from the boat's live position. */
 export function startTrip() {
+  // under way, nothing should still be listening: the time keypad and any
+  // armed place slot stand down with the cast-off
+  useAppStore.getState().setArmedEnd(null)
+  useAppStore.getState().setArmedSlot(null)
   const fix = useGpsStore.getState().fix
   const sp = useRouteStore.getState().startPoint
   // the ride home aims for the actual cast-off spot; without a fix, the
