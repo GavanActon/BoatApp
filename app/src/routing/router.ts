@@ -1,3 +1,4 @@
+import { KNOWN_CHANNELS } from './channels'
 import { depthAt, getDepthGridRaw, loadDepthGrid } from '../map/depthGrid'
 import { buildNavMask, NODATA, routeOnGrid, type NavMask, type RouteResult } from './waterRouter'
 
@@ -13,7 +14,7 @@ export async function ensureNav(): Promise<NavMask | null> {
   if (!getDepthGridRaw()) await loadDepthGrid()
   const raw = getDepthGridRaw()
   if (!raw) return null
-  nav = buildNavMask(raw.header, raw.data)
+  nav = buildNavMask(raw.header, raw.data, KNOWN_CHANNELS)
   return nav
 }
 
@@ -83,6 +84,7 @@ export async function computeRoute(
   let coords: [number, number][] = []
   let distanceNm = 0
   const viaIdx: number[] = []
+  const locks: { name: string; atNm: number }[] = []
   for (let i = 0; i < stops.length - 1; i++) {
     const leg = routeOnGrid(n, stops[i], stops[i + 1])
     if (!leg) {
@@ -94,8 +96,9 @@ export async function computeRoute(
       }
     }
     coords = coords.length ? coords.concat(leg.coords.slice(1)) : leg.coords.slice()
+    for (const l of leg.locks ?? []) locks.push({ name: l.name, atNm: distanceNm + l.atNm })
     distanceNm += leg.distanceNm
     if (i < vias.length) viaIdx.push(coords.length - 1)
   }
-  return { coords, distanceNm, viaIdx }
+  return locks.length ? { coords, distanceNm, viaIdx, locks } : { coords, distanceNm, viaIdx }
 }

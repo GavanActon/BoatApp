@@ -3,10 +3,13 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
+import { depthAt } from '../map/depthGrid'
 import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo } from './rdwps'
+import { SEA_BANDS } from './seaState'
 import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
 import {
+  cachedGridForecast,
   fetchGridForecast,
   GRID_SHAPE,
   hourIndexAt,
@@ -71,11 +74,46 @@ function makeArrowImage(color: string): ImageData {
   return ctx.getImageData(0, 0, size, size)
 }
 
+/** The sea's travel arrow — a foam-coloured chevron over a shaft, so it can't
+ *  be read as one of the wind buckets' filled kites. Drawn pointing up and
+ *  rotated per feature at render time, same convention as the wind arrows. */
+function makeWaveArrowImage(): ImageData {
+  const size = 36
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.translate(size / 2, size / 2)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  const draw = () => {
+    ctx.beginPath()
+    ctx.moveTo(0, 9)
+    ctx.lineTo(0, -7)
+    ctx.moveTo(-5.5, -1.5)
+    ctx.lineTo(0, -8)
+    ctx.lineTo(5.5, -1.5)
+    ctx.stroke()
+  }
+  // dark halo pass first, foam stroke over it — same contrast recipe as the
+  // text halos, so the arrow survives any water colour beneath it
+  ctx.strokeStyle = 'rgba(8, 20, 34, 0.9)'
+  ctx.lineWidth = 5
+  draw()
+  ctx.strokeStyle = 'rgba(232, 246, 255, 0.95)'
+  ctx.lineWidth = 2.4
+  draw()
+  return ctx.getImageData(0, 0, size, size)
+}
+
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
 
   for (const b of ARROW_BUCKETS) {
     if (!map.hasImage(b.id)) map.addImage(b.id, makeArrowImage(b.color), { pixelRatio: 2 })
+  }
+  if (!map.hasImage('wx-wave-arrow')) {
+    map.addImage('wx-wave-arrow', makeWaveArrowImage(), { pixelRatio: 2 })
   }
 
   map.addSource('wx', { type: 'geojson', data: emptyFc() })
@@ -108,6 +146,59 @@ function addLayers(map: MlMap) {
         3.0,
         'rgba(123, 45, 143, 0.65)',
       ],
+    },
+  })
+
+  // Low power's stand-in for the sea-flow crests: the same lattice, wave
+  // heights as plain numbers wearing the sea-state ramp's colour — the
+  // information without the animation. Visibility is render()'s call.
+  map.addLayer({
+    id: 'wx-wave-num',
+    type: 'symbol',
+    source: 'wx',
+    layout: {
+      visibility: 'none',
+      'text-field': ['get', 'waveText'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 12,
+      // above the point — the wind arrow's own label sits below it
+      'text-offset': [0, -1.1],
+      'text-allow-overlap': true,
+    },
+    paint: {
+      // step through the ramp's own band bounds, so a number and a crest
+      // would always have told the same colour story
+      'text-color': [
+        'step',
+        ['coalesce', ['get', 'wave'], 0],
+        SEA_BANDS[0].color,
+        ...SEA_BANDS.slice(0, -1).flatMap((b, i) => [b.maxM, SEA_BANDS[i + 1].color]),
+      ] as never,
+      'text-halo-color': 'rgba(8, 20, 34, 0.85)',
+      'text-halo-width': 1.3,
+    },
+  })
+
+  // …and where that sea is GOING — the direction the crests were carrying
+  // before they stood down. Its own layer, nudged above the number with a
+  // screen-space translate: icon-offset rotates with the icon, and a rotated
+  // offset would smear the number/arrow cluster all over the lattice point.
+  map.addLayer({
+    id: 'wx-wave-dir',
+    type: 'symbol',
+    source: 'wx',
+    filter: ['all', ['!=', ['get', 'waveText'], ''], ['==', ['get', 'hasWaveDir'], true]],
+    layout: {
+      visibility: 'none',
+      'icon-image': 'wx-wave-arrow',
+      'icon-rotate': ['get', 'waveArrow'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 11, 1.1],
+    },
+    paint: {
+      'icon-translate': [0, -34],
+      'icon-translate-anchor': 'viewport',
     },
   })
 
@@ -160,6 +251,17 @@ function emptyFc(): FeatureCollection {
   return { type: 'FeatureCollection', features: [] }
 }
 
+// Wind blows over land (windy.com convention — the arrows stay), but a wave
+// height quoted on a forest is a lie. Same shoreline mask the sea-flow crests
+// use: the offline depth grid, with its shallow cutoff.
+const MIN_WATER_M = 0.3
+
+function waveTextAt(wave: number | null, lon: number, lat: number): string {
+  if (wave == null) return ''
+  const d = depthAt(lon, lat)
+  return d != null && d >= MIN_WATER_M ? `${wave.toFixed(1)}m` : ''
+}
+
 /** The old rendering: one feature per forecast cell. Kept for a grid cached
  *  by an earlier build, whose shape this one can't assume. */
 function fcAtCells(g: GridForecast, i: number, windUnit: SpeedUnit): FeatureCollection {
@@ -175,6 +277,10 @@ function fcAtCells(g: GridForecast, i: number, windUnit: SpeedUnit): FeatureColl
         arrowDir: ((c.windDir[i] ?? 0) + 180) % 360,
         wave: c.waveM[i],
         windText: `${windSpeed(windUnit, c.windKn[i] ?? 0)} ${speedUnitLabel(windUnit)}`,
+        waveText: waveTextAt(c.waveM[i] ?? null, c.lon, c.lat),
+        // wave_direction is where the sea comes FROM; the arrow points where it travels
+        hasWaveDir: c.waveDir?.[i] != null,
+        waveArrow: ((c.waveDir?.[i] ?? 0) + 180) % 360,
       },
     })),
   }
@@ -370,6 +476,10 @@ function fcForView(
           arrowDir: (s.dir + 180) % 360,
           wave: s.wave,
           windText: `${windSpeed(windUnit, s.wind)} ${speedUnitLabel(windUnit)}`,
+          waveText: waveTextAt(s.wave, lon, lat),
+          // wave_direction is where the sea comes FROM; the arrow points where it travels
+          hasWaveDir: s.waveDir != null,
+          waveArrow: ((s.waveDir ?? 0) + 180) % 360,
         },
       })
     }
@@ -377,19 +487,30 @@ function fcForView(
   return { type: 'FeatureCollection', features }
 }
 
+/** Low power promised the wave INFO stays on the chart when the crests
+ *  stand down — numbers whenever the crests would have been telling it (or
+ *  the overlay is on, whose blobs colour but don't quote the height). */
+function showWaveNumbers(): boolean {
+  const { lowPower, layers } = useAppStore.getState()
+  return lowPower && (layers.seaFlow || layers.weather)
+}
+
 function render(map: MlMap) {
   if (layersOn !== map) return
   const { layers, planTimeMs, windUnit } = useAppStore.getState()
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
+  const nums = showWaveNumbers()
   src.setData(
-    grid && layers.weather
+    grid && (layers.weather || nums)
       ? fcForView(map, grid, planTimeMs ?? floorHourMs(), windUnit)
       : emptyFc(),
   )
   const vis = layers.weather ? 'visible' : 'none'
   map.setLayoutProperty('wx-wave', 'visibility', vis)
   map.setLayoutProperty('wx-wind', 'visibility', vis)
+  map.setLayoutProperty('wx-wave-num', 'visibility', nums ? 'visible' : 'none')
+  map.setLayoutProperty('wx-wave-dir', 'visibility', nums ? 'visible' : 'none')
 }
 
 let refreshing: Promise<{ fetchedAt: number; stale: boolean } | null> | null = null
@@ -515,9 +636,17 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
   }
 }
 
-/** Resolves immediately when the grid is already fresh, otherwise (re)fetches it. */
+/**
+ * Resolves as soon as ANY grid is in hand. A stale one (including the
+ * IndexedDB seed at startup) still answers now — last-known data beats a
+ * spinner — while a refetch runs behind and notifies gridListeners when the
+ * fresh copy lands. Only with no grid at all does the caller wait.
+ */
 export function ensureWeatherGrid(): Promise<unknown> {
-  if (grid && Date.now() - grid.fetchedAt <= GRID_MAX_AGE_MS) return Promise.resolve(null)
+  if (grid) {
+    if (Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS) void refreshWeatherGrid()
+    return Promise.resolve(null)
+  }
   return refreshWeatherGrid()
 }
 
@@ -583,7 +712,7 @@ export function initWeatherLayer() {
   startWeatherClock()
   if (import.meta.env.DEV) {
     // the verify harness reads the grid through the same doors the app does
-    ;(window as unknown as Record<string, unknown>).__wx = { gridConditionsAt, weatherGridInfo }
+    ;(window as unknown as Record<string, unknown>).__wx = { gridConditionsAt, weatherGridInfo, depthAt }
   }
 
   onEachMap((map) => {
@@ -591,15 +720,39 @@ export function initWeatherLayer() {
     render(map)
   })
 
-  // layer persisted on from a previous session → fetch without waiting for a toggle
-  if (useAppStore.getState().layers.weather) void refreshWeatherGrid()
+  // Last-known weather first: seed from the IndexedDB copy so the strip, the
+  // layers and the flow engines open with data the moment the map exists,
+  // while the real fetch runs behind (and overwrites this when it lands).
+  void cachedGridForecast().then((c) => {
+    if (!c || grid) return // the network already won
+    grid = c.grid
+    gridStale = true
+    applyWaveOverlay(grid)
+    withMap((map) => {
+      addLayers(map)
+      render(map)
+    })
+    for (const cb of gridListeners) cb()
+  })
+
+  // layer persisted on from a previous session → fetch without waiting for a
+  // toggle (the numeric wave readout needs the grid just like the overlay)
+  if (useAppStore.getState().layers.weather || showWaveNumbers()) void refreshWeatherGrid()
 
   useAppStore.subscribe((s, prev) => {
     if (s.windUnit !== prev.windUnit) withMap(render) // arrow labels carry the unit
-    if (s.layers.weather !== prev.layers.weather || s.planTimeMs !== prev.planTimeMs) {
+    if (
+      s.layers.weather !== prev.layers.weather ||
+      s.layers.seaFlow !== prev.layers.seaFlow ||
+      s.lowPower !== prev.lowPower ||
+      s.planTimeMs !== prev.planTimeMs
+    ) {
       withMap(render)
       // fetch on first enable, refresh a stale grid on interaction
-      if (s.layers.weather && (!grid || Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS)) {
+      if (
+        (s.layers.weather || showWaveNumbers()) &&
+        (!grid || Date.now() - grid.fetchedAt > GRID_MAX_AGE_MS)
+      ) {
         void refreshWeatherGrid()
       }
     }

@@ -178,10 +178,19 @@ def stretch(band):
     return np.where(valid, np.clip(out, 1, 255), 0).astype(np.uint8)
 
 
+def extent_tag(ll_bounds):
+    """Geographic extent baked into cache filenames: a cached intermediate is
+    only valid for the exact bounds it was cut to. Without this, a REGION bbox
+    change silently reused the old mosaic and every tile rendered displaced
+    imagery (land where Whitefish Bay belongs — 2026-09-01)."""
+    w, s, e, n = ll_bounds
+    return f"w{-w:.2f}s{s:.2f}e{-e:.2f}n{n:.2f}"
+
+
 def fetch_scene(feature, ll_bounds):
     """Window-read R/G/B over the region, stretch, cache as a local UTM GeoTIFF."""
     sid = feature["id"]
-    dst = CACHE_DIR / f"{sid}.tif"
+    dst = CACHE_DIR / f"{sid}-{extent_tag(ll_bounds)}.tif"
     if dst.exists():
         return dst
     assets = feature["assets"]
@@ -205,12 +214,16 @@ def fetch_scene(feature, ll_bounds):
                     "height": int(win.height),
                 }
     dst.parent.mkdir(parents=True, exist_ok=True)
+    # temp-then-rename: a run killed mid-write must never leave a file the
+    # next run's exists() check will trust (torn-mosaic incident, 2026-09-01)
+    tmp = dst.with_name(dst.name + ".part")
     with rasterio.open(
-        dst, "w", driver="GTiff", count=3, dtype="uint8", nodata=0,
+        tmp, "w", driver="GTiff", count=3, dtype="uint8", nodata=0,
         tiled=True, blockxsize=512, blockysize=512, compress="deflate", **profile
     ) as out:
         for i, b in enumerate(bands, 1):
             out.write(b, i)
+    tmp.replace(dst)
     print(f"    cached {sid} ({profile['width']}x{profile['height']})")
     return dst
 
@@ -252,10 +265,11 @@ def mosaic_grid(region):
 
 def build_mosaic(region, grid, scene_paths):
     """Reproject the cached scenes into one web-mercator RGB mosaic."""
-    out = CACHE_DIR / f"mosaic-{region['name']}-{SCENE_DATE}.tif"
+    out = CACHE_DIR / f"mosaic-{region['name']}-{SCENE_DATE}-{extent_tag(grid['ll_bounds'])}.tif"
     if out.exists():
         print(f"  mosaic cached ({out.stat().st_size / 1e6:.0f} MB)")
         return out
+    tmp = out.with_name(out.name + ".part")  # rename on success only
     srcs = [rasterio.open(p) for p in scene_paths]
     # dest-row span of each source, so a strip skips sources it cannot touch
     spans = []
@@ -268,7 +282,7 @@ def build_mosaic(region, grid, scene_paths):
     strips = math.ceil(grid["height"] / STRIP_ROWS)
     try:
         with rasterio.open(
-            out, "w", driver="GTiff", width=grid["width"], height=grid["height"],
+            tmp, "w", driver="GTiff", width=grid["width"], height=grid["height"],
             count=3, dtype="uint8", nodata=0, crs="EPSG:3857",
             transform=grid["transform"], tiled=True, blockxsize=512, blockysize=512,
             compress="deflate", photometric="rgb", BIGTIFF="IF_SAFER",
@@ -298,6 +312,7 @@ def build_mosaic(region, grid, scene_paths):
     finally:
         for s in srcs:
             s.close()
+    tmp.replace(out)
     print(f"  wrote mosaic ({out.stat().st_size / 1e6:.0f} MB)          ")
     return out
 

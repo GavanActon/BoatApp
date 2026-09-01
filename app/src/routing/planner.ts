@@ -7,7 +7,7 @@ import { capturePromise } from './legReadout'
 import { computeRoute, ensureNav, isAfloat } from './router'
 import { useRouteStore } from './routeStore'
 import { planTrip } from './tripPlan'
-import { haversineNm } from './waterRouter'
+import { haversineNm, lockDelayMin } from './waterRouter'
 
 /**
  * Keeps the planned trip current.
@@ -50,7 +50,7 @@ export function adoptWindow(departMs: number, stayMin: number | null) {
     app.setPlanTime(departMs)
     return
   }
-  const legMin = (nm / s.cruiseKn) * 60
+  const legMin = (nm / s.cruiseKn) * 60 + lockDelayMin(s.route)
   const spanMin = (s.roundTrip ? 2 : 1) * legMin + stayMin
   app.setPlanWindow(departMs, departMs + Math.round(spanMin) * 60_000)
 }
@@ -182,7 +182,7 @@ export async function replan(quiet = false): Promise<void> {
     // for minus the running. Saying "we're out from five to nine" is how
     // anyone actually describes an afternoon; "at least ninety minutes there"
     // never was. Without a window we fall back to the old minimum.
-    const oneWayMin = (result.distanceNm / s.cruiseKn) * 60
+    const oneWayMin = (result.distanceNm / s.cruiseKn) * 60 + lockDelayMin(result)
     const windowMin =
       app.planEndMs != null && app.planEndMs > departMs
         ? (app.planEndMs - departMs) / 60_000

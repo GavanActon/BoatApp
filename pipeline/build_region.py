@@ -42,9 +42,9 @@ from pmtiles.writer import Writer
 REGION = {
     "name": "superior-east",
     "west": -85.3,
-    "south": 46.3,
-    "east": -83.9,
-    "north": 47.25,
+    "south": 46.0,
+    "east": -83.55,
+    "north": 47.5,
     "arcsec": 3,  # source resolution to request
     "tile_min_zoom": 6,
     "tile_max_zoom": 12,

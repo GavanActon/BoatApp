@@ -97,8 +97,8 @@ function onFix(pos: GeolocationPosition) {
       markerAdded = true
     }
 
-    const { follow, headingUp } = useAppStore.getState()
-    if (follow && Date.now() >= cameraHoldUntil) followCamera(map, fix, headingUp)
+    const { follow, headingUp, helm } = useAppStore.getState()
+    if (follow && Date.now() >= cameraHoldUntil) followCamera(map, fix, headingUp || helm)
   }
   if (liveMap) update(liveMap)
   else withMap(update)
@@ -130,7 +130,7 @@ const COG_MIN_KN = 1.5 // below steerage way COG is noise, not a course
  * field away and rebuilt it. Heading-up used to hand them COG noise once a
  * second, which is what made the field blink while sitting still.
  */
-function followCamera(map: maplibregl.Map, fix: Fix, headingUp: boolean) {
+function followCamera(map: maplibregl.Map, fix: Fix, courseUp: boolean) {
   const from = map.project(map.getCenter())
   const to = map.project([fix.lon, fix.lat])
   const movedPx = Math.hypot(to.x - from.x, to.y - from.y)
@@ -140,7 +140,7 @@ function followCamera(map: maplibregl.Map, fix: Fix, headingUp: boolean) {
   // at all — it swings through whatever the noise says, and every swing threw
   // the flow field away. A plotter behaves the same: stopped, the chart holds.
   const now = map.getBearing()
-  const steering = headingUp && fix.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
+  const steering = courseUp && fix.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
   const want = steering ? fix.cog! : now
   const turnedDeg = Math.abs(((want - now + 540) % 360) - 180)
   const bearing = turnedDeg >= TURN_DEG ? want : now
@@ -252,6 +252,84 @@ export function locateAndFollow() {
     if (map) ease(map)
     else withMap(ease)
   }
+}
+
+// Helm view geometry. The pitch matches the map's maxPitch, so the gesture
+// and the toggle land on the same horizon. The padding pushes the camera's
+// center point (the boat, while following) down the screen: MapLibre places
+// the center in the middle of the UNPADDED area, so reserving the top half
+// renders the boat at ~75% height — a quarter of the screen of water behind,
+// three quarters of what's coming up ahead.
+const HELM_PITCH = 60
+const HELM_TOP_PAD = 0.5 // fraction of the viewport height reserved above
+const HELM_MIN_ZOOM = 13 // "what's coming up" scale, not the passage overview
+
+const flatPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+
+/**
+ * Pitch the chart into helm view and follow the boat course-up. A camera
+ * stance layered on follow: dragging still breaks follow as always, but the
+ * pitch and padding stay put, so the locate button drops you straight back
+ * at the helm. Exiting is what flattens the chart.
+ */
+export function enterHelmView() {
+  startGps()
+  useAppStore.getState().setFollow(true)
+  useAppStore.getState().setHelm(true)
+  const fix = useGpsStore.getState().fix
+  const ease = (map: maplibregl.Map) => {
+    cameraHoldUntil = Date.now() + 1600
+    const steering = fix?.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
+    map.easeTo({
+      ...(fix ? { center: [fix.lon, fix.lat] } : {}),
+      zoom: Math.max(map.getZoom(), HELM_MIN_ZOOM),
+      pitch: HELM_PITCH,
+      bearing: steering ? fix.cog! : map.getBearing(),
+      padding: { ...flatPadding, top: Math.round(map.getContainer().clientHeight * HELM_TOP_PAD) },
+      duration: 1400,
+      essential: true,
+    })
+  }
+  const map = getMap()
+  if (map) ease(map)
+  else withMap(ease)
+}
+
+/**
+ * Heading-up — the flat chart rotated to the course while following. A camera
+ * stance layered on follow the same way helm view is: switching it on starts
+ * following, and the camera answers the tap now rather than on the next fix.
+ */
+export function setHeadingUpMode(on: boolean) {
+  useAppStore.getState().setHeadingUp(on)
+  if (on) {
+    startGps()
+    useAppStore.getState().setFollow(true)
+    const fix = useGpsStore.getState().fix
+    const ease = (map: maplibregl.Map) => {
+      cameraHoldUntil = Date.now() + 1200
+      const steering = fix?.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
+      map.easeTo({
+        ...(fix ? { center: [fix.lon, fix.lat] } : {}),
+        ...(steering ? { bearing: fix!.cog! } : {}),
+        duration: 900,
+        essential: true,
+      })
+    }
+    const map = getMap()
+    if (map) ease(map)
+    else withMap(ease)
+  } else if (!useAppStore.getState().helm) {
+    // the rotation was this mode's doing, so take it back — unless helm view
+    // still owns the bearing, in which case leave the course where it is
+    withMap((map) => map.easeTo({ bearing: 0, duration: 800 }))
+  }
+}
+
+/** Flatten back to the top-down chart. Follow stays however it was. */
+export function exitHelmView() {
+  useAppStore.getState().setHelm(false)
+  withMap((map) => map.easeTo({ pitch: 0, padding: flatPadding, duration: 800 }))
 }
 
 // ---------- track recording ----------

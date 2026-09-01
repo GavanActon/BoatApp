@@ -8,7 +8,7 @@ import {
   type RouteForecast,
 } from '../weather/openMeteo'
 import { ensureWeatherGrid, routeForecastFromGrid } from '../weather/weatherLayer'
-import type { RouteResult } from './waterRouter'
+import { lockDelayMin, type RouteResult } from './waterRouter'
 
 /**
  * Turns a plotted route into a timed itinerary, attaches the forecast at the
@@ -166,6 +166,9 @@ function buildItinerary(
   const oneWay = cum[cum.length - 1]
   const nPos = Math.min(MAX_SAMPLES_ONE_WAY, Math.max(2, Math.ceil(oneWay / SAMPLE_SPACING_NM) + 1))
   const msPerNm = 3600_000 / o.cruiseKn
+  // a lock holds the boat at its gate: samples past it run that much later
+  const lockMs = (beforeNm: number) => lockDelayMin(route, beforeNm) * 60_000
+  const allLockMs = lockMs(Infinity)
 
   const out: ItinerarySample[] = []
   for (let i = 0; i < nPos; i++) {
@@ -174,21 +177,22 @@ function buildItinerary(
     out.push({
       lon,
       lat,
-      atMs: departMs + s * msPerNm,
+      atMs: departMs + s * msPerNm + lockMs(s),
       distNm: s,
       phase: i === 0 ? 'depart' : i === nPos - 1 ? 'arrive' : 'outbound',
     })
   }
 
   if (o.roundTrip) {
-    const leaveMs = departMs + oneWay * msPerNm + o.stayMin * 60_000
+    const leaveMs = departMs + oneWay * msPerNm + allLockMs + o.stayMin * 60_000
     for (let i = nPos - 2; i >= 0; i--) {
       const s = (i / (nPos - 1)) * oneWay
       const [lon, lat] = pointAt(route.coords, cum, s)
       out.push({
         lon,
         lat,
-        atMs: leaveMs + (oneWay - s) * msPerNm,
+        // locks re-crossed on the way home are the ones still ahead of s
+        atMs: leaveMs + (oneWay - s) * msPerNm + (allLockMs - lockMs(s)),
         distNm: oneWay + (oneWay - s),
         phase: i === 0 ? 'home' : 'return',
       })
@@ -344,7 +348,7 @@ export function computeDepartureWindows(
   const now = Date.now()
   const t0 = new Date()
   const cum = cumulativeNm(route.coords)
-  const oneWayMs = (cum[cum.length - 1] / cfg.cruiseKn) * 3600_000
+  const oneWayMs = (cum[cum.length - 1] / cfg.cruiseKn) * 3600_000 + lockDelayMin(route) * 60_000
   const days: DayWindows[] = []
 
   for (let d = 0; d < SWEEP_DAYS; d++) {

@@ -46,8 +46,8 @@ GRID_TAG = "LatLon0.009x0.012"
 HOURS = 48  # RDWPS horizon
 
 # app/src/config.ts REGION_BBOX + openMeteo.ts GRID_SHAPE — keep in lockstep
-REGION = {"west": -85.3, "south": 46.3, "east": -83.9, "north": 47.25}
-COLS, ROWS = 8, 7
+REGION = {"west": -85.3, "south": 46.0, "east": -83.55, "north": 47.5}
+COLS, ROWS = 9, 9
 
 VARS = {
     "HTSGW": "waveM",  # significant wave height, m
@@ -227,10 +227,15 @@ def main() -> int:
         if fh % 12 == 0:
             print(f"  +{fh:02d}h done")
 
+    # Guard against a truncated/corrupt run, not against geography: the bbox
+    # now holds plenty of land and river the wave model rightly ignores, so
+    # completeness is judged over cells that have ANY height this run — a wet
+    # cell missing most of its hours means the GRIB fetch went wrong.
     got = sum(1 for c in cells for v in c["waveM"] if v is not None)
-    total = len(cells) * (HOURS + 1)
-    print(f"coverage {got}/{total} cell-hours with heights")
-    if got < total * 0.5:
+    wet = sum(1 for c in cells if any(v is not None for v in c["waveM"]))
+    total = wet * (HOURS + 1)
+    print(f"coverage {got}/{total} cell-hours with heights across {wet}/{len(cells)} wet cells")
+    if wet == 0 or got < total * 0.8:
         print("too sparse — refusing to write", file=sys.stderr)
         return 1
 

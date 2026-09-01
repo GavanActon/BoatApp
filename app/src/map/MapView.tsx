@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl'
 import { useEffect, useRef, useState } from 'react'
-import { BUNDLES, DATA_FILES, HOME } from '../config'
+import { BUNDLES, DATA_FILES, HOME, MAX_BOUNDS } from '../config'
 import { listStored } from '../offline/fileStore'
 import { useAppStore } from '../state/appStore'
 import type { SpeedUnit } from '../units'
@@ -148,6 +148,7 @@ export default function MapView() {
         center: saved?.center ?? homeCenter() ?? HOME.center,
         zoom: saved?.zoom ?? HOME.zoom,
         bearing: saved?.bearing ?? 0,
+        maxBounds: MAX_BOUNDS,
         maxPitch: 60,
         attributionControl: { compact: true },
         fadeDuration: 150,

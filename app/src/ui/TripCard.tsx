@@ -6,7 +6,7 @@ import { endTrip, NO_START_MSG, startTrip } from '../routing/planner'
 import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
 import type { TripPlan } from '../routing/tripPlan'
-import { haversineNm } from '../routing/waterRouter'
+import { haversineNm, lockDelayMin } from '../routing/waterRouter'
 import { useAppStore } from '../state/appStore'
 import { homeBase, noteFor } from '../state/placesStore'
 import {
@@ -190,7 +190,7 @@ function PlanBlock() {
         {route ? (
           <span className="numeral">
             <b>{runDistance(speedUnit, route.distanceNm)}</b> {distanceUnitFor(speedUnit)} ·{' '}
-            <b>{durationLabel(Math.round((route.distanceNm / cruiseKn) * 60))}</b>
+            <b>{durationLabel(Math.round((route.distanceNm / cruiseKn) * 60 + lockDelayMin(route)))}</b>
             {lanes.out != null && (
               <>
                 {' · '}
@@ -404,7 +404,7 @@ export default function TripCard() {
     ? (route?.distanceNm ??
       (fromPt ? haversineNm(fromPt.lon, fromPt.lat, destination.lon, destination.lat) : null))
     : null
-  const runMin = runNm != null ? Math.round((runNm / cruiseKn) * 60) : null
+  const runMin = runNm != null ? Math.round((runNm / cruiseKn) * 60 + lockDelayMin(route)) : null
   // the bar leads with the day whenever the plan is for another one (§0.4)
   const planDay =
     destination && planTimeMs != null ? (isToday(planTimeMs) ? 'today' : dayShort(planTimeMs)) : null
@@ -527,7 +527,7 @@ function WindowChips() {
   const backMs = planEndMs ?? plan?.homeMs ?? null
 
   // time there is the window minus the running — never a setting of its own
-  const legMin = route ? (route.distanceNm / cruiseKn) * 60 : null
+  const legMin = route ? (route.distanceNm / cruiseKn) * 60 + lockDelayMin(route) : null
   const thereMin =
     backMs != null && legMin != null
       ? Math.round((backMs - outMs) / 60_000 - (roundTrip ? 2 : 1) * legMin)

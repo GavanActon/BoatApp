@@ -335,6 +335,38 @@ async function cacheGet<T>(key: string): Promise<{ fetchedAt: number; payload: T
   }
 }
 
+// ---------- startup priority: the strip's fetch goes first ----------
+//
+// At launch everything asks the same two Open-Meteo hosts at once, and the
+// biggest response (the 81-cell regional grid) can sit on the connection
+// while the smallest and most important one — the outlook strip's point
+// forecast, the app's face — arrives last on a patchy cell. So the grid
+// holds its network fetch until the first point forecast has settled, or
+// a short deadline passes (a dead cell must not hold the grid hostage —
+// both would then just fail together anyway).
+let releaseGridGate: () => void
+const gridGate = new Promise<void>((res) => {
+  releaseGridGate = res
+})
+// the clock starts when this module loads, i.e. at app startup
+setTimeout(() => releaseGridGate(), 2500)
+
+/** Last cached point forecast for these coords, straight off the disk — the
+ *  "last-known first" paint while the network round trip runs. */
+export async function cachedPointForecast(
+  lon: number,
+  lat: number,
+): Promise<{ forecast: PointForecast; ageMs: number } | null> {
+  const c = await cacheGet<PointForecast>(pointKey(lon, lat))
+  return c ? { forecast: c.payload, ageMs: Date.now() - c.fetchedAt } : null
+}
+
+/** Last cached regional grid, for seeding the map layers at startup. */
+export async function cachedGridForecast(): Promise<{ grid: GridForecast; ageMs: number } | null> {
+  const c = await cacheGet<GridForecast>(GRID_KEY)
+  return c ? { grid: c.payload, ageMs: Date.now() - c.fetchedAt } : null
+}
+
 // ---------- point forecast (7 days, for the forecast panel) ----------
 
 /**
@@ -389,9 +421,19 @@ function pointKey(lon: number, lat: number): string {
 export async function fetchPointForecast(
   lon: number,
   lat: number,
+  // reuse the cached forecast if younger than this (0 = always refetch) —
+  // the strip passes a few minutes so a GPS fix arriving right after launch
+  // doesn't buy the same forecast twice
+  maxAgeMs = 0,
 ): Promise<{ forecast: PointForecast; stale: boolean }> {
   const key = pointKey(lon, lat)
   try {
+    if (maxAgeMs > 0) {
+      const cached = await cacheGet<PointForecast>(key)
+      if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
+        return { forecast: cached.payload, stale: false }
+      }
+    }
     const windUrl =
       `${WIND_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
       `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,weather_code,precipitation_probability` +
@@ -444,6 +486,9 @@ export async function fetchPointForecast(
     const cached = await cacheGet<PointForecast>(key)
     if (cached) return { forecast: cached.payload, stale: true }
     throw e
+  } finally {
+    // settled either way — the grid may have the connection now
+    releaseGridGate()
   }
 }
 
@@ -451,11 +496,11 @@ export async function fetchPointForecast(
 
 /** Shape of the regional grid, so the map layer can read it as a lattice
  *  and interpolate between cells. */
-export const GRID_SHAPE = { cols: 8, rows: 7 }
+export const GRID_SHAPE = { cols: 9, rows: 9 }
 
 const GRID_COLS = GRID_SHAPE.cols
 const GRID_ROWS = GRID_SHAPE.rows
-const GRID_KEY = 'grid:superior-east:v1'
+const GRID_KEY = 'grid:superior-east:v2'
 
 function gridPoints(): { lats: number[]; lons: number[] } {
   const { west, south, east, north } = REGION_BBOX
@@ -471,6 +516,9 @@ function gridPoints(): { lats: number[]; lons: number[] } {
 }
 
 export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: boolean }> {
+  // important first: let the strip's point forecast take the connection
+  // before this, the app's heaviest response (see the gate above)
+  await gridGate
   try {
     const { lats, lons } = gridPoints()
     const latStr = lats.map((v) => v.toFixed(3)).join(',')

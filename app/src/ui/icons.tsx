@@ -257,6 +257,22 @@ export const IconEditRoute = (p: IconProps) => (
   </svg>
 )
 
+/** Helm view — the chart tilted into perspective, the vessel low and looking up-screen. */
+export const IconHelm = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+    <path d="M8.2 4.5 H15.8 L20.5 19.5 H3.5 Z" />
+    <path d="M12 8.5 L14.2 14.6 L12 13.3 L9.8 14.6 Z" fill="currentColor" stroke="none" />
+  </svg>
+)
+
+/** Heading-up — the flat chart rotated to the course, the vessel up-screen. */
+export const IconHeadingUp = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3.5 L17 17 L12 14.2 L7 17 Z" fill="currentColor" stroke="none" />
+    <path d="M12 17.5v3" />
+  </svg>
+)
+
 export const IconSliders = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
     <path d="M3 7h4M11 7h10" />

@@ -36,6 +36,24 @@ const MIN_NAV_DEPTH_M = 2 // preferred water: routes live here when they can
 const SHALLOW_PENALTY = 4 // cost multiplier inside the shallow tier
 const SHORE_PENALTY = 1.6 // cost multiplier for cells touching non-navigable cells
 const SNAP_RADIUS_CELLS = 60 // how far a start/dest may be from navigable water
+/** Fixed allowance for one lockage (waiting + filling + gates), minutes. */
+export const LOCKAGE_MIN = 40
+
+/** A passage that is real on the water but invisible to the depth test: a
+ *  lock canal narrower than a routing cell, or a surveyed river channel whose
+ *  thread of soundings pinches below the four-fine-cells rule. Stamped into
+ *  the mask as SHALLOW tier — the router pays the same premium it pays for
+ *  any thin water, the drawn route wears the cautious colour, and smoothing
+ *  never cuts across it. */
+export interface KnownChannelDef {
+  name: string
+  /** centreline, [lon, lat] — every vertex must be on the real waterway */
+  line: [number, number][]
+  /** corridor width in metres (cells containing the line always stamp) */
+  widthM: number
+  /** a lock: crossing it adds a fixed lockage allowance to trip times */
+  lock?: boolean
+}
 
 export interface NavMask {
   header: GridHeader
@@ -45,9 +63,16 @@ export interface NavMask {
   nearShore: Uint8Array // 1 = navigable but touching a non-navigable cell
   mpcX: number // metres per routing cell, east-west
   mpcY: number // metres per routing cell, north-south
+  /** routing cell → 1 + index into channels[], 0 = not part of one */
+  channelOf: Int16Array
+  channels: KnownChannelDef[]
 }
 
-export function buildNavMask(header: GridHeader, data: Int16Array): NavMask {
+export function buildNavMask(
+  header: GridHeader,
+  data: Int16Array,
+  channels: KnownChannelDef[] = [],
+): NavMask {
   const { nx, ny } = header
   const rnx = Math.floor(nx / DOWN)
   const rny = Math.floor(ny / DOWN)
@@ -73,6 +98,43 @@ export function buildNavMask(header: GridHeader, data: Int16Array): NavMask {
     }
   }
 
+  const midLat0 = ((header.south + header.north) / 2) * (Math.PI / 180)
+  const mX = (((header.east - header.west) / nx) * DOWN * 111320 * Math.cos(midLat0))
+  const mY = (((header.north - header.south) / ny) * DOWN * 110540)
+
+  // stamp known channels AFTER the depth test: uncharted/blocked cells along
+  // each line become shallow-tier navigable; already-open cells just gain
+  // channel membership (for lock detection)
+  const channelOf = new Int16Array(rnx * rny)
+  channels.forEach((ch, ci) => {
+    const rx = Math.max(0, Math.round(ch.widthM / 2 / mX))
+    const ry = Math.max(0, Math.round(ch.widthM / 2 / mY))
+    for (let s = 1; s < ch.line.length; s++) {
+      const [aLon, aLat] = ch.line[s - 1]
+      const [bLon, bLat] = ch.line[s]
+      const segM = haversineNm(aLon, aLat, bLon, bLat) * 1852
+      const steps = Math.max(1, Math.ceil(segM / (Math.min(mX, mY) * 0.45)))
+      for (let t = 0; t <= steps; t++) {
+        const lon = aLon + ((bLon - aLon) * t) / steps
+        const lat = aLat + ((bLat - aLat) * t) / steps
+        const fx = ((lon - header.west) / (header.east - header.west)) * (nx - 1)
+        const fy = ((header.north - lat) / (header.north - header.south)) * (ny - 1)
+        const cx = Math.floor(fx / DOWN)
+        const cy = Math.floor(fy / DOWN)
+        for (let dy = -ry; dy <= ry; dy++) {
+          for (let dx = -rx; dx <= rx; dx++) {
+            const x = cx + dx
+            const y = cy + dy
+            if (x < 0 || y < 0 || x >= rnx || y >= rny) continue
+            const i = y * rnx + x
+            if (!mask[i]) mask[i] = 2
+            channelOf[i] = ci + 1
+          }
+        }
+      }
+    }
+  })
+
   const nearShore = new Uint8Array(rnx * rny)
   for (let cy = 0; cy < rny; cy++) {
     for (let cx = 0; cx < rnx; cx++) {
@@ -93,11 +155,7 @@ export function buildNavMask(header: GridHeader, data: Int16Array): NavMask {
     }
   }
 
-  const midLat = ((header.south + header.north) / 2) * (Math.PI / 180)
-  const mpcX = (((header.east - header.west) / nx) * DOWN * 111320 * Math.cos(midLat))
-  const mpcY = (((header.north - header.south) / ny) * DOWN * 110540)
-
-  return { header, rnx, rny, mask, nearShore, mpcX, mpcY }
+  return { header, rnx, rny, mask, nearShore, mpcX: mX, mpcY: mY, channelOf, channels }
 }
 
 export function cellToLonLat(nav: NavMask, cx: number, cy: number): [number, number] {
@@ -282,6 +340,17 @@ export function smoothPath(nav: NavMask, path: [number, number][]): [number, num
   return out
 }
 
+/** Lockage minutes charged to one run of this route — only locks reached
+ *  before `beforeNm`, so itinerary samples upstream of a gate aren't delayed
+ *  by it. Default counts every lock on the route. */
+export function lockDelayMin(
+  route: Pick<RouteResult, 'locks'> | null | undefined,
+  beforeNm = Infinity,
+): number {
+  if (!route?.locks) return 0
+  return route.locks.filter((l) => l.atNm < beforeNm).length * LOCKAGE_MIN
+}
+
 export function haversineNm(aLon: number, aLat: number, bLon: number, bLat: number): number {
   const R = 3440.065
   const toRad = Math.PI / 180
@@ -299,6 +368,9 @@ export interface RouteResult {
   distanceNm: number
   /** Index into coords of each user-placed via point, in order (absent = none). */
   viaIdx?: number[]
+  /** Each lock the route passes through, with the distance run at the gate.
+   *  Trip timing adds a fixed lockage allowance per entry. */
+  locks?: { name: string; atNm: number }[]
 }
 
 /**
@@ -317,6 +389,28 @@ export function routeOnGrid(
   const cellPath = findCellPath(nav, sCell, dCell)
   if (!cellPath) return null
 
+  // lock crossings: one per contiguous run of a lock channel's cells,
+  // located by distance run along the (unsmoothed) cell path
+  const locks: { name: string; atNm: number }[] = []
+  let runNm = 0
+  let inChannel = 0
+  for (let i = 0; i < cellPath.length; i++) {
+    if (i > 0) {
+      const [aLon, aLat] = cellToLonLat(nav, cellPath[i - 1][0], cellPath[i - 1][1])
+      const [bLon, bLat] = cellToLonLat(nav, cellPath[i][0], cellPath[i][1])
+      runNm += haversineNm(aLon, aLat, bLon, bLat)
+    }
+    const ci = nav.channelOf[cellPath[i][1] * nav.rnx + cellPath[i][0]]
+    if (ci !== inChannel) {
+      // once per lock per leg: a snap into the corridor, or a brief exit where
+      // the canal reach has charted cells beside it, is still one lockage
+      if (ci > 0 && nav.channels[ci - 1].lock && !locks.some((l) => l.name === nav.channels[ci - 1].name)) {
+        locks.push({ name: nav.channels[ci - 1].name, atNm: runNm })
+      }
+      inChannel = ci
+    }
+  }
+
   const smooth = smoothPath(nav, cellPath)
   const coords = smooth.map(([cx, cy]) => cellToLonLat(nav, cx, cy))
 
@@ -332,5 +426,5 @@ export function routeOnGrid(
   for (let i = 1; i < coords.length; i++) {
     distanceNm += haversineNm(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1])
   }
-  return { coords, distanceNm }
+  return locks.length ? { coords, distanceNm, locks } : { coords, distanceNm }
 }

@@ -530,6 +530,9 @@ function syncSea(map: MlMap) {
   seaCam = null
   const want =
     useAppStore.getState().layers.seaFlow &&
+    // low power stills the sea entirely — its information moves to the
+    // numeric wave readout the weather layer draws (weatherLayer.ts)
+    !useAppStore.getState().lowPower &&
     current === 'off' && // a console trial owns the water while it runs
     document.visibilityState === 'visible'
   if (!want) return
@@ -562,6 +565,7 @@ export function initSeaFlow() {
     useAppStore.subscribe((s, prev) => {
       if (
         s.layers.seaFlow !== prev.layers.seaFlow ||
+        s.lowPower !== prev.lowPower ||
         s.planTimeMs !== prev.planTimeMs || // the field is a moment's sea
         // spacing and length are baked into the anchors (length shapes the
         // shoreline envelope); the other knobs are live

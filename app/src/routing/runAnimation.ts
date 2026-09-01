@@ -2,6 +2,7 @@ import type { Feature, FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { setLaneHighlight } from './routeLayer'
 import { useRouteStore } from './routeStore'
+import { useAppStore } from '../state/appStore'
 
 /**
  * Motion on the run.
@@ -300,6 +301,7 @@ export function syncRunAnimation(map: MlMap) {
   const shouldRun =
     !suspended &&
     !reducedMotion() &&
+    !useAppStore.getState().lowPower &&
     document.visibilityState === 'visible' &&
     useRouteStore.getState().route != null
 
@@ -350,5 +352,8 @@ export function initRunAnimation(map: MlMap) {
   document.addEventListener('visibilitychange', () => syncRunAnimation(map))
   useRouteStore.subscribe((s, prev) => {
     if (s.route !== prev.route || s.plan !== prev.plan) syncRunAnimation(map)
+  })
+  useAppStore.subscribe((s, prev) => {
+    if (s.lowPower !== prev.lowPower) syncRunAnimation(map)
   })
 }

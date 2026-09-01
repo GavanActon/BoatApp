@@ -44,26 +44,45 @@ function omCache(): Plugin {
               return Infinity
             }
           })()
-          const serveFile = () => {
+          // Open-Meteo sometimes answers 200 with a plain-text error body
+          // ("Unexpected error while streaming data: …"). Cached, that text
+          // would be served as fresh JSON to every later session — the app's
+          // resp.json() throws and the outlook strip loses its hour row. So
+          // JSON-validate on both sides of the disk: never write garbage,
+          // and never serve a poisoned file an older build already wrote.
+          const readValid = (): Buffer | null => {
+            try {
+              const body = readFileSync(file)
+              JSON.parse(body.toString('utf8'))
+              return body
+            } catch {
+              return null
+            }
+          }
+          const serve = (body: Buffer, tag: 'fresh' | 'stale' | 'miss') => {
             res.setHeader('content-type', 'application/json')
-            res.setHeader('x-om-cache', age < FRESH_MS ? 'fresh' : 'stale')
-            res.end(readFileSync(file))
+            res.setHeader('x-om-cache', tag)
+            res.end(body)
           }
           if (age < FRESH_MS) {
-            serveFile()
-            return
+            const body = readValid()
+            if (body) {
+              serve(body, 'fresh')
+              return
+            }
+            // poisoned while "fresh" — fall through and refetch
           }
           try {
             const up = await fetch(upstream)
             if (!up.ok) throw new Error(`upstream ${up.status}`)
             const body = Buffer.from(await up.arrayBuffer())
+            JSON.parse(body.toString('utf8')) // upstream 200 can still be an error string
             writeFileSync(file, body)
-            res.setHeader('content-type', 'application/json')
-            res.setHeader('x-om-cache', 'miss')
-            res.end(body)
+            serve(body, 'miss')
           } catch (e) {
-            if (age < Infinity) {
-              serveFile() // stale beats down
+            const body = age < Infinity ? readValid() : null
+            if (body) {
+              serve(body, 'stale') // stale beats down
               return
             }
             res.statusCode = 502

@@ -2,6 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAppStore } from '../state/appStore'
 import { IconClose } from './icons'
 
+/** The detents promise the chart most of the screen, so the sheet sizes
+ *  itself against at most this much viewport — full-screen Safari and the
+ *  installed app have taller viewports, and a pure dvh height crept up the
+ *  chart with them. */
+const VH_CAP_PX = 800
+
+/** A detent as CSS: pct of the viewport, but of no more than VH_CAP_PX of it. */
+function heightCss(pct: number) {
+  return `calc(min(${pct}dvh, ${(pct * VH_CAP_PX) / 100}px) + var(--sab))`
+}
+
 /**
  * iOS-style draggable bottom sheet with half / full snap points.
  * Content scrolls internally when at full height.
@@ -33,7 +44,7 @@ export default function BottomSheet({
   function applyHeight(pct: number) {
     livePct.current = pct
     const el = sheetRef.current
-    if (el) el.style.height = `calc(${pct}dvh + var(--sab))`
+    if (el) el.style.height = heightCss(pct)
   }
 
   useEffect(() => {
@@ -50,7 +61,10 @@ export default function BottomSheet({
   }
   function onPointerMove(e: React.PointerEvent) {
     if (!drag.current) return
-    const dyPct = ((drag.current.startY - e.clientY) / window.innerHeight) * 100
+    // pct is of the capped viewport, so the drag must divide by the same
+    // number or the sheet lags the finger on tall screens
+    const vh = Math.min(window.innerHeight, VH_CAP_PX)
+    const dyPct = ((drag.current.startY - e.clientY) / vh) * 100
     applyHeight(Math.min(88, Math.max(15, drag.current.startPct + dyPct)))
   }
   function onPointerUp() {
@@ -69,7 +83,7 @@ export default function BottomSheet({
     <div
       ref={sheetRef}
       className="sheet glass"
-      style={{ height: `calc(${tall ? 88 : heightPct}dvh + var(--sab))` }}
+      style={{ height: heightCss(tall ? 88 : heightPct) }}
     >
       <div
         className="sheet-grab"

@@ -98,7 +98,8 @@ export default function TracksPanel() {
     }
   }
 
-  // recording lives here now — under way, the instrument bar carries the stop
+  // recording lives here now — while it runs, the instrument bar carries the
+  // stop (or, under way, the trip card's END does)
   const recordBtn = (
     <button
       className={`rec-btn rec-start ${recording ? 'recording' : ''}`}

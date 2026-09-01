@@ -88,8 +88,24 @@ interface AppState {
   // navigation state
   follow: boolean
   setFollow: (v: boolean) => void
+  // Heading-up: the flat chart rotated to the course while following. A
+  // camera stance toggled from the map (the trip FAB), not a preference —
+  // and like helm below, not persisted: a reload starts north-up.
   headingUp: boolean
   setHeadingUp: (v: boolean) => void
+  // Helm view: the chart pitched to 60° and course-up, boat low on the
+  // screen, the water ahead filling the top. A camera stance layered on
+  // follow — deliberately NOT persisted: a reload starts flat, because a
+  // pitched chart greeting someone at the kitchen table is the same
+  // "how did I get into 3D?" confusion the toggle exists to replace.
+  helm: boolean
+  setHelm: (v: boolean) => void
+  // Low power: stills every ambient animation (wind, sea, run comet) for a
+  // long day on one battery. The INFORMATION stays — wave heights read as
+  // numbers on the chart instead of moving crests. Persisted: a plotter
+  // mounted at the helm shouldn't forget the mode over a refresh.
+  lowPower: boolean
+  setLowPower: (v: boolean) => void
 
   // live data (not persisted)
   online: boolean
@@ -185,7 +201,7 @@ type PersistedPrefs = Pick<
   | 'satVivid'
   | 'windFlowOpacity'
   | 'flowTuning'
-  | 'headingUp'
+  | 'lowPower'
   | 'wxStrip'
   | 'wavePeriod'
   | 'planTimeMs'
@@ -233,6 +249,10 @@ export const useAppStore = create<AppState>()(
       setFollow: (v) => set({ follow: v }),
       headingUp: false,
       setHeadingUp: (v) => set({ headingUp: v }),
+      helm: false,
+      setHelm: (v) => set({ helm: v }),
+      lowPower: false,
+      setLowPower: (v) => set({ lowPower: v }),
 
       online: navigator.onLine,
       setOnline: (v) => set({ online: v }),
@@ -327,7 +347,7 @@ export const useAppStore = create<AppState>()(
         satVivid: s.satVivid,
         windFlowOpacity: s.windFlowOpacity,
         flowTuning: s.flowTuning,
-        headingUp: s.headingUp,
+        lowPower: s.lowPower,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,
         planTimeMs: s.planTimeMs,

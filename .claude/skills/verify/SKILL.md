@@ -14,7 +14,7 @@ description: Build, launch and drive the Sandies chartplotter PWA to verify chan
 ## Drive (Playwright)
 - Playwright browsers live in `%LOCALAPPDATA%\ms-playwright`. Install the `playwright` npm package in a scratch dir (not the repo) and `npx playwright install chromium --only-shell` if the build revision mismatches.
 - Use an iPhone-ish context: `{ viewport: {width: 390, height: 844}, deviceScaleFactor: 2, isMobile: true, hasTouch: true }`.
-- In dev builds the MapLibre map is exposed as `window.__map` (see MapView.tsx). Wait for `window.__map && window.__map.isStyleLoaded()` — not `loaded()`, which never settles true when spoofed GPS is streaming because auto-follow keeps the camera easing. Then drive geography deterministically:
+- In dev builds the MapLibre map is exposed as `window.__map` (see MapView.tsx). Wait for `window.__map && window.__map.isStyleLoaded()` — not `loaded()`, which never settles true when spoofed GPS is streaming because auto-follow keeps the camera easing. CAVEAT: once a ROUTE exists (e.g. reloading with a persisted trip), `isStyleLoaded()` is also unreliable — the run comet mutates the style every 40 ms and the poll may never catch a loaded frame. Wait for `window.__map && window.__route` plus the app-state you actually need (e.g. `__route.getState().plan != null`) instead. Then drive geography deterministically:
   `window.__map.jumpTo({center, zoom})` + `window.__map.project([lon, lat])` → `page.mouse.click(x, y)`.
 - Tab dock buttons match `getByRole('button', {name: '<Tab>', exact: true})` — `exact` matters because top-bar chips can contain the same word.
 - Weather comes from live Open-Meteo (no key). `context.setOffline(true)` exercises the IndexedDB forecast-cache fallback (look for the `offline ·` age badge).

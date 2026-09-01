@@ -19,11 +19,12 @@ import { ensureWeatherGrid, gridConditionsAt, onWeatherGrid, onWeatherHour } fro
  *    run plays its crest cycle inside it — the way out lit and swept end to
  *    end, then the way back — then everything settles. Finite on purpose.
  *
- * The particle field is sampled in screen space when a run starts and
- * resampled when the camera comes to rest after a move; while the camera is
- * actually moving the layer stands down, because streaks pinned to a sliding
- * screen read as smearing, not wind. Both hats stop for
- * `prefers-reduced-motion` and a hidden tab.
+ * The particle field is sampled in screen space when a run starts. Pans ride
+ * along live (geographic anchoring) and a finished pan resamples the field IN
+ * PLACE — particles, trails and canvas all survive, so scrolling never
+ * restarts the wind. Only a reshaped camera (zoom/bearing/pitch) stands the
+ * layer down and rebuilds, because the baked screen-space field is then
+ * wrong. Both hats stop for `prefers-reduced-motion` and a hidden tab.
  */
 
 const LANE_MS = 4600
@@ -126,10 +127,20 @@ interface EngineOpts {
   /** Called when the camera has changed shape (zoom/bearing/pitch) for over
    *  a second with no moveend in sight — the owner should rebuild. */
   resync: () => void
+  /** Replacing an engine that was already running: skip the breathe-in fade,
+   *  so a rebuild (zoom, hour step) doesn't read as the layer restarting. */
+  warm?: boolean
 }
 
 interface Engine {
   stop: () => void
+  /** After a PURE PAN: bake the camera's drift into the particles and
+   *  resample the field for the new viewport. The canvas, its trails and
+   *  every particle's age survive, so a scroll never restarts the wind —
+   *  the same no-blink contract the sea's extend() keeps. Returns false
+   *  when the camera reshaped (zoom/bearing/pitch): the screen-space field
+   *  is then wrong and the owner must rebuild instead. */
+  resample: () => boolean
   /** True when the field found no wind at all (no grid yet). */
   dead: boolean
 }
@@ -141,8 +152,8 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
   const dpr = Math.min(2, window.devicePixelRatio || 1)
 
   const atMs = useAppStore.getState().planTimeMs ?? Date.now()
-  const field = buildField(map, w, h, atMs)
-  if (!field.live) return { stop: () => {}, dead: true }
+  let field = buildField(map, w, h, atMs)
+  if (!field.live) return { stop: () => {}, resample: () => false, dead: true }
 
   const canvas = document.createElement('canvas')
   canvas.width = w * dpr
@@ -194,8 +205,8 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
     age[i] = Math.random() * life[i] // stagger, so the field is alive at once
   }
 
-  const born = performance.now()
-  let last = born
+  const born = performance.now() - (opts.warm ? 900 : 0)
+  let last = performance.now()
   let raf = 0
 
   // Geographic anchoring: the field and every particle live in the screen
@@ -207,11 +218,26 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
   // minutes — the "animation stops after a few seconds" bug). A zoom, bearing
   // or pitch change is a real invalidation: the canvas clears, and moveend —
   // or a 1.2 s timeout for eases that never end — rebuilds the engine.
-  const refLL = map.unproject([0, 0])
+  let refLL = map.unproject([0, 0])
   const camKey = () =>
     `${map.getZoom().toFixed(3)}|${map.getBearing().toFixed(1)}|${map.getPitch().toFixed(1)}`
   const cam0 = camKey()
   let invalidSince = 0
+
+  const resample = (): boolean => {
+    if (camKey() !== cam0) return false // reshaped — the owner rebuilds
+    // move each particle into the new frame (its on-screen spot today),
+    // zero the drift, and resample the wind under the new viewport; anything
+    // now off-screen dies by the ordinary gone-check and respawns on-screen
+    const drift = map.project(refLL)
+    for (let i = 0; i < N; i++) {
+      px[i] += drift.x
+      py[i] += drift.y
+    }
+    refLL = map.unproject([0, 0])
+    field = buildField(map, w, h, useAppStore.getState().planTimeMs ?? Date.now())
+    return true
+  }
 
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000)
@@ -290,6 +316,7 @@ function startEngine(map: MlMap, opts: EngineOpts): Engine {
 
   return {
     dead: false,
+    resample,
     stop: () => {
       cancelAnimationFrame(raf)
       canvas.remove()
@@ -321,10 +348,12 @@ function queueResync(map: MlMap) {
 function syncAmbient(map: MlMap) {
   const want =
     useAppStore.getState().layers.windFlow &&
+    !useAppStore.getState().lowPower &&
     !briefingActive &&
     !reducedMotion() &&
     document.visibilityState === 'visible'
 
+  const wasLive = !!ambient
   if (ambient) {
     ambient.stop()
     ambient = null
@@ -336,6 +365,7 @@ function syncAmbient(map: MlMap) {
     if (!useAppStore.getState().layers.windFlow) return
     const eng = startEngine(map, {
       corridor: false,
+      warm: wasLive, // replacing running wind shouldn't breathe in again
       level: () => useAppStore.getState().windFlowOpacity,
       resync: () => queueResync(map),
     })
@@ -353,14 +383,20 @@ export function initWindFlow() {
   wired = true
   withMap((map) => {
     syncAmbient(map)
-    // engines ride camera translation live (geographic anchoring); a
-    // finished move is when the field resamples for the new viewport
-    map.on('moveend', () => syncAmbient(map))
+    // engines ride camera translation live (geographic anchoring). A
+    // finished PAN resamples the running engine in place — canvas, trails
+    // and particle ages survive, so a scroll doesn't restart the wind.
+    // Only a reshaped camera (zoom/bearing/pitch) rebuilds.
+    map.on('moveend', () => {
+      if (ambient?.resample()) return
+      syncAmbient(map)
+    })
     map.on('resize', () => syncAmbient(map))
     document.addEventListener('visibilitychange', () => syncAmbient(map))
     useAppStore.subscribe((s, prev) => {
       if (
         s.layers.windFlow !== prev.layers.windFlow ||
+        s.lowPower !== prev.lowPower ||
         s.planTimeMs !== prev.planTimeMs || // the field is a moment's wind
         // density and speed are baked into the running engine; the other
         // knobs (trail, strength) are read live and need no restart

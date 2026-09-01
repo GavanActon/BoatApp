@@ -5,7 +5,13 @@ import { REGION_BBOX } from './config'
 import { useAppStore, type SheetTab } from './state/appStore'
 import { distanceUnitFor, runDistance } from './units'
 import { useGpsStore, type Fix } from './tracking/gpsStore'
-import { locateAndFollow, startGps } from './tracking/gpsService'
+import {
+  enterHelmView,
+  exitHelmView,
+  locateAndFollow,
+  setHeadingUpMode,
+  startGps,
+} from './tracking/gpsService'
 import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
 import { useRouteStore } from './routing/routeStore'
@@ -18,6 +24,8 @@ import MeasureCard from './ui/MeasureCard'
 import {
   IconCompass,
   IconEditRoute,
+  IconHeadingUp,
+  IconHelm,
   IconLayers,
   IconLocate,
   IconRuler,
@@ -208,16 +216,24 @@ function TopBar() {
 
 function FabStack() {
   const follow = useAppStore((s) => s.follow)
+  const helm = useAppStore((s) => s.helm)
+  const headingUp = useAppStore((s) => s.headingUp)
   const measuring = useMeasureStore((s) => s.active)
+  const underWay = useRouteStore((s) => s.tripStartedAt) != null
   const route = useRouteStore((s) => s.route)
   const editing = useRouteStore((s) => s.editing)
   const setEditing = useRouteStore((s) => s.setEditing)
   const [bearing, setBearing] = useState(0)
+  const [pitched, setPitched] = useState(false)
 
   useEffect(() => {
     withMap((map) => {
-      const update = () => setBearing(map.getBearing())
+      const update = () => {
+        setBearing(map.getBearing())
+        setPitched(map.getPitch() > 0.5)
+      }
       map.on('rotate', update)
+      map.on('pitch', update)
       update()
     })
   }, [])
@@ -257,11 +273,43 @@ function FabStack() {
       </button>
       <button
         className="fab"
-        style={{ opacity: Math.abs(bearing) > 0.5 ? 1 : 0.55 }}
-        onClick={() => withMap((m) => m.easeTo({ bearing: 0, pitch: 0 }))}
+        style={{ opacity: Math.abs(bearing) > 0.5 || pitched ? 1 : 0.55 }}
+        // the full "flatten and square up" reset: it must also leave helm
+        // view and heading-up, or the next fix would immediately re-rotate
+        // the chart to the course — one combined ease, since exitHelmView's
+        // own ease and a separate bearing ease would cancel each other
+        // mid-flight
+        onClick={() => {
+          useAppStore.getState().setHelm(false)
+          useAppStore.getState().setHeadingUp(false)
+          withMap((m) =>
+            m.easeTo({ bearing: 0, pitch: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } }),
+          )
+        }}
         aria-label="Reset north"
       >
         <IconCompass rotation={-bearing} />
+      </button>
+      {underWay && (
+        <button
+          className={`fab ${headingUp ? 'active' : ''}`}
+          // moved out of Settings for the moment it matters: under way, one
+          // tap turns the chart to the course; off eases it back to north
+          onClick={() => setHeadingUpMode(!headingUp)}
+          aria-label={headingUp ? 'Back to north-up' : 'Heading-up — course at the top'}
+        >
+          <IconHeadingUp />
+        </button>
+      )}
+      <button
+        className={`fab ${helm ? 'active' : ''}`}
+        // a stance, not a mode: dragging away breaks follow but keeps the
+        // tilt, and locate drops you back at the helm — this button is what
+        // flattens the chart again
+        onClick={() => (helm ? exitHelmView() : enterHelmView())}
+        aria-label={helm ? 'Back to flat chart' : 'Helm view — look ahead'}
+      >
+        <IconHelm />
       </button>
       <button
         className={`fab ${follow ? 'active' : ''}`}
@@ -282,14 +330,14 @@ export default function App() {
   const setOnline = useAppStore((s) => s.setOnline)
   const measuring = useMeasureStore((s) => s.active)
   const destination = useRouteStore((s) => s.destination)
-  const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
   const barRef = useRef<HTMLDivElement>(null)
 
-  // Planning a run, the dock IS the screen's business and the tabs are five
-  // ways to leave it. They come back the moment the trip is cleared — the
-  // dock's ✕ is the way out, and it's the only one that needs to be there.
-  // A sheet somehow open keeps them, so nothing can strand itself.
-  const routing = destination != null && tripStartedAt == null && sheetTab == null
+  // With a trip on screen — planning it or running it — the dock IS the
+  // screen's business and the tabs are five ways to leave it. They come back
+  // the moment the trip is cleared — the dock's ✕ (or END) is the way out,
+  // and it's the only one that needs to be there. A sheet somehow open keeps
+  // them, so nothing can strand itself.
+  const routing = destination != null && sheetTab == null
 
   // the FABs ride just above the bottom bar, which grows and shrinks with the
   // card docked in it — publish its height so CSS can follow along

@@ -1,5 +1,4 @@
 import { depthAt, formatDepth } from '../map/depthGrid'
-import { endTrip } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
@@ -53,13 +52,17 @@ export default function InstrumentBar() {
         <span className="inst-unit">{depthUnit}</span>
       </div>
       {underWay ? (
-        // trip running: shows distance covered; tap to end the trip
-        <button className="rec-btn recording" onClick={() => endTrip()} aria-label="End trip">
+        // trip running: distance covered, the dot the recording tell. Not a
+        // button — the card's END is the one way to end the trip, and this
+        // pill tapping the same action from a second spot read as a second
+        // control
+        <div className="rec-btn recording">
           <span className="rec-dot" />
           {runDistance(speedUnit, distanceNm)} {distanceUnitFor(speedUnit)}
-        </button>
+        </div>
       ) : (
-        // plain track recording: same, tap to stop
+        // plain track recording: here the pill IS the stop — the Tracks
+        // panel's stop is behind a sheet, so this is the only one on screen
         <button
           className="rec-btn recording"
           onClick={() => void stopRecording()}

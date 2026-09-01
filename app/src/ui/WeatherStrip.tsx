@@ -9,6 +9,7 @@ import { useAppStore } from '../state/appStore'
 import { dayLabel, durationLabel, floorHourMs, startOfDayMs } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import {
+  cachedPointForecast,
   dailyOutlook,
   dayHours,
   fetchPointForecast,
@@ -48,6 +49,11 @@ import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 // texture. The row scrolls, so any hour of the day is still pickable — a dawn
 // launch or an evening cruise is a swipe away, not off the menu.
 const DAY_FROM_H = 8 // where a future day's row opens (scrolled, not clipped)
+// The visible row holds exactly ten cells (.wxcell is sized at a tenth of the
+// row, see ui.css) — so TODAY must keep at least ten hours in hand. With
+// fewer, the row stops short of the strip's edge and the leftover width reads
+// as missing hours, which is exactly what it is.
+const HOURS_IN_HAND = 10
 const REFRESH_MS = 30 * 60_000
 
 function hourLabel(d: Date): string {
@@ -82,6 +88,9 @@ export default function WeatherStrip() {
 
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
+  // which coords the strip last painted, so the cache-first paint below runs
+  // once per subject rather than flashing the stale dot on every refresh tick
+  const paintedKeyRef = useRef<string | null>(null)
 
   // While a window chip is armed, day taps steer the KEYPAD — which day's
   // hours are offered — without touching the plan. That is what makes a
@@ -109,9 +118,25 @@ export default function WeatherStrip() {
       const home = homeCenter() ?? HOME.center
       const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? home[0]
       const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? home[1]
+      const key = `${lon.toFixed(2)},${lat.toFixed(2)}`
       try {
-        const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat)
+        // Last-known first: paint the disk copy for this subject immediately
+        // (stale dot showing), so the strip has numbers in the first paint
+        // instead of arriving last behind the whole startup fetch queue. The
+        // network result below swaps it out.
+        if (paintedKeyRef.current !== key) {
+          const cached = await cachedPointForecast(lon, lat)
+          if (alive && cached && paintedKeyRef.current !== key) {
+            paintedKeyRef.current = key
+            setForecast(cached.forecast)
+            setStale(true)
+          }
+        }
+        // a few minutes of freshness dedupes the launch double-fetch (map
+        // center first, then the same spot again when the GPS fix lands)
+        const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat, 5 * 60_000)
         if (alive) {
+          paintedKeyRef.current = key
           setForecast(fc)
           setStale(st)
         }
@@ -152,15 +177,16 @@ export default function WeatherStrip() {
   }, [tripRated, plan, outlook])
 
   // the whole day is on offer — today from the current hour, a future day
-  // from midnight — and the row scrolls to reach it all. Late evening has
-  // its own rule: at 22:00 "the rest of today" is two lonely cells, so the
-  // row keeps at least eight hours in hand by continuing into tomorrow —
-  // the water doesn't stop at midnight, and neither does leaving.
+  // from midnight — and the row scrolls to reach it all. When the rest of
+  // today can't fill the visible row (a full afternoon, not just the late
+  // evening this rule began as), it continues into tomorrow until a whole
+  // row of hours is in hand — the water doesn't stop at midnight, and
+  // neither does leaving.
   const rows: HourRow[] = useMemo(() => {
     if (!forecast) return []
     if (selDayMs !== todayMs) return dayHours(forecast, selDayMs, 0, 23)
     const today = dayHours(forecast, todayMs, new Date().getHours(), 23)
-    const deficit = 8 - today.length
+    const deficit = HOURS_IN_HAND - today.length
     return deficit > 0
       ? [...today, ...dayHours(forecast, todayMs + 24 * 3600_000, 0, deficit - 1)]
       : today

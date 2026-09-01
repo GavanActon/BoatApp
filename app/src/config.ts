@@ -54,7 +54,8 @@ export const BUNDLES: BundleDef[] = [
     id: 'superior-east',
     name: 'Whitefish Bay & the Sandies',
     description:
-      'Base map, satellite imagery, depth shading and contours for eastern Lake Superior — Île Parisienne, Goulais Bay, Batchawana Bay and the Soo.',
+      'Base map, satellite imagery, depth shading and contours for eastern Lake Superior — Île Parisienne, Goulais Bay, Batchawana Bay, the Soo, ' +
+      'the St. Marys River down to St. Joseph Island, and the coast north to Montreal River and Agawa.',
     files: [
       ...DATA_FILES.map((d) => d.file),
       'contours-superior-east.json',
@@ -66,10 +67,23 @@ export const BUNDLES: BundleDef[] = [
 /** Bounding box of the high-detail region (used by pipeline + weather grid clamp). */
 export const REGION_BBOX = {
   west: -85.3,
-  south: 46.3,
-  east: -83.9,
-  north: 47.25,
+  south: 46.0,
+  east: -83.55,
+  north: 47.5,
 }
+
+/**
+ * How far the camera may wander: the region plus ~25 km of shoulder. Beyond
+ * the region the global fallbacks (Esri imagery, OpenSeaMap) keep rendering a
+ * plausible-looking map with no depth data behind it, so unlimited panning
+ * quietly implies coverage we don't have. The shoulder exists so fitBounds
+ * with padding never fights the clamp at the region's edge.
+ * When a second region ships, compute this as the union of installed bundles.
+ */
+export const MAX_BOUNDS: [[number, number], [number, number]] = [
+  [REGION_BBOX.west - 0.35, REGION_BBOX.south - 0.25],
+  [REGION_BBOX.east + 0.35, REGION_BBOX.north + 0.25],
+]
 
 export const SEAMARKS_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
 
