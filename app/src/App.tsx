@@ -60,6 +60,19 @@ const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
 /** Guides map-picking, and stands in for a dismissed trip card — tapping it
  *  brings the card back. While the card is up it says nothing the card
  *  doesn't. */
+/** The armed slot's banner — the same words the strip's armed keypad uses:
+ *  which slot is listening, and cancel. */
+function SlotChip() {
+  const armedSlot = useAppStore((s) => s.armedSlot)
+  const setArmedSlot = useAppStore((s) => s.setArmedSlot)
+  if (!armedSlot) return null
+  return (
+    <button className="chip chip-accent" onClick={() => setArmedSlot(null)}>
+      {armedSlot === 'from' ? 'From?' : 'To?'} tap the chart or a place · cancel
+    </button>
+  )
+}
+
 function TripChip() {
   const editing = useRouteStore((s) => s.editing)
   const setEditing = useRouteStore((s) => s.setEditing)
@@ -187,6 +200,7 @@ function TopBar() {
           {gpsError ? `No GPS fix — ${gpsError}` : 'No GPS fix — still searching…'}
         </span>
       )}
+      <SlotChip />
       <TripChip />
     </div>
   )

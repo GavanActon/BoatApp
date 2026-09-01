@@ -2414,3 +2414,62 @@
   color: var(--c-text);
   padding: 1px 2px 3px;
 }
+
+/* ---------- chips arm, surfaces answer ---------- */
+
+.end-chip.end-armed {
+  border-color: var(--c-accent);
+  background: var(--c-accent-dim);
+  box-shadow: 0 0 0 3px rgba(63, 200, 255, 0.14);
+}
+
+/* the dormant window: there from the first moment, asking nothing */
+.win-chips.win-ghost {
+  opacity: 0.6;
+}
+
+.win-chips.win-ghost .win-v {
+  color: var(--c-text-faint);
+}
+
+/* Start, never out of reach: a control, not a prompt */
+.tb-actions-quiet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.start-quiet {
+  margin-left: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-tile);
+  background: transparent;
+  color: var(--c-track);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+}
+
+.start-quiet:disabled {
+  opacity: 0.4;
+}
+
+/* the sheet answering an armed slot */
+.slot-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 2px 0;
+}
+
+.slot-q {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.slot-specials {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}

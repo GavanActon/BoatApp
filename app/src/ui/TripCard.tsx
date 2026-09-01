@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { HOME } from '../config'
 import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
-import { endTrip, NO_START_MSG, replan, startTrip } from '../routing/planner'
+import { endTrip, NO_START_MSG, startTrip } from '../routing/planner'
 import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
 import type { TripPlan } from '../routing/tripPlan'
 import { haversineNm } from '../routing/waterRouter'
 import { useAppStore } from '../state/appStore'
-import { allPlaces, homeBase, noteFor, usePlacesStore } from '../state/placesStore'
+import { homeBase, noteFor } from '../state/placesStore'
 import {
   dayLabel,
   dayShort,
@@ -180,15 +180,14 @@ function PlanBlock() {
 
   const lanes = laneWaves(plan)
   const soon = planTimeMs == null || planTimeMs - Date.now() < START_SOON_MS
-  // Place taps explore, TIME taps plan. Until an hour or day is picked on the
-  // strip this block is facts only — surfacing the window chips the moment a
-  // spot was tapped made looking at its weather feel like being asked when
-  // you were leaving.
+  // Place taps explore, TIME taps plan — but the window RIDES the card from
+  // the first moment, ghosted: em-dashes, never questions. Planning is one
+  // visible tap (arm a chip), and until then nothing asks anything.
   const planningStarted = useAppStore((s) => s.planPicked)
 
   return (
     <>
-      {planningStarted && <WindowChips />}
+      <WindowChips />
       <div className="tb-facts">
         {route ? (
           <span className="numeral">
@@ -225,16 +224,30 @@ function PlanBlock() {
           <span className="tb-dim">{planError}</span>
         ) : null}
       </div>
-      {!planningStarted ? null : soon ? (
+      {planningStarted && soon ? (
         <div className="tb-actions">
           <button className="btn-primary" disabled={!plan} onClick={() => startTrip()}>
             Start trip
           </button>
         </div>
       ) : (
-        // a future trip is a plan, not a countdown — no start affordance at
-        // all until the morning of (§0.4)
-        <div className="plan-note numeral">planned · {dayLabel(planTimeMs)}</div>
+        // A plan for later stays a plan, not a countdown — but Start is
+        // never OUT OF REACH: a quiet control (not a prompt) starts the trip
+        // right now, rebasing the window to this moment. The primary button
+        // above is just this control grown loud because its time has come.
+        <div className="tb-actions tb-actions-quiet">
+          {planningStarted && planTimeMs != null && (
+            <span className="plan-note numeral">planned · {dayLabel(planTimeMs)}</span>
+          )}
+          <button
+            className="start-quiet"
+            disabled={!plan}
+            onClick={() => startTrip()}
+            aria-label="Start the trip now"
+          >
+            ▸ Start
+          </button>
+        </div>
       )}
     </>
   )
@@ -284,16 +297,29 @@ export default function TripCard() {
   const setPlanPicked = useAppStore((s) => s.setPlanPicked)
   const startFrom = useRouteStore((s) => s.startFrom)
   const routeError = useRouteStore((s) => s.routeError)
+  const armedSlot = useAppStore((s) => s.armedSlot)
+  const setArmedSlot = useAppStore((s) => s.setArmedSlot)
 
-  // the FROM half of the sentence, unfolded under the head when tapped
-  const [fromOpen, setFromOpen] = useState(false)
-  const destKey = destination ? `${destination.name}|${destination.lon}` : ''
-  useEffect(() => setFromOpen(false), [destKey]) // a new sentence folds it
-  // no departure to resolve? the chooser IS the answer — open it, ask there
+  // no departure to resolve? arming From IS the answer — the sheet opens
+  // asking where the boat lives, and picking a place stars it
   const noStart = routeError === NO_START_MSG
   useEffect(() => {
-    if (noStart) setFromOpen(true)
+    if (noStart) {
+      useAppStore.getState().setArmedSlot('from')
+      useAppStore.getState().setSheetTab('places')
+    }
   }, [noStart])
+
+  // chips arm, surfaces answer: arming a slot opens the Places sheet low —
+  // the chart stays visible above it, and both are that slot's keypad
+  const armSlot = (slot: 'from' | 'to') => {
+    if (armedSlot === slot) {
+      setArmedSlot(null)
+      return
+    }
+    setArmedSlot(slot)
+    useAppStore.getState().setSheetTab('places')
+  }
 
   // hidden while picking — the map needs the room; the top chip guides
   if (picking) return null
@@ -391,9 +417,9 @@ export default function TripCard() {
           tapping the far end opens the address book — Places. ⇄ swaps. */}
       <div className="dock-head sentence-head">
         <button
-          className={`end-chip end-from${fromOpen ? ' end-open' : ''}`}
-          onClick={() => setFromOpen(!fromOpen)}
-          aria-label="Where the trip starts — tap to change"
+          className={`end-chip end-from${armedSlot === 'from' ? ' end-armed' : ''}`}
+          onClick={() => armSlot('from')}
+          aria-label="Where the trip starts — tap, then tap the chart or a place"
         >
           <em>From</em>
           <b>
@@ -414,9 +440,9 @@ export default function TripCard() {
           <IconSwap size={14} />
         </button>
         <button
-          className="end-chip end-to"
-          onClick={() => useAppStore.getState().setSheetTab('places')}
-          aria-label={`Going to ${subjectName} — tap for places`}
+          className={`end-chip end-to${armedSlot === 'to' ? ' end-armed' : ''}`}
+          onClick={() => armSlot('to')}
+          aria-label={`Going to ${subjectName} — tap, then tap the chart or a place`}
         >
           <em>To</em>
           <b className="who">{subjectName}</b>
@@ -438,10 +464,9 @@ export default function TripCard() {
         )}
         {destination && <SpeedChip />}
       </div>
-      {destination && fromOpen && !raised && <FromRow />}
+
       {raised ? (
         <div className="tb-scroll">
-          {destination && <FromRow />}
           {destination?.name != null && (
             // the hand-written exposure note — content, not chrome, and the
             // one sentence the interface allows itself (§1.5)
@@ -465,89 +490,6 @@ function StandingFacts({ lon, lat }: { lon: number; lat: number }) {
   return <span className="meta numeral">water {Math.round(water)}°</span>
 }
 
-/**
- * Where the run starts FROM, at L2.
- *
- * The dock's subject is the far end; this is the near one, and it had no
- * home on any surface. The plan quietly used your position, or the home base
- * when you're ashore, and nothing said which — nor offered a way to say
- * otherwise without going through the map's start pin.
- *
- * A chip row, the same swipeable line every other question here gets, so the
- * places run left and right under a thumb. The automatic one leads, because
- * most runs start where you float — and it says which it means rather than
- * an unqualified "Here": a locate crosshair and "Current location" while
- * you're on the water, the home base's own star and "Home base" once you're
- * not. The chip never claims to be your position while standing in for it.
- */
-function FromRow() {
-  const startPoint = useRouteStore((s) => s.startPoint)
-  const setStartPoint = useRouteStore((s) => s.setStartPoint)
-  const destination = useRouteStore((s) => s.destination)
-  const startFrom = useRouteStore((s) => s.startFrom)
-  const setPicking = useRouteStore((s) => s.setPicking)
-  const setHome = usePlacesStore((s) => s.setHome)
-  // routing from the destination to itself is not a run
-  const places = allPlaces().filter((p) => p.name !== destination?.name)
-  // day one, away from the water: no fix afloat and nothing starred — the
-  // chooser doubles as the one onboarding question, and picking a place
-  // ANSWERS it (stars it), so the automatic chip means something after
-  const asking = startFrom === 'home' && homeBase() == null && startPoint == null
-  return (
-    <div className="from-row">
-      {asking && <span className="from-ask">Where does the boat live?</span>}
-      <span className="from-label">From</span>
-      <div className="tb-chips">
-        <button
-          className={`dest-chip ${startPoint == null ? 'on' : ''}`}
-          onClick={() => setStartPoint(null)}
-        >
-          {startFrom === 'home' ? (
-            // it resolved to the home base, so it wears the same star Places
-            // marks that base with — a locate crosshair here would be a lie
-            <>
-              <IconStar size={12} /> Home base
-            </>
-          ) : (
-            <>
-              <IconLocate size={13} /> Current location
-            </>
-          )}
-        </button>
-        {places.map((p) => (
-          <button
-            key={p.name}
-            className={`dest-chip ${startPoint?.name === p.name ? 'on' : ''}`}
-            onClick={() => {
-              if (asking) {
-                // answering the question stars the place: the durable home,
-                // and the automatic chip resolves through it from now on.
-                // The store the planner watches didn't change, so nudge it.
-                setHome(p.name)
-                setStartPoint(null)
-                void replan()
-              } else {
-                setStartPoint({ name: p.name, lon: p.lon, lat: p.lat })
-              }
-            }}
-          >
-            {p.name}
-          </button>
-        ))}
-        <button
-          className="dest-chip dest-pick"
-          onClick={() => {
-            setPicking('start')
-            useAppStore.getState().setSheetTab(null)
-            useAppStore.getState().setDetent('rest')
-          }}
-        >
-          ＋ on the chart
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /** The spot's hand-written exposure note, at L2 only — the user's own
  *  wording (Places sheet, Edit) wins over the config's. */
@@ -571,6 +513,8 @@ function WindowChips() {
   const planEndMs = useAppStore((s) => s.planEndMs)
   const armedEnd = useAppStore((s) => s.armedEnd)
   const setArmedEnd = useAppStore((s) => s.setArmedEnd)
+  const picked = useAppStore((s) => s.planPicked)
+  const setPlanPicked = useAppStore((s) => s.setPlanPicked)
   const plan = useRouteStore((s) => s.plan)
   const route = useRouteStore((s) => s.route)
   const cruiseKn = useRouteStore((s) => s.cruiseKn)
@@ -589,19 +533,32 @@ function WindowChips() {
       : null
   const tooTight = thereMin != null && thereMin < 0
 
+  // ghosted while exploring: em-dashes, never questions — the chips are
+  // simply THERE, so testing "can I go Saturday and be back Sunday" is one
+  // visible tap, and waking a chip is itself the time-pick that starts
+  // planning (§0.4: a pick, not a prompt)
+  const wake = (end: 'out' | 'back') => {
+    if (!picked) setPlanPicked(true)
+    setArmedEnd(armedEnd === end ? null : end)
+  }
+
   return (
-    <div className="win-chips">
+    <div className={`win-chips${picked ? '' : ' win-ghost'}`}>
       <button
         className={`win-chip ${armedEnd === 'out' ? 'win-armed' : ''}`}
-        onClick={() => setArmedEnd(armedEnd === 'out' ? null : 'out')}
-        aria-label={`Leaving ${dayTimeLabel(outMs)} — tap, then pick an hour on the strip`}
+        onClick={() => wake('out')}
+        aria-label={
+          picked
+            ? `Leaving ${dayTimeLabel(outMs)} — tap, then pick an hour on the strip`
+            : 'Pick when you leave — tap, then pick an hour on the strip'
+        }
       >
         <span className="win-k">Out</span>
-        <span className="win-v numeral">{dayTimeLabel(outMs)}</span>
+        <span className="win-v numeral">{picked ? dayTimeLabel(outMs) : '—'}</span>
       </button>
 
       <span className={`win-mid ${tooTight ? 'win-tight' : ''}`}>
-        {thereMin == null ? (
+        {!picked || thereMin == null ? (
           <span className="win-k">there</span>
         ) : tooTight ? (
           <>
@@ -618,16 +575,16 @@ function WindowChips() {
 
       <button
         className={`win-chip ${armedEnd === 'back' ? 'win-armed' : ''}`}
-        onClick={() => setArmedEnd(armedEnd === 'back' ? null : 'back')}
+        onClick={() => wake('back')}
         disabled={!roundTrip}
         aria-label={
-          backMs == null
-            ? 'Set when you want to be back'
+          backMs == null || !picked
+            ? 'Set when you want to be back — tap, then pick an hour on the strip'
             : `Back ${dayTimeLabel(backMs)} — tap, then pick an hour on the strip`
         }
       >
         <span className="win-k">{roundTrip ? 'Back' : 'Arrive by'}</span>
-        <span className="win-v numeral">{backMs == null ? '—' : dayTimeLabel(backMs)}</span>
+        <span className="win-v numeral">{backMs == null || !picked ? '—' : dayTimeLabel(backMs)}</span>
       </button>
     </div>
   )

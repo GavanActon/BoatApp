@@ -216,6 +216,20 @@ export function initSpotBadges() {
       const hit = spotBadgeAt(map, e.point)
       if (!hit) return
       const rs = useRouteStore.getState()
+      // chips arm, surfaces answer: an armed slot takes the badge
+      const slot = useAppStore.getState().armedSlot
+      if (slot) {
+        if (slot === 'from') {
+          rs.setStartPoint({ name: hit.name, lon: hit.lon, lat: hit.lat })
+        } else {
+          useAppStore.getState().setPlanPicked(false)
+          rs.setDestination({ name: hit.name, lon: hit.lon, lat: hit.lat })
+          rs.setFocusPoint({ lon: hit.lon, lat: hit.lat, label: hit.name })
+          rs.setCard('trip')
+        }
+        useAppStore.getState().setArmedSlot(null)
+        return
+      }
       if (rs.destination?.name === hit.name) {
         // the subject's badge is hidden, but a tap can still land here off a
         // stale frame — treat it as the ✕: back to Here

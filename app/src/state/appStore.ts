@@ -146,6 +146,12 @@ interface AppState {
   armedEnd: 'out' | 'back' | null
   setArmedEnd: (v: 'out' | 'back' | null) => void
 
+  // The SPACE twin of armedEnd: which end of the sentence the next tap on a
+  // badge, the open water, or a Places row fills. Chips arm, surfaces answer
+  // — one grammar for time and place. Transient, never persisted.
+  armedSlot: 'from' | 'to' | null
+  setArmedSlot: (v: 'from' | 'to' | null) => void
+
   // 12-hour outlook strip overlaid on the map (persisted)
   wxStrip: boolean
   setWxStrip: (v: boolean) => void
@@ -265,6 +271,9 @@ export const useAppStore = create<AppState>()(
 
       armedEnd: null,
       setArmedEnd: (armedEnd) => set({ armedEnd }),
+
+      armedSlot: null,
+      setArmedSlot: (armedSlot) => set({ armedSlot }),
 
       wxStrip: true,
       setWxStrip: (v) => set({ wxStrip: v }),

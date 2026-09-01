@@ -75,14 +75,19 @@ tiles — the strip already owns time, and repeating it below is the
 duplication this clause exists to forbid. There is no separate per-family
 drill-down screen — the anti–Apple-Weather rule.
 
-**0.4 MUST — Place taps explore; time taps plan.**
+**0.4 MUST — Place taps explore; time taps plan. Chips arm, surfaces answer.**
 Tapping a location NEVER asks when — it is weather exploration, and the trip
 (lanes, distance, out/back seas) rides along as passive facts. The window
-chips and any start affordance appear only after the user picks a time on the
-strip — and "leaving now" is itself a pick (the Now cell), not a default.
-Once picked: a future trip is a plan, not a countdown — the card and top chip
-state it, and **"Start trip" is rendered only when the out-time is within 60
-minutes of now**. Nothing auto-suggests a departure.
+chips ride the card from the first moment, GHOSTED (em-dashes, never
+questions): waking one is itself the time-pick that starts planning, and the
+strip becomes that chip's keypad. The same grammar governs space: the
+sentence's From/To chips arm, and the chart's badges, the open water and the
+Places sheet become that slot's keypad (a banner names the listening slot,
+with cancel). One gesture everywhere; nothing auto-suggests a departure.
+**Start is never out of reach**: a quiet control (a control, not a prompt)
+starts the trip at any time, rebasing the window to now — and it grows into
+the primary "Start trip" button when the tested out-time falls within 60
+minutes, because that plan's time has come.
 
 **0.5 MUST — One visual language, everywhere.**
 Square sections: ~6 px radius tiles, ~5 px rows. No pill-shaped controls. The

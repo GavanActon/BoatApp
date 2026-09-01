@@ -4,8 +4,10 @@ import type { Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { allPlaces, homeCenter, usePlacesStore } from '../../state/placesStore'
+import { allPlaces, homeBase, homeCenter, usePlacesStore } from '../../state/placesStore'
 import { timeLabel } from '../../time'
+import { replan } from '../../routing/planner'
+import { isAfloat } from '../../routing/router'
 import { haversineNm } from '../../routing/waterRouter'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { seaColor, SEA_UNKNOWN } from '../../weather/seaState'
@@ -96,6 +98,8 @@ export default function PlacesPanel() {
     const f = useGpsStore.getState().fix
     return f ? { lon: f.lon, lat: f.lat } : null
   })
+  const armedSlot = useAppStore((s) => s.armedSlot)
+  const setArmedSlot = useAppStore((s) => s.setArmedSlot)
   const saved = usePlacesStore((s) => s.saved)
   const homeName = usePlacesStore((s) => s.homeName)
   const setHome = usePlacesStore((s) => s.setHome)
@@ -151,6 +155,32 @@ export default function PlacesPanel() {
   const rows = spotConditionsAt(planTimeMs ?? Date.now(), waveLimitM, windLimitKn, allPlaces()).sort(
     byCalmest,
   )
+
+  // chips arm, surfaces answer: with a slot armed, a row FILLS it. Arming
+  // From with nothing to resolve doubles as the one onboarding question —
+  // picking a place then STARS it, so the automatic chip means something.
+  const gps = useGpsStore.getState().fix
+  const asking =
+    armedSlot === 'from' && homeBase() == null && !(gps && isAfloat(gps.lon, gps.lat))
+  const fillSlot = (d: { name: string | null; lon: number; lat: number }) => {
+    const rs = useRouteStore.getState()
+    if (armedSlot === 'from') {
+      if (asking && d.name) {
+        usePlacesStore.getState().setHome(d.name) // the durable home
+        rs.setStartPoint(null) // resolve through the star, stay automatic
+        void replan()
+      } else {
+        rs.setStartPoint({ name: d.name, lon: d.lon, lat: d.lat })
+      }
+    } else {
+      setPlanPicked(false)
+      rs.setDestination({ name: d.name, lon: d.lon, lat: d.lat })
+      rs.setFocusPoint({ lon: d.lon, lat: d.lat, label: d.name ?? 'Pinned spot' })
+      rs.setCard('trip')
+    }
+    setArmedSlot(null)
+    setSheetTab(null) // back to the chart, sentence filled
+  }
 
   // the ROW looks: chart flies there, strip retargets — no trip is made, and
   // the sheet STAYS UP, because looking is comparing: you want the place on
@@ -280,6 +310,39 @@ export default function PlacesPanel() {
         </span>
       </button>
 
+      {armedSlot && (
+        <div className="slot-head">
+          <span className="slot-q">{asking ? 'Where does the boat live?' : armedSlot === 'from' ? 'From?' : 'To?'}</span>
+          {armedSlot === 'from' && (
+            <div className="slot-specials">
+              {gps && isAfloat(gps.lon, gps.lat) && (
+                <button
+                  className="dest-chip"
+                  onClick={() => {
+                    useRouteStore.getState().setStartPoint(null)
+                    setArmedSlot(null)
+                    setSheetTab(null)
+                  }}
+                >
+                  <IconLocate size={13} /> My position
+                </button>
+              )}
+              {homeBase() != null && (
+                <button
+                  className="dest-chip"
+                  onClick={() => {
+                    useRouteStore.getState().setStartPoint(null)
+                    setArmedSlot(null)
+                    setSheetTab(null)
+                  }}
+                >
+                  <IconStar size={12} /> {homeBase()!.name}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className="places-tools">
         <button
           className="linklike"
@@ -308,7 +371,11 @@ export default function PlacesPanel() {
             >
               <button
                 className="place-go"
-                onClick={() => look({ name: r.spot.name, lon: r.spot.lon, lat: r.spot.lat })}
+                onClick={() =>
+                  armedSlot
+                    ? fillSlot({ name: r.spot.name, lon: r.spot.lon, lat: r.spot.lat })
+                    : look({ name: r.spot.name, lon: r.spot.lon, lat: r.spot.lat })
+                }
                 aria-label={
                   `Look at ${r.spot.name}${r.waveM != null ? `, ${r.waveM.toFixed(1)} metres` : ', no wave data'}` +
                   (r.clears ? ', inside your limits' : '')

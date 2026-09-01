@@ -166,6 +166,22 @@ export default function MapView() {
         if (routeEditedRecently()) return // the click that ends a route edit
         if (useMeasureStore.getState().active) return // taps belong to the ruler
         const routeState = useRouteStore.getState()
+        // chips arm, surfaces answer: with a slot armed, ANY tap on the
+        // water is its keypad — fill the slot, disarm, done
+        const slot = useAppStore.getState().armedSlot
+        if (slot) {
+          const { lng, lat } = e.lngLat
+          if (slot === 'from') {
+            routeState.setStartPoint({ name: null, lon: lng, lat })
+          } else {
+            useAppStore.getState().setPlanPicked(false)
+            routeState.setDestination({ name: null, lon: lng, lat })
+            routeState.setFocusPoint({ lon: lng, lat, label: 'Pinned spot' })
+            routeState.setCard('trip')
+          }
+          useAppStore.getState().setArmedSlot(null)
+          return
+        }
         if (routeState.picking) {
           if (routeState.picking === 'start') {
             routeState.setStartPoint({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
