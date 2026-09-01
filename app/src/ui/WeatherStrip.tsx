@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { HOME } from '../config'
 import { homeCenter } from '../state/placesStore'
 import { getMap } from '../map/mapController'
@@ -13,7 +13,6 @@ import {
   dayHours,
   fetchPointForecast,
   formatPeriod,
-  nextHours,
   skyLabel,
   type HourRow,
   type PointForecast,
@@ -32,9 +31,10 @@ import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
  * ("can we do THIS run that day"); otherwise it's generic conditions at the
  * boat. Tap a day to look at it (with a trip: adopt its best departure).
  *
- * Hour row: the hours of the selected day (the next 12 hours when that's
- * today). With a trip planned each cell answers "what if we LEFT at this
- * hour" — colored by that departure's verdict from the sweep — and tapping
+ * Hour row: every remaining hour of the selected day (all 24 on a future
+ * day), ten visible at a time and the rest a swipe away. With a trip planned
+ * each cell answers "what if we LEFT at this hour" — colored by that
+ * departure's verdict from the sweep — and tapping
  * one adopts it, stay time and all. Without a trip a cell is just conditions
  * at the boat. Either way the tap sets the app-wide planning time and the
  * wind & wave layer previews that moment.
@@ -43,12 +43,11 @@ import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
  * hour-by-hour conditions at the exact spot, never trip-rated.
  */
 
-// Ten cells, not twelve: at phone width twelve cells leave 28 px each, too
-// narrow for "0.2 · 3s" to read as numbers rather than texture. Future days
-// span the same ten hours so every day is the same shape.
-const STRIP_HOURS = 10
-const DAY_FROM_H = 8 // future-day cells span 8 am … 5 pm
-const DAY_TO_H = 17
+// Ten cells VISIBLE, not ten cells total: at phone width more than ten leave
+// under 28 px each, too narrow for "0.2 · 3s" to read as numbers rather than
+// texture. The row scrolls, so any hour of the day is still pickable — a dawn
+// launch or an evening cruise is a swipe away, not off the menu.
+const DAY_FROM_H = 8 // where a future day's row opens (scrolled, not clipped)
 const REFRESH_MS = 30 * 60_000
 
 function hourLabel(d: Date): string {
@@ -152,11 +151,19 @@ export default function WeatherStrip() {
     return outlook.map((o) => ({ dayStartMs: o.dayStartMs }))
   }, [tripRated, plan, outlook])
 
+  // the whole day is on offer — today from the current hour, a future day
+  // from midnight — and the row scrolls to reach it all. Late evening has
+  // its own rule: at 22:00 "the rest of today" is two lonely cells, so the
+  // row keeps at least eight hours in hand by continuing into tomorrow —
+  // the water doesn't stop at midnight, and neither does leaving.
   const rows: HourRow[] = useMemo(() => {
     if (!forecast) return []
-    return selDayMs === todayMs
-      ? nextHours(forecast, STRIP_HOURS)
-      : dayHours(forecast, selDayMs, DAY_FROM_H, DAY_TO_H)
+    if (selDayMs !== todayMs) return dayHours(forecast, selDayMs, 0, 23)
+    const today = dayHours(forecast, todayMs, new Date().getHours(), 23)
+    const deficit = 8 - today.length
+    return deficit > 0
+      ? [...today, ...dayHours(forecast, todayMs + 24 * 3600_000, 0, deficit - 1)]
+      : today
   }, [forecast, selDayMs, todayMs])
 
   // with a trip planned (and the strip on the boat, not a focused leg) each
@@ -167,6 +174,29 @@ export default function WeatherStrip() {
     for (const d of plan!.days) for (const h of d.hours) m.set(h.ms, h)
     return m
   }, [tripRated, focusPoint, plan])
+
+  // When a day's row first shows, it opens scrolled to the hour that matters
+  // — the planned hour if it's on this day, "now" for today, morning for a
+  // future day. Placed once per day so a forecast refresh (or a tap on an
+  // already-visible hour) never yanks the row back.
+  const cellsRef = useRef<HTMLDivElement | null>(null)
+  const placedDayRef = useRef<number | null>(null)
+  useEffect(() => {
+    const el = cellsRef.current
+    if (!el || rows.length === 0) return
+    if (placedDayRef.current === selDayMs) return
+    placedDayRef.current = selDayMs
+    const planMs = useAppStore.getState().planTimeMs
+    const planHour = planMs == null ? null : floorHourMs(planMs)
+    let idx =
+      planHour != null ? rows.findIndex((r) => r.time.getTime() === planHour) : -1
+    if (idx < 0 && selDayMs !== todayMs) {
+      idx = rows.findIndex((r) => r.time.getHours() === DAY_FROM_H)
+    }
+    const cell = el.children[Math.max(0, idx)] as HTMLElement | undefined
+    const first = el.children[0] as HTMLElement | undefined
+    if (cell && first) el.scrollLeft = Math.max(0, cell.offsetLeft - first.offsetLeft)
+  }, [selDayMs, todayMs, rows])
 
   if (!show || (rows.length === 0 && days.length === 0)) return null
 
@@ -257,7 +287,7 @@ export default function WeatherStrip() {
       </div>
 
       {rows.length > 0 ? (
-        <div className="wxstrip-cells">
+        <div className="wxstrip-cells" ref={cellsRef}>
           {rows.map((r, k) => {
             const cellMs = r.time.getTime()
             const isNowCell = selDayMs === todayMs && k === 0
