@@ -172,6 +172,9 @@ function TopBar() {
       {gpsStatus === 'denied' && (
         <span className="chip chip-warn">Location denied — allow location for this site</span>
       )}
+      {gpsStatus === 'insecure' && (
+        <span className="chip chip-warn">No location over plain http — open this on localhost or https</span>
+      )}
       {gpsStatus === 'error' && (
         <span className="chip chip-warn">No GPS fix — still searching…</span>
       )}

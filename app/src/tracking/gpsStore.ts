@@ -9,7 +9,10 @@ export interface Fix {
   ts: number
 }
 
-export type GpsStatus = 'off' | 'acquiring' | 'on' | 'denied' | 'error'
+// 'insecure' is its own answer, not a denial: browsers refuse geolocation
+// outright on a plain-http origin that isn't localhost, and no amount of
+// granting permission changes that
+export type GpsStatus = 'off' | 'acquiring' | 'on' | 'denied' | 'error' | 'insecure'
 
 interface GpsState {
   status: GpsStatus

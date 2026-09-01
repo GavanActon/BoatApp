@@ -183,6 +183,15 @@ function restartWatch() {
 
 export function startGps() {
   if (watchId != null || !('geolocation' in navigator)) return
+  // A plain-http page served over the LAN is not a secure context, and every
+  // browser refuses geolocation there — Chrome reports it as PERMISSION_DENIED,
+  // which had the app telling people to allow location for a site where
+  // allowing it cannot help. Say the real thing instead. (npm run dev:phone
+  // exists for this: it serves the same tree over https.)
+  if (!window.isSecureContext) {
+    useGpsStore.getState().setStatus('insecure')
+    return
+  }
   useGpsStore.getState().setStatus('acquiring')
   beginWatch()
   // a dead watch is indistinguishable from a slow one from the outside, so
