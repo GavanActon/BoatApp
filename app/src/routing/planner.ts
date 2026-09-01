@@ -112,12 +112,15 @@ export async function replan(quiet = false): Promise<void> {
   await ensureNav() // the on-water test reads the depth grid, which may still be loading
   const started = planStart(underWay)
   const start = started.at
+  // recorded BEFORE the no-start bail, so the sentence's from-chip can say
+  // "home" truthfully even when there's no home to resolve yet — that empty
+  // ⭐ is exactly what invites the one onboarding question
+  s.setStartFrom(started.from)
   if (!start) {
     s.setRoute(null, NO_START_MSG)
     s.setPlan(null)
     return
   }
-  s.setStartFrom(started.from)
 
   // round trip + boat has reached the destination → plan the ride home
   let target: [number, number] = [dest.lon, dest.lat]

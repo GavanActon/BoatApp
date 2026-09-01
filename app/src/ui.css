@@ -69,9 +69,18 @@
   animation: rise-in 0.25s ease;
 }
 
+/* the hour row holds the whole day but shows ten cells at a time — any hour
+   is a swipe away. No scrollbar: the clipped cell at the edge is the hint. */
 .wxstrip-cells {
   display: flex;
   gap: 3px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.wxstrip-cells::-webkit-scrollbar {
+  display: none;
 }
 
 .wxstrip-days {
@@ -164,8 +173,10 @@
 
 .wxcell {
   position: relative; /* anchors the thunder corner mark */
-  flex: 1;
+  /* ten across the visible row (nine 3px gaps), however many hours exist */
+  flex: 0 0 calc((100% - 27px) / 10);
   min-width: 0;
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2296,4 +2307,80 @@
 .tab-ready {
   color: var(--c-accent);
   opacity: 0.85;
+}
+
+/* ---------- the sentence: from -> to, the trip's headline ---------- */
+
+.sentence-head {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.end-chip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-tile);
+  background: rgba(18, 32, 45, 0.65);
+  padding: 5px 9px;
+  text-align: left;
+  color: var(--c-text);
+}
+
+.end-chip em {
+  font-style: normal;
+  font-size: 8.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.end-chip b {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.end-from b { color: var(--c-track) }
+.end-to b { color: var(--c-accent) }
+.end-chip.end-open { border-color: var(--c-track) }
+
+.swap-ends {
+  flex: none;
+  align-self: center;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-tile);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-dim);
+  background: transparent;
+}
+
+.sentence-head .head-x { align-self: center }
+
+.dock-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 0;
+  min-height: 20px;
+}
+
+.from-ask {
+  flex-basis: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text);
+  padding: 1px 2px 3px;
 }

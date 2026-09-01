@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { HOME } from '../config'
 import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
-import { endTrip, startTrip } from '../routing/planner'
+import { endTrip, NO_START_MSG, replan, startTrip } from '../routing/planner'
+import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
 import type { TripPlan } from '../routing/tripPlan'
 import { haversineNm } from '../routing/waterRouter'
 import { useAppStore } from '../state/appStore'
-import { allPlaces, noteFor } from '../state/placesStore'
+import { allPlaces, homeBase, noteFor, usePlacesStore } from '../state/placesStore'
 import {
   dayLabel,
   dayShort,
@@ -24,7 +25,7 @@ import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn, windS
 import { fetchPointForecast, type PointForecast } from '../weather/openMeteo'
 import { seaColor } from '../weather/seaState'
 import { ensureWeatherGrid, gridConditionsAt, onWeatherHour, weatherGridInfo } from '../weather/weatherLayer'
-import { IconClose, IconLocate, IconMinus, IconPlus, IconStar } from './icons'
+import { IconClose, IconLocate, IconMinus, IconPlus, IconStar, IconSwap } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
 
@@ -212,7 +213,10 @@ function PlanBlock() {
               </>
             )}
           </span>
-        ) : (
+        ) : routeError === NO_START_MSG ? null : (
+          // the no-start case is the sentence's to own: the from-chip opens
+          // asking "where does the boat live", which beats a sentence about
+          // where to find a star
           <span className="tb-dim">{routeError ?? '…'}</span>
         )}
         {plan ? null : planning ? (
@@ -278,6 +282,18 @@ export default function TripCard() {
   const stormMs = fc ? thunderTodayMs(fc) : null
 
   const setPlanPicked = useAppStore((s) => s.setPlanPicked)
+  const startFrom = useRouteStore((s) => s.startFrom)
+  const routeError = useRouteStore((s) => s.routeError)
+
+  // the FROM half of the sentence, unfolded under the head when tapped
+  const [fromOpen, setFromOpen] = useState(false)
+  const destKey = destination ? `${destination.name}|${destination.lon}` : ''
+  useEffect(() => setFromOpen(false), [destKey]) // a new sentence folds it
+  // no departure to resolve? the chooser IS the answer — open it, ask there
+  const noStart = routeError === NO_START_MSG
+  useEffect(() => {
+    if (noStart) setFromOpen(true)
+  }, [noStart])
 
   // hidden while picking — the map needs the room; the top chip guides
   if (picking) return null
@@ -285,6 +301,25 @@ export default function TripCard() {
   // no subject, no dock: with nothing picked the chart stands alone and the
   // Places sheet is where you look around (§0.2)
   if (!destination && tripStartedAt == null) return null
+
+  // ⇄ the sentence: the far end becomes the departure and vice versa. The
+  // FROM has to freeze into a fixed point first — "my position" is a moving
+  // target and a moving target cannot be a destination.
+  const swapEnds = () => {
+    const rs = useRouteStore.getState()
+    const dest = rs.destination
+    if (!dest) return
+    let from: { name: string | null; lon: number; lat: number } | null = rs.startPoint
+    if (!from) {
+      const gps = useGpsStore.getState().fix
+      if (gps && isAfloat(gps.lon, gps.lat)) from = { name: null, lon: gps.lon, lat: gps.lat }
+      else from = homeBase()
+    }
+    if (!from) return // nothing known to swap with — the ask handles it
+    rs.setStartPoint({ name: dest.name, lon: dest.lon, lat: dest.lat })
+    rs.setDestination({ name: from.name, lon: from.lon, lat: from.lat })
+    rs.setFocusPoint({ lon: from.lon, lat: from.lat, label: from.name ?? 'Pinned spot' })
+  }
 
   // ✕ clears the subject: destination, focus and lanes clear, dock goes away
   const clearSubject = () => {
@@ -332,10 +367,15 @@ export default function TripCard() {
   // a planned trip the user put away — the top chip stands in
   if (!card) return null
 
-  // run time from here, before the routed distance lands, so the bar can
-  // answer "how far is that" the moment the subject changes
+  // run time from the RESOLVED start — the pinned point, the boat afloat, or
+  // the starred home — before the routed distance lands. Measuring from the
+  // phone's raw position quoted a 1054-minute trip from a living room.
+  const fromPt =
+    startPoint ??
+    (fix && isAfloat(fix.lon, fix.lat) ? { name: null, lon: fix.lon, lat: fix.lat } : homeBase())
   const runNm = destination
-    ? (route?.distanceNm ?? haversineNm(here.lon, here.lat, destination.lon, destination.lat))
+    ? (route?.distanceNm ??
+      (fromPt ? haversineNm(fromPt.lon, fromPt.lat, destination.lon, destination.lat) : null))
     : null
   const runMin = runNm != null ? Math.round((runNm / cruiseKn) * 60) : null
   // the bar leads with the day whenever the plan is for another one (§0.4)
@@ -345,8 +385,49 @@ export default function TripCard() {
   return (
     <div className={`tripbuilder glass ${raised ? 'tb-raised' : 'tb-home'}`} {...swipe}>
       {grab}
-      <div className="dock-head">
-        <span className="who">{subjectName}</span>
+      {/* THE SENTENCE: from → to, both ends visible, both ends tappable.
+          The from-chip prints what the planner resolved (📍 afloat, ⭐ ashore)
+          instead of leaving it implied; tapping it unfolds the chooser, and
+          tapping the far end opens the address book — Places. ⇄ swaps. */}
+      <div className="dock-head sentence-head">
+        <button
+          className={`end-chip end-from${fromOpen ? ' end-open' : ''}`}
+          onClick={() => setFromOpen(!fromOpen)}
+          aria-label="Where the trip starts — tap to change"
+        >
+          <em>From</em>
+          <b>
+            {startPoint ? (
+              startPoint.name ?? 'Pinned start'
+            ) : startFrom === 'home' ? (
+              <>
+                <IconStar size={11} /> {homeBase()?.name ?? '—'}
+              </>
+            ) : (
+              <>
+                <IconLocate size={11} /> Position
+              </>
+            )}
+          </b>
+        </button>
+        <button className="swap-ends" onClick={swapEnds} aria-label="Swap to and from">
+          <IconSwap size={14} />
+        </button>
+        <button
+          className="end-chip end-to"
+          onClick={() => useAppStore.getState().setSheetTab('places')}
+          aria-label={`Going to ${subjectName} — tap for places`}
+        >
+          <em>To</em>
+          <b className="who">{subjectName}</b>
+        </button>
+        {destination && (
+          <button className="icon-btn head-x" onClick={clearSubject} aria-label="Clear the trip">
+            <IconClose size={14} />
+          </button>
+        )}
+      </div>
+      <div className="dock-meta">
         <StandingFacts lon={subject.lon} lat={subject.lat} />
         {planDay && <span className="head-day">{planDay}</span>}
         {destination && runMin != null && <span className="meta numeral">≈{runMin} min</span>}
@@ -355,15 +436,9 @@ export default function TripCard() {
           // red that belongs to issued warnings (§1.3)
           <span className="storm-chip numeral">⚡ {hourShort(stormMs)}</span>
         )}
-        {destination && (
-          <>
-            <SpeedChip />
-            <button className="icon-btn head-x" onClick={clearSubject} aria-label="Clear the trip">
-              <IconClose size={14} />
-            </button>
-          </>
-        )}
+        {destination && <SpeedChip />}
       </div>
+      {destination && fromOpen && !raised && <FromRow />}
       {raised ? (
         <div className="tb-scroll">
           {destination && <FromRow />}
@@ -410,10 +485,17 @@ function FromRow() {
   const setStartPoint = useRouteStore((s) => s.setStartPoint)
   const destination = useRouteStore((s) => s.destination)
   const startFrom = useRouteStore((s) => s.startFrom)
+  const setPicking = useRouteStore((s) => s.setPicking)
+  const setHome = usePlacesStore((s) => s.setHome)
   // routing from the destination to itself is not a run
   const places = allPlaces().filter((p) => p.name !== destination?.name)
+  // day one, away from the water: no fix afloat and nothing starred — the
+  // chooser doubles as the one onboarding question, and picking a place
+  // ANSWERS it (stars it), so the automatic chip means something after
+  const asking = startFrom === 'home' && homeBase() == null && startPoint == null
   return (
     <div className="from-row">
+      {asking && <span className="from-ask">Where does the boat live?</span>}
       <span className="from-label">From</span>
       <div className="tb-chips">
         <button
@@ -436,11 +518,32 @@ function FromRow() {
           <button
             key={p.name}
             className={`dest-chip ${startPoint?.name === p.name ? 'on' : ''}`}
-            onClick={() => setStartPoint({ name: p.name, lon: p.lon, lat: p.lat })}
+            onClick={() => {
+              if (asking) {
+                // answering the question stars the place: the durable home,
+                // and the automatic chip resolves through it from now on.
+                // The store the planner watches didn't change, so nudge it.
+                setHome(p.name)
+                setStartPoint(null)
+                void replan()
+              } else {
+                setStartPoint({ name: p.name, lon: p.lon, lat: p.lat })
+              }
+            }}
           >
             {p.name}
           </button>
         ))}
+        <button
+          className="dest-chip dest-pick"
+          onClick={() => {
+            setPicking('start')
+            useAppStore.getState().setSheetTab(null)
+            useAppStore.getState().setDetent('rest')
+          }}
+        >
+          ＋ on the chart
+        </button>
       </div>
     </div>
   )

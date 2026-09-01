@@ -82,6 +82,12 @@ export const IconPlaces = (p: IconProps) => (
   </svg>
 )
 
+export const IconSwap = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 8.5h14l-3.4-3.4M20 15.5H6l3.4 3.4" />
+  </svg>
+)
+
 export const IconPin = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 21.5 C 12 21.5, 5 14.8, 5 9.8 A 7 7 0 0 1 19 9.8 C 19 14.8, 12 21.5, 12 21.5 Z" />
