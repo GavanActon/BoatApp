@@ -42,6 +42,10 @@ import SavedAdmin from '../SavedAdmin'
  * is the user's, not the config's. Rows stop being go-buttons while editing:
  * one mode looks around, the other curates.
  */
+/** Breathing room above the row being edited: flush to the sheet's top edge
+ *  reads as clipped even when nothing is cut off. */
+const ROW_AIR_PX = 12
+
 export default function PlacesPanel() {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
   const setDetent = useAppStore((s) => s.setDetent)
@@ -212,11 +216,24 @@ export default function PlacesPanel() {
       autoCapitalize={editing?.field === 'note' ? 'sentences' : 'words'}
       onFocus={(e) => {
         e.currentTarget.select()
-        // after the keyboard's slide-in, ride the row to the TOP of the
-        // sheet — the keyboard owns the bottom half of the screen, and
-        // centred is exactly where its top edge lands
+        // After the keyboard's slide-in, bring the row up the SHEET — the
+        // keyboard owns the bottom half of the screen, and centred is exactly
+        // where its top edge lands.
+        //
+        // Scrolling the sheet's own list, by hand, rather than asking
+        // scrollIntoView: that walks every scrollable ancestor and takes the
+        // document with it, so on the phone the whole app rode up under the
+        // address bar and the row came to rest clipped against the top. And a
+        // little air above it, because flush to the edge reads as cut off even
+        // when it isn't.
         const el = e.currentTarget
-        setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300)
+        setTimeout(() => {
+          const body = el.closest('.sheet-body')
+          const row = el.closest('.place-row') ?? el
+          if (!body) return
+          const top = row.getBoundingClientRect().top - body.getBoundingClientRect().top
+          body.scrollTo({ top: Math.max(0, body.scrollTop + top - ROW_AIR_PX), behavior: 'smooth' })
+        }, 300)
       }}
       onChange={(e) => setEditVal(e.target.value)}
       onBlur={commit}
