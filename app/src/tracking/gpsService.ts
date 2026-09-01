@@ -98,19 +98,61 @@ function onFix(pos: GeolocationPosition) {
     }
 
     const { follow, headingUp } = useAppStore.getState()
-    if (follow && Date.now() >= cameraHoldUntil) {
-      map.easeTo({
-        center: [fix.lon, fix.lat],
-        bearing: headingUp && fix.cog != null ? fix.cog : map.getBearing(),
-        duration: 900,
-        essential: true,
-      })
-    }
+    if (follow && Date.now() >= cameraHoldUntil) followCamera(map, fix, headingUp)
   }
   if (liveMap) update(liveMap)
   else withMap(update)
 
   void recordPoint(fix)
+}
+
+// A fix lands about once a second, and the camera used to answer every one of
+// them with a 900 ms easeTo. That meant the map was animating roughly all the
+// time while following — and moored, where the boat goes nowhere, GPS jitter
+// alone kept restarting it. The render loop never went idle.
+const MICRO_PX = 0.75 // below this the screen cannot show the move at all
+const STEP_PX = 12 // small enough to place instantly without reading as a jump
+const TURN_DEG = 3 // a course change, not the wander of a steady heading
+const COG_MIN_KN = 1.5 // below steerage way COG is noise, not a course
+
+/**
+ * Keep the boat centred without animating for movement nobody can see.
+ *
+ * The unit is screen pixels, not metres: at the zoom a trip is framed at, a
+ * boat doing 15 kn crosses well under a pixel a second, so "how far has it
+ * moved" only means anything on screen. Sub-pixel, do nothing. A few pixels,
+ * place it — instant is both cheaper than a 54-frame ease and truer, since
+ * the ease was always 900 ms behind. Only a real jump (a GPS correction, or
+ * coming back to follow after panning) is worth animating.
+ *
+ * Bearing gets the same treatment for a second reason: the wind and sea
+ * engines key their canvas on it, so every tenth of a degree threw the flow
+ * field away and rebuilt it. Heading-up used to hand them COG noise once a
+ * second, which is what made the field blink while sitting still.
+ */
+function followCamera(map: maplibregl.Map, fix: Fix, headingUp: boolean) {
+  const from = map.project(map.getCenter())
+  const to = map.project([fix.lon, fix.lat])
+  const movedPx = Math.hypot(to.x - from.x, to.y - from.y)
+
+  // Course-up holds its heading when the boat is not making way. COG is
+  // derived from successive fixes, so tied up or drifting it is not a course
+  // at all — it swings through whatever the noise says, and every swing threw
+  // the flow field away. A plotter behaves the same: stopped, the chart holds.
+  const now = map.getBearing()
+  const steering = headingUp && fix.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
+  const want = steering ? fix.cog! : now
+  const turnedDeg = Math.abs(((want - now + 540) % 360) - 180)
+  const bearing = turnedDeg >= TURN_DEG ? want : now
+  const turning = bearing !== now
+
+  if (movedPx < MICRO_PX && !turning) return // jitter: leave the camera alone
+  const center: [number, number] = [fix.lon, fix.lat]
+  if (movedPx <= STEP_PX && !turning) {
+    map.jumpTo({ center })
+    return
+  }
+  map.easeTo({ center, bearing, duration: 900, essential: true })
 }
 
 function onError(err: GeolocationPositionError) {
