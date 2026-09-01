@@ -158,6 +158,7 @@ function TopBar() {
   const online = useAppStore((s) => s.online)
   const offlineReady = useAppStore((s) => s.offlineReady)
   const gpsStatus = useGpsStore((s) => s.status)
+  const gpsError = useGpsStore((s) => s.lastError)
 
   return (
     <div className="topbar">
@@ -176,7 +177,9 @@ function TopBar() {
         <span className="chip chip-warn">No location over plain http — open this on localhost or https</span>
       )}
       {gpsStatus === 'error' && (
-        <span className="chip chip-warn">No GPS fix — still searching…</span>
+        <span className="chip chip-warn">
+          {gpsError ? `No GPS fix — ${gpsError}` : 'No GPS fix — still searching…'}
+        </span>
       )}
       <TripChip />
     </div>

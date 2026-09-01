@@ -157,14 +157,23 @@ function followCamera(map: maplibregl.Map, fix: Fix, headingUp: boolean) {
 
 function onError(err: GeolocationPositionError) {
   const gps = useGpsStore.getState()
+  // the browser's own words, which say far more than we can guess: a PC with
+  // Windows location services switched off reports POSITION_UNAVAILABLE, and
+  // that is a different problem from a slow fix on the water
+  const why =
+    err.code === err.POSITION_UNAVAILABLE
+      ? 'no position source — check location services'
+      : err.code === err.TIMEOUT
+        ? 'timed out'
+        : (err.message ?? 'unknown')
   if (err.code === err.PERMISSION_DENIED) {
-    gps.setStatus('denied')
+    gps.setStatus('denied', err.message || null)
     return
   }
   // a watch keeps trying after TIMEOUT/POSITION_UNAVAILABLE; if we already
   // have a fix, keep showing it instead of flashing a warning every 30 s
   if (err.code === err.TIMEOUT && gps.fix) return
-  gps.setStatus('error')
+  gps.setStatus('error', why)
 }
 
 function beginWatch() {

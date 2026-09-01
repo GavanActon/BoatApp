@@ -29,7 +29,10 @@ interface GpsState {
    * slightly stale. Null until there's enough movement to mean anything.
    */
   avgSogKn: number | null
-  setStatus: (s: GpsStatus) => void
+  /** Why the last attempt failed, in the browser's own words. "No GPS fix"
+   *  is not a diagnosis; "location services are off" is. */
+  lastError: string | null
+  setStatus: (s: GpsStatus, lastError?: string | null) => void
   setFix: (f: Fix | null) => void
   setRecording: (on: boolean, since?: number | null) => void
   addDistance: (nm: number) => void
@@ -38,11 +41,12 @@ interface GpsState {
 export const useGpsStore = create<GpsState>((set) => ({
   status: 'off',
   fix: null,
+  lastError: null,
   recording: false,
   recordingSince: null,
   recordingDistanceNm: 0,
   avgSogKn: null,
-  setStatus: (status) => set({ status }),
+  setStatus: (status, lastError) => set(lastError === undefined ? { status } : { status, lastError }),
   setFix: (fix) => set({ fix, avgSogKn: pushSog(fix) }),
   setRecording: (recording, since = null) =>
     set({ recording, recordingSince: since, ...(recording ? { recordingDistanceNm: 0 } : {}) }),
