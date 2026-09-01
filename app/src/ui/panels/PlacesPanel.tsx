@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { HOME } from '../../config'
+import type { Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
@@ -45,6 +46,28 @@ import SavedAdmin from '../SavedAdmin'
 /** Breathing room above the row being edited: flush to the sheet's top edge
  *  reads as clipped even when nothing is cut off. */
 const ROW_AIR_PX = 12
+
+/**
+ * How far off centre to place a spot you've asked to look at: the middle of
+ * the chart you can actually SEE, between the outlook strip's bottom edge and
+ * the top of the sheet.
+ *
+ * Both edges are read live, so a sheet already swiped up is accounted for and
+ * the spot lands in whatever band is left rather than behind the list. Half
+ * the sheet height — what this used to be — counts only the sheet, and put
+ * the spot up under the strip, where the strip was covering it.
+ */
+function lookOffsetY(map: MlMap): number {
+  const box = map.getContainer().getBoundingClientRect()
+  const strip = document.querySelector('.wxstrip')?.getBoundingClientRect()
+  const sheet = document.querySelector('.sheet')?.getBoundingClientRect()
+  const top = strip ? Math.max(0, strip.bottom - box.top) : 0
+  const bottom = sheet ? sheet.top - box.top : box.height
+  // a sheet tall enough to swallow the strip leaves no band; centre on what
+  // little sits above it rather than aim at a midpoint that is off-screen
+  const mid = bottom > top ? (top + bottom) / 2 : bottom / 2
+  return mid - box.height / 2
+}
 
 export default function PlacesPanel() {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
@@ -147,10 +170,7 @@ export default function PlacesPanel() {
     setFocusPoint({ lon: d.lon, lat: d.lat, label: d.name })
     // and light the wind & waves — seeing the location IS seeing its weather
     if (!useAppStore.getState().layers.weather) useAppStore.getState().setLayer('weather', true)
-    withMap((m) => {
-      const sheetH = document.querySelector('.sheet')?.getBoundingClientRect().height ?? 0
-      m.easeTo({ center: [d.lon, d.lat], zoom: LOOK_ZOOM, offset: [0, -sheetH / 2] })
-    })
+    withMap((m) => m.easeTo({ center: [d.lon, d.lat], zoom: LOOK_ZOOM, offset: [0, lookOffsetY(m)] }))
   }
 
   // the ROUTE button plots the run: destination set, lanes draw, dock fills —
