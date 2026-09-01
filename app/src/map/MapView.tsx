@@ -173,6 +173,14 @@ export default function MapView() {
           .setHTML(tapPopupHtml(d, depthUnit, gridConditionsAt(lng, lat, wxTime), wavePeriod))
           .addTo(map!)
         popup = p
+        // the tap's focus lives and dies with its popup: dismissing the
+        // details clears the dot and hands the strip back — but only the
+        // TRANSIENT tap focus. A deliberate focus (Go's pinned spot, a badge,
+        // a Places look) has its own label and its own ✕, and survives.
+        p.once('close', () => {
+          const rs = useRouteStore.getState()
+          if (rs.focusPoint?.label === 'Tapped point') rs.setFocusPoint(null)
+        })
         // one delegated listener on the container — it survives the setHTML
         // refresh below, where listeners on the buttons themselves would not
         p.getElement().addEventListener('click', (ev) => {
@@ -194,6 +202,11 @@ export default function MapView() {
             const place = usePlacesStore.getState().addPlace(lng, lat)
             usePlacesStore.getState().setPendingEdit(place.name)
             useAppStore.getState().setSheetTab('places')
+            p.remove()
+          } else {
+            // a tap on the panel itself is "never mind" — it has no close
+            // button, so its own body is the dismiss target. The strip keeps
+            // pointing at the tapped spot; its chip's ✕ is the way back.
             p.remove()
           }
         })
