@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BUNDLES, DATA_FILES, HOME } from '../config'
 import { listStored } from '../offline/fileStore'
 import { useAppStore } from '../state/appStore'
@@ -74,8 +74,27 @@ function scaleUnitFor(speed: SpeedUnit): 'nautical' | 'metric' | 'imperial' {
   return speed === 'kmh' ? 'metric' : speed === 'mph' ? 'imperial' : 'nautical'
 }
 
+/**
+ * MapLibre draws with WebGL and has no other mode: with no context there is
+ * no chart at all, just an empty pane the colour of the background — which
+ * reads as a broken app rather than a browser that cannot draw.
+ *
+ * Chrome reports it as "Failed to initialize WebGL" with GL_RENDERER =
+ * Disabled when graphics acceleration is off or the GPU process failed to
+ * start, and the throw arrives as an unhandled rejection nobody sees.
+ */
+function webglAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas')
+    return !!(c.getContext('webgl2') ?? c.getContext('webgl'))
+  } catch {
+    return false
+  }
+}
+
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [noWebgl, setNoWebgl] = useState(false)
   const scaleRef = useRef<maplibregl.ScaleControl | null>(null)
 
   useEffect(() => {
@@ -103,6 +122,12 @@ export default function MapView() {
         .getState()
         .setMissingCharts(DATA_FILES.filter((d) => !available.has(d.key)).map((d) => d.label))
       if (disposed || !containerRef.current) return
+      // ask before building: a failed constructor throws into a promise and
+      // leaves a blank pane with the reason only in the console
+      if (!webglAvailable()) {
+        setNoWebgl(true)
+        return
+      }
 
       const { layers, depthUnit, satOpacity, satVivid } = useAppStore.getState()
       const saved = loadSavedView()
@@ -309,5 +334,22 @@ export default function MapView() {
     [],
   )
 
+  if (noWebgl) {
+    return (
+      <div className="map-root map-nogl">
+        <div className="nogl">
+          <h2>The chart can't draw here</h2>
+          <p>
+            This browser couldn't create a WebGL context, and the chart has no other way
+            to draw. Everything else — the forecast, your places, the trip — still works.
+          </p>
+          <p>
+            In Chrome: <b>Settings → System → Use graphics acceleration when available</b>,
+            then restart it. <b>chrome://gpu</b> says why it is off.
+          </p>
+        </div>
+      </div>
+    )
+  }
   return <div ref={containerRef} className="map-root" />
 }

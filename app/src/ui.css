@@ -1599,6 +1599,36 @@
 }
 
 /* the hand-written exposure note — the one sentence allowed, L2 only (§1.5) */
+/* the chart cannot draw: WebGL is missing, and the empty pane needs a reason */
+.map-nogl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.nogl {
+  max-width: 30rem;
+  color: var(--c-text-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.nogl h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+  color: var(--c-text);
+}
+
+.nogl p {
+  margin: 0 0 10px;
+}
+
+.nogl b {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
 /* where the run starts from: one swipeable line, like every other question */
 .from-row {
   display: flex;
