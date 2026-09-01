@@ -344,8 +344,13 @@ export default function MapView() {
             to draw. Everything else — the forecast, your places, the trip — still works.
           </p>
           <p>
-            In Chrome: <b>Settings → System → Use graphics acceleration when available</b>,
-            then restart it. <b>chrome://gpu</b> says why it is off.
+            <b>Restart the browser first.</b> Chrome turns all acceleration off after its
+            GPU process crashes a few times — <b>chrome://gpu</b> shows the count and says
+            "unable to boot" — and a restart usually brings it back.
+          </p>
+          <p>
+            If that doesn't do it, check <b>Settings → System → Use graphics acceleration
+            when available</b> is on, and update your graphics drivers.
           </p>
         </div>
       </div>
