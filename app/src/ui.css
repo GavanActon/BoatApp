@@ -320,7 +320,10 @@
   right: 0;
   bottom: 0;
   /* 8px sides: every pane — strip, card, dock, sheet — shares one width */
-  padding: 0 8px calc(var(--sab) + 10px);
+  /* half the safe-area inset, not all of it: the full inset + 10px left a
+     dead band under the dock on phones with a home indicator. The dock may
+     overlap the indicator's outer fringe; its tap targets stay above it. */
+  padding: 0 8px calc(var(--sab) / 2 + 6px);
   display: flex;
   flex-direction: column;
   gap: 8px;
