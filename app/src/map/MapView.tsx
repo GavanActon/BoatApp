@@ -166,12 +166,13 @@ export default function MapView() {
       map.on('click', (e) => {
         if (routeEditedRecently()) return // the click that ends a route edit
         if (useMeasureStore.getState().active) return // taps belong to the ruler
-        // first-run home pick (§10.3): the armed pick owns the next chart tap
-        if (useAppStore.getState().pickingHome) {
-          usePlacesStore.getState().addHome(e.lngLat.lng, e.lngLat.lat)
-          useAppStore.getState().setPickingHome(false)
-          return
-        }
+        // first-run home pick (§10.3): stand down — the pick is CONSUMED in
+        // spotBadges' click handler, the last one registered on the map.
+        // Every click handler fires on the same event in registration
+        // order, so whoever consumes the pick must run last, or the
+        // handlers after it see the pick already disarmed and treat the
+        // same tap as their own (the badge handler used to route on it).
+        if (useAppStore.getState().pickingHome) return
         const routeState = useRouteStore.getState()
         // chips arm, surfaces answer: with a slot armed, ANY tap on the
         // water is its keypad — fill the slot, disarm, done

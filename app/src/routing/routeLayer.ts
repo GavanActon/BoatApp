@@ -1135,6 +1135,7 @@ export function initRouteLayer() {
     map.on('click', (e) => {
       if (routeEditedRecently()) return // the click that ends an edit gesture
       if (useMeasureStore.getState().active) return
+      if (useAppStore.getState().pickingHome) return // the home pick owns the tap
       if (viaPopup) {
         viaPopup.remove()
         viaPopup = null
@@ -1231,8 +1232,13 @@ export function initRouteLayer() {
   useAppStore.subscribe((s, prev) => {
     // raising the dock is the route drawer's old "open the run" moment now
     if (s.detent === 'raised' && prev.detent !== 'raised') refit()
-    // the leg labels carry the period and the wind, so both have to reach them
-    if (s.wavePeriod !== prev.wavePeriod || s.windUnit !== prev.windUnit) {
+    // the leg labels carry the period and the wind, so both have to reach
+    // them; the lanes and dots wear the ramp, so its scale does too
+    if (
+      s.wavePeriod !== prev.wavePeriod ||
+      s.windUnit !== prev.windUnit ||
+      s.seaScaleM !== prev.seaScaleM
+    ) {
       const live = getMap()
       if (live && layersOn === live) render(live)
     }

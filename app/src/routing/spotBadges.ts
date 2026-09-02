@@ -211,6 +211,18 @@ export function initSpotBadges() {
     map.on('click', (e) => {
       if (routeEditedRecently()) return
       if (useMeasureStore.getState().active) return
+      // The first-run home pick (§10.3) is consumed HERE, in the map's
+      // last-registered click handler — every earlier handler stands down
+      // while the pick is armed, so disarming can't leak the same tap to a
+      // handler that runs later. A tap on a known place's badge stars THAT
+      // place; open water saves a new Home dock pin.
+      if (useAppStore.getState().pickingHome) {
+        const known = spotBadgeAt(map, e.point)
+        if (known) usePlacesStore.getState().setHome(known.name)
+        else usePlacesStore.getState().addHome(e.lngLat.lng, e.lngLat.lat)
+        useAppStore.getState().setPickingHome(false)
+        return
+      }
       if (useRouteStore.getState().picking) return
       if (sampleDotAt(map, e.point)) return
       const hit = spotBadgeAt(map, e.point)
@@ -259,8 +271,9 @@ export function initSpotBadges() {
   onWeatherGrid(repaint)
 
   useAppStore.subscribe((s, prev) => {
-    // the badges show the app-wide planning moment, like everything else
-    if (s.planTimeMs !== prev.planTimeMs) repaint()
+    // the badges show the app-wide planning moment, like everything else,
+    // and wear the ramp, so they follow its scale
+    if (s.planTimeMs !== prev.planTimeMs || s.seaScaleM !== prev.seaScaleM) repaint()
   })
   useRouteStore.subscribe((s, prev) => {
     // the subject's own badge hides while its spot is the destination
