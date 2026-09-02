@@ -4,10 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # redeploy with fresh RDWPS waves shortly after each model run lands
-  # (runs at 00/06/12/18Z; files appear ~3-4 h later)
+  # redeploy with fresh RDWPS waves after each model run lands. Runs are
+  # 00/06/12/18Z and the final-hour file lands ~3h26m later (measured
+  # 2026-09-01/02: 03:26, 09:26, 15:26, 21:26 UTC — one outlier at 05:18),
+  # and GitHub fires schedules late by minutes. So: a main slot 20 min
+  # after the usual landing, plus a catch-up ~2 h on for a late run — the
+  # catch-up stops short of deploying when the site already has the run.
   schedule:
-    - cron: '30 3,9,15,21 * * *'
+    - cron: '45 3,9,15,21 * * *'
+    - cron: '30 5,11,17,23 * * *'
 
 permissions:
   contents: read
@@ -27,16 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
-      - name: Install
-        working-directory: app
-        run: npm ci
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -47,16 +42,48 @@ jobs:
           pip install --quiet numpy imagecodecs
           python pipeline/fetch_rdwps.py || echo "RDWPS fetch failed — deploying with the last good waves file"
 
+      - name: Is there anything new to deploy?
+        id: waves
+        # a scheduled run exists only to carry a newer RDWPS run to the site;
+        # when the site already serves the run we just fetched (the usual
+        # case for the catch-up slot), there is nothing to build
+        run: |
+          local=$(python -c "import json;print(json.load(open('app/public/data/waves-superior.json'))['run'])")
+          live=$(curl -sf "https://sandies.app/data/waves-superior.json?t=$(date +%s)" | python -c "import json,sys;print(json.load(sys.stdin)['run'])" || echo none)
+          echo "fetched run: $local · live run: $live · event: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$local" = "$live" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "site already serves this run — skipping the deploy"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.waves.outputs.changed == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        if: steps.waves.outputs.changed == 'true'
+        working-directory: app
+        run: npm ci
+
       - name: Build
+        if: steps.waves.outputs.changed == 'true'
         working-directory: app
         # served at the domain root (sandies.app) — no BASE_PATH prefix
         run: npm run build
 
       - uses: actions/configure-pages@v5
+        if: steps.waves.outputs.changed == 'true'
 
       - uses: actions/upload-pages-artifact@v3
+        if: steps.waves.outputs.changed == 'true'
         with:
           path: app/dist
 
       - id: deployment
+        if: steps.waves.outputs.changed == 'true'
         uses: actions/deploy-pages@v4

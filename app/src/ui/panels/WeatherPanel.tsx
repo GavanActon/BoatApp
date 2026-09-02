@@ -4,8 +4,9 @@ import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
 import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
-import type { PointForecast } from '../../weather/openMeteo'
+import { openMeteoLastError, type PointForecast } from '../../weather/openMeteo'
 import { waveOverlayStatus } from '../../weather/rdwps'
+import { windOverlayStatus } from '../../weather/hrdps'
 import { onWeatherGrid, pointForecastCached, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
 import { IconLocate, IconRefresh } from '../icons'
 import ForecastCharts from './ForecastCharts'
@@ -147,11 +148,11 @@ export default function WeatherPanel() {
  * belongs with the forecast it explains.
  */
 /** When the next NEW RDWPS run reaches the app: the model runs 00/06/12/18Z,
- *  the site's scheduled fetch lands ~3½ h later (03:30/09:30/15:30/21:30 UTC),
- *  and the app picks it up within its hourly check — so quote the fetch slot,
- *  softened with a ~. */
+ *  the site's scheduled fetch runs ~3¾ h later (03:45/09:45/15:45/21:45 UTC,
+ *  20 min after the run's usual landing), and the app picks it up within its
+ *  hourly check — so quote the fetch slot, softened with a ~. */
 function nextWaveRunMs(): number {
-  const slotsUtcH = [3.5, 9.5, 15.5, 21.5]
+  const slotsUtcH = [3.75, 9.75, 15.75, 21.75]
   const now = new Date()
   const dayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
   for (const h of slotsUtcH) {
@@ -179,10 +180,12 @@ function DataStatus() {
 
   const grid = weatherGridInfo()
   const waves = waveOverlayStatus()
+  const wind = windOverlayStatus()
   const online = useAppStore((s) => s.online)
+  const omError = openMeteoLastError()
 
-  // the model runs 4×/day and lands ~4 h behind its stamp; past ~11 h a
-  // cycle has been missed, past 18 h the app has already fallen back
+  // both ECCC models run 4×/day and land ~3–4 h behind their stamp; past
+  // ~11 h a cycle has been missed, past 18 h the app has already fallen back
   const waveDesc =
     waves.state === 'active'
       ? `RDWPS 1 km · run ${agoLabel(waves.runAgeMs)}`
@@ -191,19 +194,47 @@ function DataStatus() {
         : 'RDWPS unavailable — using global model'
   const waveWarn = waves.state !== 'active' || waves.runAgeMs > 11 * 3600_000
 
+  const windDesc =
+    wind.state === 'active'
+      ? `HRDPS 2.5 km · run ${agoLabel(wind.runAgeMs)} · ECCC GeoMet`
+      : wind.state === 'stale-run'
+        ? 'HRDPS run too old — wind from Open-Meteo'
+        : 'ECCC GeoMet unavailable — wind from Open-Meteo'
+  const windWarn = wind.state !== 'active' || wind.runAgeMs > 11 * 3600_000
+
   return (
     <>
       <div className="panel-section">Data</div>
       <div className="row">
         <div className="row-text">
-          <span className="row-title">Wind & weather</span>
-          <span className="row-desc">HRDPS 2.5 km wind · Open-Meteo blend</span>
+          <span className="row-title">Wind</span>
+          <span className="row-desc">{windDesc}</span>
+        </div>
+        <em className={windWarn ? 'age-badge stale' : 'age-badge'}>
+          {wind.state === 'active'
+            ? agoLabel(wind.checkedAgoMs)
+            : online
+              ? 'fallback'
+              : 'offline'}
+        </em>
+      </div>
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">{wind.state === 'active' ? 'Gusts, sky & outlook' : 'Wind & weather'}</span>
+          <span className="row-desc">
+            {wind.state === 'active'
+              ? 'Open-Meteo · gusts, temperature, rain, days 3–7'
+              : 'HRDPS 2.5 km wind · Open-Meteo blend'}
+          </span>
           {grid && (
             <span className="row-desc">
               {grid.fetchedAt + GRID_REFRESH_MS > Date.now()
                 ? `next check ${timeLabel(grid.fetchedAt + GRID_REFRESH_MS)}`
                 : 'checking…'}
             </span>
+          )}
+          {grid?.stale && omError && (
+            <span className="row-desc">{`last try ${agoLabel(Date.now() - omError.at)}: ${omError.reason}`}</span>
           )}
         </div>
         <em className={grid?.stale || !grid ? 'age-badge stale' : 'age-badge'}>

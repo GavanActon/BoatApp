@@ -1,6 +1,7 @@
 import { REGION_BBOX } from '../config'
 import { db } from '../tracking/db'
 import { applyWaveOverlayToSeries, ensureWaveOverlay } from './rdwps'
+import { applyWindOverlayToSeries, ensureWindOverlay } from './hrdps'
 
 /**
  * Open-Meteo client. Free, no API key, CORS-enabled.
@@ -313,10 +314,46 @@ const MARINE_BASE = DEV
   ? '/__om/marine-api.open-meteo.com/v1/marine'
   : 'https://marine-api.open-meteo.com/v1/marine'
 
+/** Why the last Open-Meteo fetch failed, for the Weather tab's data row —
+ *  so "offline copy" can say whether that's a dead cell, a rate limit
+ *  (429) or their backend down (5xx / a 200 whose body is an error). */
+let lastError: { at: number; reason: string } | null = null
+export function openMeteoLastError(): { at: number; reason: string } | null {
+  return lastError
+}
+
+/** A request that has produced nothing in this long is a backend that has
+ *  died mid-stream (seen: 42 s to a "timeoutReached" body) — give up and
+ *  fall back to the cache rather than sit on it. Normal replies take ~2 s. */
+const FETCH_TIMEOUT_MS = 25_000
+
+export function fetchTimeout(ms = FETCH_TIMEOUT_MS): AbortSignal | undefined {
+  return typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined
+}
+
 async function getJson(url: string): Promise<unknown> {
-  const resp = await fetch(url)
-  if (!resp.ok) throw new Error(`Open-Meteo ${resp.status}`)
-  return resp.json()
+  try {
+    const resp = await fetch(url, { signal: fetchTimeout() })
+    const text = await resp.text()
+    let body: unknown = null
+    try {
+      body = JSON.parse(text)
+    } catch {
+      /* not JSON — an error string streamed out with a 200, see below */
+    }
+    if (!resp.ok || body == null) {
+      // their error shape is {"error":true,"reason":"..."}; a backend that
+      // dies mid-stream sends 200 + "Unexpected error while streaming data"
+      const reason =
+        (body as { reason?: string } | null)?.reason ?? text.replace(/\s+/g, ' ').trim().slice(0, 80)
+      throw new Error(`HTTP ${resp.status}${reason ? ` · ${reason}` : ''}`)
+    }
+    lastError = null
+    return body
+  } catch (e) {
+    lastError = { at: Date.now(), reason: e instanceof Error ? e.message : String(e) }
+    throw e
+  }
 }
 
 async function cachePut(key: string, payload: unknown) {
@@ -419,6 +456,35 @@ function pointKey(lon: number, lat: number): string {
   return `point:${lon.toFixed(2)},${lat.toFixed(2)}`
 }
 
+/**
+ * Upgrade a point forecast's series in place with ECCC's own copies of the
+ * models: RDWPS 1 km sea and HRDPS 2.5 km wind, for the ~48 h each run
+ * covers. Done BEFORE caching so the strip, the panel, the trip sweep and
+ * the offline copy all carry the same upgraded numbers — one vocabulary.
+ * Idempotent: safe to run again on a copy read back from the cache.
+ *
+ * The sea waits for its one small file; the wind does NOT wait for its ~100
+ * fetches — it dresses with whatever run is in hand, and the strip re-runs
+ * this through onWindOverlay when the rest lands.
+ */
+export async function dressPointForecast(forecast: PointForecast): Promise<void> {
+  const h = forecast.hourly
+  if (!h.time.length) return
+  const t0 = Date.parse(h.time[0]) // timezone=auto strings parse as local time
+  await ensureWaveOverlay()
+  applyWaveOverlayToSeries(
+    forecast.lon,
+    forecast.lat,
+    t0,
+    h.time.length,
+    h.waveM,
+    h.wavePeriodS,
+    h.waveDir,
+  )
+  void ensureWindOverlay()
+  applyWindOverlayToSeries(forecast.lon, forecast.lat, t0, h.time.length, h.windKn, h.gustKn, h.windDir)
+}
+
 export async function fetchPointForecast(
   lon: number,
   lat: number,
@@ -432,6 +498,8 @@ export async function fetchPointForecast(
     if (maxAgeMs > 0) {
       const cached = await cacheGet<PointForecast>(key)
       if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
+        // an overlay may have landed since this was written — dress again
+        await dressPointForecast(cached.payload)
         return { forecast: cached.payload, stale: false }
       }
     }
@@ -470,22 +538,18 @@ export async function fetchPointForecast(
     }
     // upgrade the wave series to RDWPS 1 km where its run covers — the strip
     // and the map must never quote two different seas for the same hour
-    await ensureWaveOverlay()
-    const h = forecast.hourly
-    applyWaveOverlayToSeries(
-      lon,
-      lat,
-      Date.parse(h.time[0]), // timezone=auto strings parse as local time
-      h.time.length,
-      h.waveM,
-      h.wavePeriodS,
-      h.waveDir,
-    )
+    await dressPointForecast(forecast)
     await cachePut(key, forecast)
     return { forecast, stale: false }
   } catch (e) {
     const cached = await cacheGet<PointForecast>(key)
-    if (cached) return { forecast: cached.payload, stale: true }
+    if (cached) {
+      // the ECCC overlays may well be reachable when Open-Meteo isn't — an
+      // old copy with today's HRDPS wind and RDWPS sea on it beats the old
+      // copy as cached
+      await dressPointForecast(cached.payload)
+      return { forecast: cached.payload, stale: true }
+    }
     throw e
   } finally {
     // settled either way — the grid may have the connection now

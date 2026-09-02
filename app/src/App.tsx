@@ -153,12 +153,15 @@ function ForecastAgeChip() {
   const info = weatherGridInfo()
   const ageMs = info ? Date.now() - info.fetchedAt : 0
   if (ageMs < 3 * 3600_000) return null
+  // with ECCC's own HRDPS wind (and RDWPS sea) overlaid, what's old is only
+  // what Open-Meteo alone supplies — say that, not "the forecast"
+  const what = info?.wind ? 'Gusts & sky' : 'Forecast'
   return (
     <button
       className="chip chip-warn"
       onClick={() => useAppStore.getState().setSheetTab('weather')}
     >
-      Forecast {Math.round(ageMs / 3600_000)} h old
+      {what} {Math.round(ageMs / 3600_000)} h old
     </button>
   )
 }

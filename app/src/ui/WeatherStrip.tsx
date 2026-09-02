@@ -20,6 +20,7 @@ import {
 } from '../weather/openMeteo'
 import { speedUnitLabel, windSpeed } from '../units'
 import { seaColor, seaName } from '../weather/seaState'
+import { onWindOverlay } from '../weather/hrdps'
 import { onWeatherHour } from '../weather/weatherLayer'
 import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
@@ -169,10 +170,15 @@ export default function WeatherStrip() {
     // and at each top of the hour: the Now cell floors to the current hour,
     // so the boundary is when yesterday's row would otherwise linger
     const offHour = onWeatherHour(() => void load())
+    // and when ECCC's HRDPS wind lands (seconds after launch, or a new run
+    // later): the fetch dedupes against the fresh cache and re-dresses it,
+    // so the strip and the map quote the same wind
+    const offWind = onWindOverlay(() => void load())
     return () => {
       alive = false
       clearInterval(t)
       offHour()
+      offWind()
     }
     // re-fetch when connectivity returns so a stale strip heals itself
   }, [show, online, focusPoint, departFrom, hasFix])

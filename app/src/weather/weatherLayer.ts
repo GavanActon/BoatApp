@@ -5,10 +5,18 @@ import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { depthAt } from '../map/depthGrid'
 import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo } from './rdwps'
+import {
+  applyWindOverlay,
+  onWindOverlay,
+  refreshWindOverlay,
+  windOverlayAgeMs,
+  windOverlayInfo,
+  windOverlayStatus,
+} from './hrdps'
 import { SEA_BANDS, seaBounds, seaScaleK } from './seaState'
 import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
-import { cachedPointForecast, type PointForecast } from './openMeteo'
+import { cachedPointForecast, dressPointForecast, type PointForecast } from './openMeteo'
 import {
   cachedGridForecast,
   fetchGridForecast,
@@ -548,6 +556,14 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
       // the ~48 h it covers; Open-Meteo stands beyond and wherever it's null
       if (waveOverlayAgeMs() > 30 * 60_000) await refreshWaveOverlay()
       applyWaveOverlay(grid)
+      // and the wind straight from ECCC: HRDPS via GeoMet overwrites
+      // Open-Meteo's copy of the same model for the ~48 h the run covers —
+      // so an Open-Meteo outage leaves the decision window's wind fresh
+      // even when the grid underneath is the stale fallback. Its ~100
+      // fetches are NOT waited for: dress with what's in hand, and the
+      // onWindOverlay hook (init) re-dresses the grid when the rest lands.
+      if (windOverlayAgeMs() > 30 * 60_000) void refreshWindOverlay()
+      applyWindOverlay(grid)
       withMap((map) => {
         addLayers(map)
         render(map)
@@ -568,8 +584,12 @@ export function weatherGridInfo(): {
   stale: boolean
   /** Non-null while RDWPS 1 km waves are overlaid on the grid. */
   waves: { model: string; run: string } | null
+  /** Non-null while HRDPS wind from ECCC GeoMet is overlaid on the grid. */
+  wind: { model: string; run: string } | null
 } | null {
-  return grid ? { fetchedAt: grid.fetchedAt, stale: gridStale, waves: waveOverlayInfo() } : null
+  return grid
+    ? { fetchedAt: grid.fetchedAt, stale: gridStale, waves: waveOverlayInfo(), wind: windOverlayInfo() }
+    : null
 }
 
 export interface GridConditions {
@@ -711,6 +731,12 @@ function startWeatherClock() {
         }
       })
     }
+    // same cadence for the HRDPS wind — a new run is a cheap catalogue
+    // check; only an actual new run costs the ~100 small fetches (and the
+    // onWindOverlay hook dresses the grid when they land)
+    if (useAppStore.getState().online && grid && windOverlayAgeMs() > 60 * 60_000) {
+      void refreshWindOverlay()
+    }
   }, 60_000)
 }
 
@@ -721,9 +747,24 @@ export function initWeatherLayer() {
   if (inited) return // React StrictMode double effect-run in dev
   inited = true
   startWeatherClock()
+  // the HRDPS wind lands on its own schedule (~100 small GeoMet fetches,
+  // usually started by the strip's point fetch before the grid exists):
+  // whenever a run arrives, dress whatever grid is in hand and tell every
+  // reader — badges, flow layers, the trip sweep, the forecast watch
+  onWindOverlay(() => {
+    if (grid && applyWindOverlay(grid)) {
+      withMap(render)
+      for (const cb of gridListeners) cb()
+    }
+  })
   if (import.meta.env.DEV) {
     // the verify harness reads the grid through the same doors the app does
-    ;(window as unknown as Record<string, unknown>).__wx = { gridConditionsAt, weatherGridInfo, depthAt }
+    ;(window as unknown as Record<string, unknown>).__wx = {
+      gridConditionsAt,
+      weatherGridInfo,
+      windOverlayStatus,
+      depthAt,
+    }
   }
 
   onEachMap((map) => {
@@ -739,6 +780,7 @@ export function initWeatherLayer() {
     grid = c.grid
     gridStale = true
     applyWaveOverlay(grid)
+    applyWindOverlay(grid)
     withMap((map) => {
       addLayers(map)
       render(map)
@@ -883,7 +925,11 @@ export async function pointForecastCached(
   lat: number,
 ): Promise<{ forecast: PointForecast; stale: boolean } | null> {
   const c = await cachedPointForecast(lon, lat)
-  if (c) return { forecast: c.forecast, stale: c.ageMs > GRID_MAX_AGE_MS }
+  if (c) {
+    // the disk copy may predate an overlay that has since landed
+    await dressPointForecast(c.forecast)
+    return { forecast: c.forecast, stale: c.ageMs > GRID_MAX_AGE_MS }
+  }
   const fromGrid = pointForecastFromGrid(lon, lat)
   return fromGrid ? { forecast: fromGrid, stale: gridStale } : null
 }
