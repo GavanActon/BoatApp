@@ -298,3 +298,30 @@ it false forever. Wait for a layer instead:
 
 A clean browser context is a fresh install. To simulate an existing one, seed
 `localStorage['sandies-route']` before navigation.
+
+---
+
+## 10. First run
+
+**10.1 MUST — The welcome says the pitch once, then never again.** Three
+cards before the chart, first launch only: the lake's own models (trust
+leads — ECCC HRDPS wind, RDWPS 1 km waves, named), offline charts, the
+pick-a-place-pick-an-hour grammar. Skippable at every card; finishing or
+skipping is permanent (`onboarded`, persisted). This overlay is the ONE
+surface exempt from §1.5's no-sentences rule — it is the app introducing
+itself, not chrome.
+
+**10.2 MUST — Setup is a dock card until it is done.** Narrow exception to
+§2.2's "no dock on fresh install": until location, offline charts and a
+home base have all been observed in place at once, a first-voyage card may
+hold the dock slot — always yielding to a subject, an under-way trip and
+the ruler. Rows are ACTIONS, never toggles: location asks the OS, charts
+opens the Offline tab, home arms the chart. All three done → `setupDone`
+(persisted) and the card retires forever; its ✕ does the same for the
+borrowed-phone case. It never reappears to nag.
+
+**10.3 MUST — Home is picked on the chart.** The home row arms a pick — a
+top-bar banner names the listening slot with cancel, the same grammar as
+the From/To slots (§0.4) — and the next chart tap saves the point as
+"Home dock" and stars it (renameable in Places like any place). The first
+tap a new user makes is the tap the whole app runs on.

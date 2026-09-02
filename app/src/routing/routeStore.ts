@@ -57,6 +57,12 @@ interface RouteState {
   // trip under way (persisted so an iOS PWA reload mid-trip resumes monitoring)
   tripStartedAt: number | null
   tripOrigin: [number, number] | null // where the boat left from, for the ride home
+  /** When the boat first came within arrival range of the destination this
+   *  trip. LATCHED — measured fresh each tick, "arrived" held only within
+   *  half a mile of the beach, so the first progress tick of the ride home
+   *  flipped the plan back to the destination just left. */
+  reachedDestAt: number | null
+  setReachedDest: (ms: number) => void
   // What the trip promised as it cast off, so a slipping arrival has something
   // honest to be measured against. See legReadout.capturePromise.
   promisedArriveMs: number | null
@@ -96,6 +102,7 @@ type PersistedTrip = Pick<
   | 'viaPoints'
   | 'tripStartedAt'
   | 'tripOrigin'
+  | 'reachedDestAt'
   | 'promisedArriveMs'
   | 'promisedHomeMs'
 > & { flowV: number }
@@ -128,6 +135,7 @@ export const useRouteStore = create<RouteState>()(
           picking: null,
           editing: false, // a new trip is not a course you were part-way through editing
           focusPoint: null,
+          reachedDestAt: null, // a fresh destination has not been reached
         }),
       moveDestination: (lon, lat) =>
         set((s) => (s.destination ? { destination: { ...s.destination, lon, lat } } : {})),
@@ -168,13 +176,16 @@ export const useRouteStore = create<RouteState>()(
 
       tripStartedAt: null,
       tripOrigin: null,
+      reachedDestAt: null,
+      setReachedDest: (reachedDestAt) => set({ reachedDestAt }),
       promisedArriveMs: null,
       promisedHomeMs: null,
-      startTrip: (tripOrigin) => set({ tripStartedAt: Date.now(), tripOrigin }),
+      startTrip: (tripOrigin) => set({ tripStartedAt: Date.now(), tripOrigin, reachedDestAt: null }),
       endTrip: () =>
         set({
           tripStartedAt: null,
           tripOrigin: null,
+          reachedDestAt: null,
           promisedArriveMs: null,
           promisedHomeMs: null,
         }),
@@ -223,6 +234,7 @@ export const useRouteStore = create<RouteState>()(
         viaPoints: s.viaPoints,
         tripStartedAt: s.tripStartedAt,
         tripOrigin: s.tripOrigin,
+        reachedDestAt: s.reachedDestAt,
         promisedArriveMs: s.promisedArriveMs,
         promisedHomeMs: s.promisedHomeMs,
       }),

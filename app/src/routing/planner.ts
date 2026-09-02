@@ -122,22 +122,28 @@ export async function replan(quiet = false): Promise<void> {
     return
   }
 
-  // round trip + boat has reached the destination → plan the ride home
+  // round trip + boat has reached the destination → plan the ride home.
+  // "Reached" LATCHES at the moment of arrival (reachedDestAt): judged fresh
+  // from the boat's position each tick, it held only within half a mile of
+  // the beach — the first progress tick of the ride home flipped the target
+  // back to the destination just left, and a boat that made it home was
+  // re-planned the whole trip out again (found post-trip, 2026-09-01)
   let target: [number, number] = [dest.lon, dest.lat]
   let roundTrip = s.roundTrip
   let destName = dest.name
   let vias = s.viaPoints
-  if (
-    underWay &&
-    s.roundTrip &&
-    s.tripOrigin &&
-    haversineNm(start[0], start[1], dest.lon, dest.lat) < ARRIVED_NM
-  ) {
-    target = s.tripOrigin
-    roundTrip = false
-    destName = 'Home'
-    // the ride home retraces the plotted course through the same points
-    vias = [...s.viaPoints].reverse()
+  if (underWay && s.roundTrip && s.tripOrigin) {
+    const reached =
+      s.reachedDestAt != null ||
+      haversineNm(start[0], start[1], dest.lon, dest.lat) < ARRIVED_NM
+    if (reached && s.reachedDestAt == null) s.setReachedDest(Date.now())
+    if (reached) {
+      target = s.tripOrigin
+      roundTrip = false
+      destName = 'Home'
+      // the ride home retraces the plotted course through the same points
+      vias = [...s.viaPoints].reverse()
+    }
   }
 
   let result = await computeRoute(start, target, vias)
@@ -244,6 +250,12 @@ export function startTrip() {
 
 export function endTrip() {
   useRouteStore.getState().endTrip()
+  // trip over = subject dismissed: the same resting state the planning card's
+  // ✕ leaves behind. Keeping the destination kept the dock, the route line
+  // and the periodic replans alive after the boat was back on the trailer.
+  useRouteStore.getState().setDestination(null)
+  useAppStore.getState().setPlanPicked(false)
+  useAppStore.getState().setDetent('rest')
   resetSogAverage()
   void stopRecording()
   void replan()
@@ -264,6 +276,7 @@ export function initRoutePlanner() {
   const persisted = useRouteStore.getState()
   if (persisted.tripStartedAt != null && Date.now() - persisted.tripStartedAt > TRIP_EXPIRY_MS) {
     persisted.endTrip()
+    persisted.setDestination(null) // yesterday's outing doesn't resume as today's plan
   }
   const resumed = useRouteStore.getState()
   if (resumed.destination) void replan(resumed.tripStartedAt != null)

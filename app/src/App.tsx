@@ -43,6 +43,8 @@ import TracksPanel from './ui/panels/TracksPanel'
 import WeatherPanel from './ui/panels/WeatherPanel'
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
+import WelcomeCards from './ui/WelcomeCards'
+import FirstVoyageCard from './ui/FirstVoyageCard'
 import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
@@ -77,6 +79,19 @@ function SlotChip() {
   return (
     <button className="chip chip-accent" onClick={() => setArmedSlot(null)}>
       {armedSlot === 'from' ? 'From?' : 'To?'} tap the chart or a place · cancel
+    </button>
+  )
+}
+
+/** The first-run home pick's banner (§10.3) — same arm-then-answer words
+ *  the From/To slots use. */
+function HomePickChip() {
+  const pickingHome = useAppStore((s) => s.pickingHome)
+  const setPickingHome = useAppStore((s) => s.setPickingHome)
+  if (!pickingHome) return null
+  return (
+    <button className="chip chip-accent" onClick={() => setPickingHome(false)}>
+      Home? tap the chart where you keep the boat · cancel
     </button>
   )
 }
@@ -209,6 +224,7 @@ function TopBar() {
         </span>
       )}
       <SlotChip />
+      <HomePickChip />
       <TripChip />
     </div>
   )
@@ -330,6 +346,7 @@ export default function App() {
   const setOnline = useAppStore((s) => s.setOnline)
   const measuring = useMeasureStore((s) => s.active)
   const destination = useRouteStore((s) => s.destination)
+  const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
   const barRef = useRef<HTMLDivElement>(null)
 
   // With a trip on screen — planning it or running it — the dock IS the
@@ -414,8 +431,16 @@ export default function App() {
       <FabStack />
 
       <div className="bottombar" ref={barRef}>
-        {/* one card at a time in the dock — measuring borrows the trip's spot */}
-        {measuring ? <MeasureCard /> : <TripCard />}
+        {/* one card at a time in the dock — measuring borrows the trip's
+            spot, and with no subject the first-voyage card may hold it
+            until setup is done (§10.2) */}
+        {measuring ? (
+          <MeasureCard />
+        ) : destination != null || tripStartedAt != null ? (
+          <TripCard />
+        ) : (
+          <FirstVoyageCard />
+        )}
         {!routing && (
           <div className="tabdock glass">
             {TABS.map((t) => {
@@ -451,6 +476,8 @@ export default function App() {
           {sheetTab === 'offline' && <OfflinePanel />}
         </BottomSheet>
       )}
+
+      <WelcomeCards />
     </div>
   )
 }

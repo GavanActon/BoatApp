@@ -166,6 +166,12 @@ export default function MapView() {
       map.on('click', (e) => {
         if (routeEditedRecently()) return // the click that ends a route edit
         if (useMeasureStore.getState().active) return // taps belong to the ruler
+        // first-run home pick (§10.3): the armed pick owns the next chart tap
+        if (useAppStore.getState().pickingHome) {
+          usePlacesStore.getState().addHome(e.lngLat.lng, e.lngLat.lat)
+          useAppStore.getState().setPickingHome(false)
+          return
+        }
         const routeState = useRouteStore.getState()
         // chips arm, surfaces answer: with a slot armed, ANY tap on the
         // water is its keypad — fill the slot, disarm, done

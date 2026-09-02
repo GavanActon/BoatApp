@@ -46,6 +46,9 @@ interface PlacesState {
    */
   homeName: string | null
   setHome: (name: string | null) => void
+  /** The first-run pick (§10.3): save the tapped point as "Home dock" and
+   *  star it in one move. Renameable in the sheet like any place. */
+  addHome: (lon: number, lat: number) => SavedPlace
 }
 
 export const usePlacesStore = create<PlacesState>()(
@@ -100,6 +103,14 @@ export const usePlacesStore = create<PlacesState>()(
       setPendingEdit: (pendingEdit) => set({ pendingEdit }),
       homeName: null,
       setHome: (homeName) => set({ homeName }),
+      addHome: (lon, lat) => {
+        const taken = new Set([...DESTINATIONS.map((d) => d.name), ...get().saved.map((p) => p.name)])
+        let name = 'Home dock'
+        for (let n = 2; taken.has(name); n++) name = `Home dock ${n}`
+        const place = { name, lon, lat }
+        set((s) => ({ saved: [...s.saved, place], homeName: name }))
+        return place
+      },
     }),
     {
       name: 'sandies-places',

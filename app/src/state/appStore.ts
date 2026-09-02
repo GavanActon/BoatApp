@@ -107,6 +107,22 @@ interface AppState {
   lowPower: boolean
   setLowPower: (v: boolean) => void
 
+  // First run (DESIGN-SPEC §10). `onboarded`: the three welcome cards have
+  // been seen or skipped — either way they never show again. `setupDone`:
+  // location + offline charts + home base were all observed in place at
+  // once, so the first-voyage card has retired for good (conditions alone
+  // can't carry this: GPS re-acquires from scratch each launch, and the
+  // card must not flicker back while it does). Both persisted.
+  onboarded: boolean
+  setOnboarded: (v: boolean) => void
+  setupDone: boolean
+  setSetupDone: (v: boolean) => void
+  // The first-voyage card's home pick: the next chart tap saves the point
+  // as the starred home base (§10.3). Same arm-then-answer grammar as
+  // armedSlot. Transient.
+  pickingHome: boolean
+  setPickingHome: (v: boolean) => void
+
   // live data (not persisted)
   online: boolean
   setOnline: (v: boolean) => void
@@ -202,6 +218,8 @@ type PersistedPrefs = Pick<
   | 'windFlowOpacity'
   | 'flowTuning'
   | 'lowPower'
+  | 'onboarded'
+  | 'setupDone'
   | 'wxStrip'
   | 'wavePeriod'
   | 'planTimeMs'
@@ -253,6 +271,13 @@ export const useAppStore = create<AppState>()(
       setHelm: (v) => set({ helm: v }),
       lowPower: false,
       setLowPower: (v) => set({ lowPower: v }),
+
+      onboarded: false,
+      setOnboarded: (v) => set({ onboarded: v }),
+      setupDone: false,
+      setSetupDone: (v) => set({ setupDone: v }),
+      pickingHome: false,
+      setPickingHome: (v) => set({ pickingHome: v }),
 
       online: navigator.onLine,
       setOnline: (v) => set({ online: v }),
@@ -348,6 +373,8 @@ export const useAppStore = create<AppState>()(
         windFlowOpacity: s.windFlowOpacity,
         flowTuning: s.flowTuning,
         lowPower: s.lowPower,
+        onboarded: s.onboarded,
+        setupDone: s.setupDone,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,
         planTimeMs: s.planTimeMs,

@@ -2476,3 +2476,179 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* ---------- first run (§10): welcome cards + first-voyage card ---------- */
+
+.welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(6, 12, 19, 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+}
+
+.welcome-skip {
+  position: absolute;
+  top: calc(var(--sat) + 14px);
+  right: 18px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--c-text-dim);
+  padding: 6px 10px;
+}
+
+.welcome-card {
+  width: min(340px, 86vw);
+  background: var(--c-surface-heavy);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.4);
+  backdrop-filter: blur(var(--blur)) saturate(1.4);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-panel);
+  padding: 30px 24px 20px;
+  text-align: center;
+  animation: rise-in 0.3s ease-out;
+}
+
+.welcome-glyph {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+
+.welcome-card h2 {
+  font-size: 21px;
+  line-height: 1.2;
+  margin-bottom: 10px;
+  text-wrap: balance;
+}
+
+.welcome-card p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--c-text-dim);
+}
+
+.welcome-next {
+  margin-top: 20px;
+  background: var(--c-accent);
+  color: #06121c;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 11px 28px;
+  border-radius: 6px;
+}
+
+.welcome-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.welcome-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-border-strong);
+}
+
+.welcome-dots span.on {
+  background: var(--c-accent);
+}
+
+.fv {
+  border-radius: 6px;
+  padding: 12px 12px 10px;
+  animation: rise-in 0.25s ease-out;
+}
+
+.fv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  padding: 0 6px;
+}
+
+.fv-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.fv-sub {
+  font-size: 11.5px;
+  color: var(--c-text-dim);
+  margin-top: 2px;
+}
+
+.fv-close {
+  color: var(--c-text-faint);
+  padding: 4px;
+  margin: -4px -4px 0 0;
+}
+
+.fv-row {
+  display: flex;
+  width: 100%;
+  gap: 11px;
+  align-items: center;
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: 5px;
+}
+
+.fv-row:active {
+  background: var(--c-accent-dim);
+}
+
+.fv-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border-strong);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.fv-row.done .fv-box {
+  background: var(--c-track);
+  border-color: var(--c-track);
+  color: #06121c;
+}
+
+.fv-row.done .fv-text b {
+  color: var(--c-text-dim);
+}
+
+.fv-text b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.fv-text i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--c-text-dim);
+}
+
+.fv-prog {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(126, 178, 224, 0.15);
+  margin: 8px 6px 2px;
+  overflow: hidden;
+}
+
+.fv-prog i {
+  display: block;
+  height: 100%;
+  background: var(--c-track);
+  transition: width 0.3s;
+}
