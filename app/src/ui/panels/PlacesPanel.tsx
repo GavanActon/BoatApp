@@ -80,6 +80,7 @@ export default function PlacesPanel() {
   const windUnit = useAppStore((s) => s.windUnit)
   const waveLimitM = useAppStore((s) => s.waveLimitM)
   const windLimitKn = useAppStore((s) => s.windLimitKn)
+  const seaScale = useAppStore((s) => s.seaScaleM)
   const destination = useRouteStore((s) => s.destination)
   const focusPoint = useRouteStore((s) => s.focusPoint)
   const setDestination = useRouteStore((s) => s.setDestination)
@@ -304,7 +305,7 @@ export default function PlacesPanel() {
             {hereWx?.waterTempC != null && <>water {Math.round(hereWx.waterTempC)}° · </>}
             {sunsetMs != null && <>sets {timeLabel(sunsetMs)}</>}
           </span>
-          <b className="numeral" style={{ color: hereWx?.waveM != null ? seaColor(hereWx.waveM) : SEA_UNKNOWN }}>
+          <b className="numeral" style={{ color: hereWx?.waveM != null ? seaColor(hereWx.waveM, seaScale) : SEA_UNKNOWN }}>
             {hereWx?.waveM != null ? hereWx.waveM.toFixed(1) : '–'}
           </b>
         </span>
@@ -410,7 +411,7 @@ export default function PlacesPanel() {
                   {r.waveM != null && (
                     <>
                       {' · '}
-                      <b style={{ color: seaColor(r.waveM) }}>{r.waveM.toFixed(1)} m</b>
+                      <b style={{ color: seaColor(r.waveM, seaScale) }}>{r.waveM.toFixed(1)} m</b>
                     </>
                   )}
                 </span>

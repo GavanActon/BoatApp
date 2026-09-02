@@ -171,6 +171,7 @@ function PlanBlock() {
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const speedUnit = useAppStore((s) => s.speedUnit)
   const windUnit = useAppStore((s) => s.windUnit)
+  const seaScale = useAppStore((s) => s.seaScaleM)
   const route = useRouteStore((s) => s.route)
   const routeError = useRouteStore((s) => s.routeError)
   const plan = useRouteStore((s) => s.plan)
@@ -194,13 +195,13 @@ function PlanBlock() {
             {lanes.out != null && (
               <>
                 {' · '}
-                <b style={{ color: seaColor(lanes.out) }}>{lanes.out.toFixed(1)} m</b> out
+                <b style={{ color: seaColor(lanes.out, seaScale) }}>{lanes.out.toFixed(1)} m</b> out
               </>
             )}
             {lanes.back != null && (
               <>
                 {' · '}
-                <b style={{ color: seaColor(lanes.back) }}>{lanes.back.toFixed(1)} m</b> back
+                <b style={{ color: seaColor(lanes.back, seaScale) }}>{lanes.back.toFixed(1)} m</b> back
               </>
             )}
             {lanes.windKn != null && (

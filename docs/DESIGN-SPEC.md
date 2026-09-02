@@ -128,8 +128,12 @@ carries how big the water is. The top is deep purple, never the alarm red
 (§1.3). Green/amber/red as a good/bad judgement stays retired everywhere it
 means "how good is this for you" — the ramp is a magnitude, and the same
 band means the same water on the strip, the lanes, the blobs and the sheet.
+Where the bands fall is the skipper's, not the app's: the ramp is anchored on
+the height at which Rough (the red-orange band) begins — *Settings › Sea-state
+scale*, 0.5 m by default, because on this water half a metre is a big sea for
+a small boat — and every band scales with it in proportion.
 *Check:* no `--cond-good/mod/rough` or `conditionFor()` driving any colour a
-user sees.
+user sees; every band bound is read from `seaBounds()`, none hard-coded.
 
 **1.3 MUST — Red is reserved.**
 The warning colour appears only for a hazard an agency issued, quoted and

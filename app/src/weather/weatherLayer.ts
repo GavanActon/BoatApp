@@ -5,7 +5,7 @@ import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { depthAt } from '../map/depthGrid'
 import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo } from './rdwps'
-import { SEA_BANDS } from './seaState'
+import { SEA_BANDS, seaBounds, seaScaleK } from './seaState'
 import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
 import {
@@ -106,6 +106,41 @@ function makeWaveArrowImage(): ImageData {
   return ctx.getImageData(0, 0, size, size)
 }
 
+// The sea-state ramp's own hues (weather/seaState.ts), with alpha — the
+// blobs, the strip and the lanes must tell one colour story. The stop
+// heights were laid out on the base ramp and scale with the skipper's
+// sea-state anchor exactly as the bands do.
+const BLOB_STOPS: [number, string][] = [
+  [0, 'rgba(185, 239, 173, 0.0)'],
+  [0.3, 'rgba(127, 220, 106, 0.4)'],
+  [0.8, 'rgba(242, 197, 61, 0.5)'],
+  [1.5, 'rgba(233, 110, 63, 0.55)'],
+  [2.2, 'rgba(199, 79, 134, 0.6)'],
+  [3.0, 'rgba(123, 45, 143, 0.65)'],
+]
+
+function waveBlobColor(roughM?: number): never {
+  const k = seaScaleK(roughM)
+  return [
+    'interpolate',
+    ['linear'],
+    ['coalesce', ['get', 'wave'], 0],
+    ...BLOB_STOPS.flatMap(([h, c]) => [Math.round(h * k * 100) / 100, c]),
+  ] as never
+}
+
+// step through the ramp's own band bounds, so a number and a crest would
+// always have told the same colour story
+function waveNumColor(roughM?: number): never {
+  const bounds = seaBounds(roughM)
+  return [
+    'step',
+    ['coalesce', ['get', 'wave'], 0],
+    SEA_BANDS[0].color,
+    ...SEA_BANDS.slice(0, -1).flatMap((_, i) => [bounds[i], SEA_BANDS[i + 1].color]),
+  ] as never
+}
+
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
 
@@ -127,25 +162,7 @@ function addLayers(map: MlMap) {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 7, 26, 11, 64],
       'circle-blur': 1.1,
       'circle-opacity': 0.55,
-      // the sea-state ramp's own hues (weather/seaState.ts), with alpha —
-      // the blobs, the strip and the lanes must tell one colour story
-      'circle-color': [
-        'interpolate',
-        ['linear'],
-        ['coalesce', ['get', 'wave'], 0],
-        0,
-        'rgba(185, 239, 173, 0.0)',
-        0.3,
-        'rgba(127, 220, 106, 0.4)',
-        0.8,
-        'rgba(242, 197, 61, 0.5)',
-        1.5,
-        'rgba(233, 110, 63, 0.55)',
-        2.2,
-        'rgba(199, 79, 134, 0.6)',
-        3.0,
-        'rgba(123, 45, 143, 0.65)',
-      ],
+      'circle-color': waveBlobColor(),
     },
   })
 
@@ -166,14 +183,7 @@ function addLayers(map: MlMap) {
       'text-allow-overlap': true,
     },
     paint: {
-      // step through the ramp's own band bounds, so a number and a crest
-      // would always have told the same colour story
-      'text-color': [
-        'step',
-        ['coalesce', ['get', 'wave'], 0],
-        SEA_BANDS[0].color,
-        ...SEA_BANDS.slice(0, -1).flatMap((b, i) => [b.maxM, SEA_BANDS[i + 1].color]),
-      ] as never,
+      'text-color': waveNumColor(),
       'text-halo-color': 'rgba(8, 20, 34, 0.85)',
       'text-halo-width': 1.3,
     },
@@ -741,6 +751,14 @@ export function initWeatherLayer() {
 
   useAppStore.subscribe((s, prev) => {
     if (s.windUnit !== prev.windUnit) withMap(render) // arrow labels carry the unit
+    // the ramp moved under the water — repaint the blobs and the numbers
+    if (s.seaScaleM !== prev.seaScaleM) {
+      withMap((map) => {
+        if (layersOn !== map || !map.getLayer('wx-wave')) return
+        map.setPaintProperty('wx-wave', 'circle-color', waveBlobColor(s.seaScaleM))
+        map.setPaintProperty('wx-wave-num', 'text-color', waveNumColor(s.seaScaleM))
+      })
+    }
     if (
       s.layers.weather !== prev.layers.weather ||
       s.layers.seaFlow !== prev.layers.seaFlow ||

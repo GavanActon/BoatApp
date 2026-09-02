@@ -546,6 +546,14 @@ function syncSea(map: MlMap) {
   })
 }
 
+// Dev only: this module is a singleton engine — its canvas and listeners are
+// wired to one map and one store instance. A Vite hot swap (its own edit, or
+// one bubbling through appStore/weatherLayer) resets the module state while
+// the old engine keeps animating, and every hot edit stacked another crest
+// field on the chart (the "waves doubled up" bug). decline() is a Vite noop,
+// so accept the update and take the full reload ourselves.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload())
+
 /** Call once at startup; wires the sea to its switches. */
 export function initSeaFlow() {
   // StrictMode double-runs effects in dev; two sets of listeners would fight

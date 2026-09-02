@@ -1,7 +1,8 @@
 import { useAppStore } from '../state/appStore'
-import { SEA_BANDS } from '../weather/seaState'
+import { SEA_BANDS, seaColor } from '../weather/seaState'
 import { speedUnitLabel } from '../units'
 import { IconWindArrow } from './icons'
+import SeaRamp from './SeaRamp'
 
 /**
  * Read-the-water (DESIGN-SPEC §10.4): one card that decodes the app's whole
@@ -18,6 +19,7 @@ export default function NumbersGuide() {
   const setSeen = useAppStore((s) => s.setNumbersSeen)
   const windUnit = useAppStore((s) => s.windUnit)
   const depthUnit = useAppStore((s) => s.depthUnit)
+  const seaScale = useAppStore((s) => s.seaScaleM)
 
   if (!show) return null
   const close = () => {
@@ -31,7 +33,7 @@ export default function NumbersGuide() {
         <h2>Reading the water</h2>
 
         <div className="ng-anatomy">
-          <div className="ng-cell" aria-hidden>
+          <div className="ng-cell" aria-hidden style={{ borderTopColor: seaColor(0.4, seaScale) }}>
             <span className="ng-cell-h">2P</span>
             <IconWindArrow deg={225} size={13} />
             <span className="ng-cell-w numeral">12</span>
@@ -59,10 +61,8 @@ export default function NumbersGuide() {
           </div>
         </div>
 
-        <div className="ng-ramp" aria-hidden>
-          {SEA_BANDS.map((b) => (
-            <i key={b.name} style={{ background: b.color }} title={b.name} />
-          ))}
+        <div className="ng-ramp">
+          <SeaRamp roughM={seaScale} />
         </div>
         <div className="ng-ramp-labels">
           <span>{SEA_BANDS[0].name}</span>

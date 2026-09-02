@@ -39,6 +39,7 @@ export default function HourlyDetail({
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const showPeriod = useAppStore((s) => s.wavePeriod)
   const windUnit = useAppStore((s) => s.windUnit)
+  const seaScale = useAppStore((s) => s.seaScaleM)
   const dayMode = dayStartMs != null && !isToday(dayStartMs)
 
   const rows = useMemo(
@@ -81,7 +82,7 @@ export default function HourlyDetail({
             <span className="hd-wave">
               {r.waveM != null ? (
                 <>
-                  <b className="numeral" style={{ color: seaColor(r.waveM) }}>{r.waveM.toFixed(1)}</b> m
+                  <b className="numeral" style={{ color: seaColor(r.waveM, seaScale) }}>{r.waveM.toFixed(1)}</b> m
                   {showPeriod && formatPeriod(r.wavePeriodS) && (
                     <em className="numeral"> {formatPeriod(r.wavePeriodS)}</em>
                   )}

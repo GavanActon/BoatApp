@@ -76,6 +76,7 @@ export default function WeatherStrip() {
   const showPeriod = useAppStore((s) => s.wavePeriod)
   const windUnit = useAppStore((s) => s.windUnit)
   const online = useAppStore((s) => s.online)
+  const seaScale = useAppStore((s) => s.seaScaleM)
   // the first fix arrives after mount; without a pinned start it IS the
   // trip's start, so the strip has to come off home waters when it lands
   const hasFix = useGpsStore((s) => s.fix != null)
@@ -228,6 +229,16 @@ export default function WeatherStrip() {
 
   const planHourMs = planTimeMs == null ? null : floorHourMs(planTimeMs)
 
+  // The planned window, drawn where the hours live: with a back time set,
+  // the strip marks the departure (the active cell), the return, and every
+  // hour between — so leaving AND coming back read straight off the strip
+  // instead of only off the card's chips. "Leaving now" floors to the
+  // now-cell's hour.
+  const backHourMs = planEndMs == null ? null : floorHourMs(planEndMs)
+  const outHourMs = backHourMs == null ? null : (planHourMs ?? floorHourMs(Date.now()))
+  const outDayMs = outHourMs == null ? null : startOfDayMs(outHourMs)
+  const backDayMs = backHourMs == null ? null : startOfDayMs(backHourMs)
+
   function pickDay(dayStartMs: number) {
     // with a chip armed the day tap only turns the keypad's page — the plan
     // moves when an HOUR is picked, and only the armed end of it
@@ -284,16 +295,18 @@ export default function WeatherStrip() {
           // they carry no sky icon. These stay for the spoken label:
           const wet = wx?.precipMaxPct != null && wx.precipMaxPct >= 40
           const thunder = wx?.thunder === true
+          const inWindow =
+            outDayMs != null && d.dayStartMs >= outDayMs && d.dayStartMs <= backDayMs!
           return (
             <button
               key={d.dayStartMs}
-              className={`wxday${sel ? ' wxday-on' : ''}`}
-              style={{ borderTopColor: seaColor(wx?.waveMaxM ?? null) }}
+              className={`wxday${sel ? ' wxday-on' : ''}${inWindow ? ' wxday-window' : ''}`}
+              style={{ borderTopColor: seaColor(wx?.waveMaxM ?? null, seaScale) }}
               onClick={() => pickDay(d.dayStartMs)}
               role="tab"
               aria-selected={sel}
               aria-label={`${dayLabel(d.dayStartMs)}: ${
-                wx?.waveMaxM != null ? `${seaName(wx.waveMaxM)}, ${wx.waveMaxM.toFixed(1)} metres` : 'no wave data'
+                wx?.waveMaxM != null ? `${seaName(wx.waveMaxM, seaScale)}, ${wx.waveMaxM.toFixed(1)} metres` : 'no wave data'
               }${
                 wxCode != null && wxTemp != null
                   ? `, ${skyLabel(wxCode)}, high ${Math.round(wxTemp)} degrees`
@@ -342,6 +355,8 @@ export default function WeatherStrip() {
             // end along, keeping the window's span — the way dragging the
             // departure always has.
             const armable = armedEnd != null
+            const inWindow = outHourMs != null && cellMs >= outHourMs && cellMs <= backHourMs!
+            const isBack = backHourMs != null && cellMs === backHourMs
             const period = showPeriod ? formatPeriod(r.wavePeriodS) : null
             const wxText =
               `wind ${windSpeed(windUnit, r.windKn)} ${speedUnitLabel(windUnit)}, waves ${r.waveM != null ? r.waveM.toFixed(1) : 'unknown'} metres` +
@@ -350,8 +365,8 @@ export default function WeatherStrip() {
             return (
               <button
                 key={cellMs}
-                className={`wxcell${active ? ' wx-active' : ''}${armable ? ' wx-armable' : ''}`}
-                style={{ borderTopColor: seaColor(r.waveM) }}
+                className={`wxcell${active ? ' wx-active' : ''}${isBack ? ' wx-back' : ''}${inWindow ? ' wx-window' : ''}${armable ? ' wx-armable' : ''}`}
+                style={{ borderTopColor: seaColor(r.waveM, seaScale) }}
                 onClick={() => {
                   // any accepted time-tap moves the app from exploring to
                   // planning — including "Now", which is a choice, not a default
@@ -391,7 +406,9 @@ export default function WeatherStrip() {
                 }}
                 aria-label={
                   `${isNowCell ? 'Now' : hourLabel(r.time)}: ${wxText}` +
-                  (rating?.stayMin != null ? `, ${durationLabel(rating.stayMin)} there` : '')
+                  (rating?.stayMin != null ? `, ${durationLabel(rating.stayMin)} there` : '') +
+                  (active && backHourMs != null ? ', planned departure' : '') +
+                  (isBack ? ', planned return' : '')
                 }
               >
                 <span className="wxcell-h numeral">{isNowCell ? 'Now' : hourLabel(r.time)}</span>

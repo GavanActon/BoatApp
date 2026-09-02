@@ -262,6 +262,29 @@
   color: var(--c-accent);
 }
 
+/* ---------- the planned window, drawn on the strip ----------
+   Out and back right where the hours live: the departure keeps the solid
+   accent outline (wx-active), the RETURN hour wears a dashed one — the same
+   vocabulary as the chart's dashed ride-home lane — and every hour between
+   carries a thin underline. The day chips get the underline too, so a window
+   that spans days still reads as one span. */
+.wx-window {
+  box-shadow: inset 0 -2.5px 0 rgba(63, 200, 255, 0.35);
+}
+
+.wx-back {
+  outline: 1.5px dashed var(--c-accent);
+  outline-offset: -1.5px;
+}
+
+.wx-back .wxcell-h {
+  color: var(--c-accent);
+}
+
+.wxday-window {
+  box-shadow: inset 0 -2.5px 0 rgba(63, 200, 255, 0.35);
+}
+
 .wxstrip-stale {
   position: absolute;
   top: -3px;
@@ -2684,6 +2707,7 @@
   border-radius: 5px;
   background: var(--c-bg-raised);
   border: 1px solid var(--c-border-strong);
+  /* the colour is set inline — the sample wears the ramp band its 0.4 m lands in */
   border-top: 2px solid #b9efad;
 }
 
@@ -2728,15 +2752,46 @@
 }
 
 .ng-ramp {
+  margin-top: 16px;
+}
+
+/* the sea-state ramp with the height each band begins at under its edge —
+   the legend in the numbers guide and the live preview under the Settings
+   slider are the same drawing (ui/SeaRamp.tsx) */
+.sea-ramp-bar {
   display: flex;
   height: 10px;
   border-radius: 3px;
   overflow: hidden;
-  margin-top: 16px;
 }
 
-.ng-ramp i {
+.sea-ramp-bar i {
   flex: 1;
+}
+
+.sea-ramp-ticks {
+  position: relative;
+  height: 13px;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--c-text-dim);
+}
+
+.sea-ramp-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* the scale row keeps a title, unlike the opacity sliders it borrows from */
+.sea-scale-row {
+  padding-top: 11px;
+  border-bottom: 0;
+}
+
+.sea-scale-preview {
+  padding: 2px 4px 12px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
 }
 
 .ng-ramp-labels {

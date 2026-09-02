@@ -376,6 +376,11 @@ function syncAmbient(map: MlMap) {
 
 let wired = false
 
+// Dev only: singleton engine, same story as the sea's — a hot swap orphans
+// the running canvas and doubles the wind. decline() is a Vite noop, so
+// accept the update and take the full reload ourselves.
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload())
+
 /** Call once at startup; wires the ambient layer to its switches. */
 export function initWindFlow() {
   // StrictMode double-runs effects in dev; two sets of listeners would fight

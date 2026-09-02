@@ -1,6 +1,13 @@
 import { Fragment, useState } from 'react'
-import { FLOW_TUNING_DEFAULTS, useAppStore, type FlowTuning } from '../../state/appStore'
+import {
+  FLOW_TUNING_DEFAULTS,
+  SEA_SCALE_MAX_M,
+  SEA_SCALE_MIN_M,
+  useAppStore,
+  type FlowTuning,
+} from '../../state/appStore'
 import { SPEED_UNITS } from '../../units'
+import SeaRamp from '../SeaRamp'
 
 /** One tuning slider row — the motion layers are dialled in on the water,
  *  not in code, so every parameter that shapes the look gets one of these. */
@@ -77,6 +84,8 @@ export default function LayersPanel() {
   const setWxStrip = useAppStore((s) => s.setWxStrip)
   const wavePeriod = useAppStore((s) => s.wavePeriod)
   const setWavePeriod = useAppStore((s) => s.setWavePeriod)
+  const seaScaleM = useAppStore((s) => s.seaScaleM)
+  const setSeaScale = useAppStore((s) => s.setSeaScale)
   const depthUnit = useAppStore((s) => s.depthUnit)
   const setDepthUnit = useAppStore((s) => s.setDepthUnit)
   const speedUnit = useAppStore((s) => s.speedUnit)
@@ -232,6 +241,30 @@ export default function LayersPanel() {
           onChange={(e) => setWavePeriod(e.target.checked)}
         />
       </label>
+
+      {/* where the sea-state ramp's bands fall — anchored on the height at
+          which Rough begins; the preview underneath is the real ramp with
+          the bounds this setting gives it, so the slider is read, not guessed */}
+      <div className="row layer-opacity sea-scale-row">
+        <div className="row-text">
+          <span className="row-title">Sea-state scale</span>
+          <span className="row-desc">
+            Rough from · <b className="numeral">{seaScaleM.toFixed(1)} m</b>
+          </span>
+        </div>
+        <input
+          type="range"
+          min={SEA_SCALE_MIN_M}
+          max={SEA_SCALE_MAX_M}
+          step={0.1}
+          value={seaScaleM}
+          aria-label="Sea-state scale: the wave height at which Rough begins"
+          onChange={(e) => setSeaScale(Number(e.target.value))}
+        />
+      </div>
+      <div className="sea-scale-preview">
+        <SeaRamp roughM={seaScaleM} />
+      </div>
 
       <div className="panel-section">Units</div>
 

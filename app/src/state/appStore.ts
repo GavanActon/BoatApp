@@ -37,6 +37,14 @@ export interface FlowTuning {
   seaSat: number // crest saturation %, low = foam
 }
 
+/** The sea-state ramp's anchor (see weather/seaState.ts): the wave height at
+ *  which "Rough" — the red-orange band — begins. Half a metre, because on
+ *  this water that IS a big sea for a small boat; the base ramp's 1.4 m is
+ *  a ship's idea of rough and read a whole summer here as calm. */
+export const SEA_SCALE_DEFAULT_M = 0.5
+export const SEA_SCALE_MIN_M = 0.2
+export const SEA_SCALE_MAX_M = 2
+
 export const FLOW_TUNING_DEFAULTS: FlowTuning = {
   windDensity: 1100,
   windSpeed: 1,
@@ -222,6 +230,13 @@ interface AppState {
   waveLimitM: number | null
   windLimitKn: number | null
   setLimits: (waveM: number | null, windKn: number | null) => void
+
+  // Where the sea-state ramp's bands fall (persisted): the wave height at
+  // which Rough begins; every band scales with it. Unlike the limits above
+  // this is a display scale, not a judgement about the boat, so it has a
+  // default — the ramp has to be drawn from the first launch.
+  seaScaleM: number
+  setSeaScale: (m: number) => void
 }
 
 /** What actually reaches localStorage: the shape partialize writes, and so
@@ -250,6 +265,7 @@ type PersistedPrefs = Pick<
   | 'usualOutingMin'
   | 'waveLimitM'
   | 'windLimitKn'
+  | 'seaScaleM'
 >
 
 export const useAppStore = create<AppState>()(
@@ -360,6 +376,10 @@ export const useAppStore = create<AppState>()(
       waveLimitM: null,
       windLimitKn: null,
       setLimits: (waveLimitM, windLimitKn) => set({ waveLimitM, windLimitKn }),
+
+      seaScaleM: SEA_SCALE_DEFAULT_M,
+      setSeaScale: (m) =>
+        set({ seaScaleM: Math.min(SEA_SCALE_MAX_M, Math.max(SEA_SCALE_MIN_M, m)) }),
     }),
     {
       name: 'sandies-prefs',
@@ -416,6 +436,7 @@ export const useAppStore = create<AppState>()(
         usualOutingMin: s.usualOutingMin,
         waveLimitM: s.waveLimitM,
         windLimitKn: s.windLimitKn,
+        seaScaleM: s.seaScaleM,
       }),
       // deep-merge layers so prefs saved before a new layer key existed still get its default
       merge: (persisted, current) => {

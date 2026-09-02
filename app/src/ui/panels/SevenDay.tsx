@@ -38,6 +38,7 @@ export default function SevenDay({ forecast }: { forecast: PointForecast }) {
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const setPlanTime = useAppStore((s) => s.setPlanTime)
   const windUnit = useAppStore((s) => s.windUnit)
+  const seaScale = useAppStore((s) => s.seaScaleM)
 
   const days = useMemo(() => dailyOutlook(forecast), [forecast])
   const selDay = planTimeMs == null ? null : new Date(planTimeMs).setHours(0, 0, 0, 0)
@@ -59,7 +60,7 @@ export default function SevenDay({ forecast }: { forecast: PointForecast }) {
         const tLo = d.tempMinC == null ? null : Math.round(d.tempMinC)
         const gust = gustNote(d)
         const verdict =
-          d.waveMaxM != null ? seaName(d.waveMaxM) : null
+          d.waveMaxM != null ? seaName(d.waveMaxM, seaScale) : null
 
         const windText =
           lo == null ? 'no wind data' : `wind ${lo === hi ? lo : `${lo} to ${hi}`} ${speedUnitLabel(windUnit)}`
@@ -80,7 +81,7 @@ export default function SevenDay({ forecast }: { forecast: PointForecast }) {
           <button
             key={d.dayStartMs}
             className={`sd-row${sel ? ' sd-on' : ''}`}
-            style={{ borderLeftColor: seaColor(d.waveMaxM) }}
+            style={{ borderLeftColor: seaColor(d.waveMaxM, seaScale) }}
             onClick={() => {
               if (today) setPlanTime(null)
               else setPlanTime(d.window ? d.window.fromMs : d.dayStartMs + 9 * 3600_000)
@@ -120,7 +121,7 @@ export default function SevenDay({ forecast }: { forecast: PointForecast }) {
                 )
               ) : (
                 <>
-                  <b className="sd-verdict" style={{ color: seaColor(d.waveMaxM) }}>{verdict}</b>
+                  <b className="sd-verdict" style={{ color: seaColor(d.waveMaxM, seaScale) }}>{verdict}</b>
                   {' · '}
                   {d.window ? windowLabel(d.window) : 'no usable window'}
                   {gust != null && ` · gusts ${windSpeed(windUnit, gust)}`}
