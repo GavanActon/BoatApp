@@ -92,17 +92,8 @@ export default function FirstVoyageCard() {
         </span>
       </button>
 
-      <button
-        className={`fv-row ${firstRouteDone ? 'done' : ''}`}
-        onClick={() => !firstRouteDone && routeToSandies()}
-      >
-        <span className="fv-box">{firstRouteDone ? '✓' : ''}</span>
-        <span className="fv-text">
-          <b>Route to The Sandies</b>
-          <i>Your first run — lanes, times, the ride home</i>
-        </span>
-      </button>
-
+      {/* the guide comes BEFORE the first route: learn the numbers, then
+          watch them draw the run */}
       <button
         className={`fv-row ${numbersSeen ? 'done' : ''}`}
         onClick={() => useAppStore.getState().setShowNumbersGuide(true)}
@@ -111,6 +102,17 @@ export default function FirstVoyageCard() {
         <span className="fv-text">
           <b>Read the water</b>
           <i>What every number and colour means</i>
+        </span>
+      </button>
+
+      <button
+        className={`fv-row ${firstRouteDone ? 'done' : ''}`}
+        onClick={() => !firstRouteDone && routeToSandies()}
+      >
+        <span className="fv-box">{firstRouteDone ? '✓' : ''}</span>
+        <span className="fv-text">
+          <b>Route to The Sandies</b>
+          <i>Your first run — lanes, times, the ride home</i>
         </span>
       </button>
 
