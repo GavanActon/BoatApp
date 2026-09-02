@@ -10,7 +10,7 @@ import {
   exitHelmView,
   locateAndFollow,
   setHeadingUpMode,
-  startGps,
+  startGpsIfAllowed,
 } from './tracking/gpsService'
 import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
@@ -377,11 +377,12 @@ export default function App() {
     initSeaFlow()
     initForecastWatch()
 
-    // grab a position right away; follow it only when it's on our waters.
-    // the first fix is often a coarse wifi/IP guess, so hold out for an
-    // accurate one — falling back to whatever we have at the deadline —
-    // before deciding whether to follow
-    startGps()
+    // grab a position right away — but only when that costs no PROMPT: the
+    // first location ask belongs to onboarding (§10.2), never to a cold
+    // open. Granted-or-wanted installs behave exactly as before: follow it
+    // only when it's on our waters, and hold out for an accurate fix (the
+    // first is often a coarse wifi/IP guess) before deciding.
+    startGpsIfAllowed()
     let decided = false
     const decide = (fix: Fix | null) => {
       if (decided || !fix) return

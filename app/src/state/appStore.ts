@@ -122,6 +122,14 @@ interface AppState {
   // armedSlot. Transient.
   pickingHome: boolean
   setPickingHome: (v: boolean) => void
+  // The user has asked for GPS at least once (locate FAB, the checklist's
+  // location row, recording, helm view) — so future launches may start it
+  // without waiting to be asked again. Persisted. Until this is true, a
+  // launch only starts GPS when the OS says permission is already granted:
+  // the FIRST location prompt belongs to the onboarding row, never to a
+  // cold open (§10.2).
+  gpsWanted: boolean
+  setGpsWanted: (v: boolean) => void
 
   // live data (not persisted)
   online: boolean
@@ -220,6 +228,7 @@ type PersistedPrefs = Pick<
   | 'lowPower'
   | 'onboarded'
   | 'setupDone'
+  | 'gpsWanted'
   | 'wxStrip'
   | 'wavePeriod'
   | 'planTimeMs'
@@ -278,6 +287,8 @@ export const useAppStore = create<AppState>()(
       setSetupDone: (v) => set({ setupDone: v }),
       pickingHome: false,
       setPickingHome: (v) => set({ pickingHome: v }),
+      gpsWanted: false,
+      setGpsWanted: (v) => set({ gpsWanted: v }),
 
       online: navigator.onLine,
       setOnline: (v) => set({ online: v }),
@@ -375,6 +386,7 @@ export const useAppStore = create<AppState>()(
         lowPower: s.lowPower,
         onboarded: s.onboarded,
         setupDone: s.setupDone,
+        gpsWanted: s.gpsWanted,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,
         planTimeMs: s.planTimeMs,

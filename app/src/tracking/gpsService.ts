@@ -192,6 +192,10 @@ function restartWatch() {
 
 export function startGps() {
   if (watchId != null || !('geolocation' in navigator)) return
+  // every call reaches here from a user gesture (locate, the onboarding
+  // row, recording, helm) or from startGpsIfAllowed's granted check — so
+  // from now on launches may start GPS without being asked again
+  useAppStore.getState().setGpsWanted(true)
   // A plain-http page served over the LAN is not a secure context, and every
   // browser refuses geolocation there — Chrome reports it as PERMISSION_DENIED,
   // which had the app telling people to allow location for a site where
@@ -234,6 +238,27 @@ export function stopGps() {
   wakeLock = null
   useGpsStore.getState().setStatus('off')
   useGpsStore.getState().setFix(null)
+}
+
+/**
+ * The launch-time start: never the one that PROMPTS. The first location
+ * prompt belongs to the onboarding card's "Allow location" row (§10.2), so
+ * a cold open only starts the watch when the user has asked for GPS before
+ * (gpsWanted) or the OS reports permission already granted — covering
+ * installs that predate the flag. Browsers without the Permissions API
+ * simply wait for the first tap on locate.
+ */
+export function startGpsIfAllowed() {
+  if (useAppStore.getState().gpsWanted) {
+    startGps()
+    return
+  }
+  navigator.permissions
+    ?.query({ name: 'geolocation' })
+    .then((p) => {
+      if (p.state === 'granted') startGps()
+    })
+    .catch(() => {})
 }
 
 /** Center the map on the current fix (requesting GPS if needed) and enable follow. */
