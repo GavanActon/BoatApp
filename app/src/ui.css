@@ -273,16 +273,29 @@
 }
 
 .wx-back {
-  outline: 1.5px dashed var(--c-accent);
+  outline: 1.5px dashed var(--c-track);
   outline-offset: -1.5px;
+  background: rgba(89, 224, 184, 0.1);
 }
 
 .wx-back .wxcell-h {
-  color: var(--c-accent);
+  color: var(--c-track);
 }
 
 .wxday-window {
   box-shadow: inset 0 -2.5px 0 rgba(63, 200, 255, 0.35);
+}
+
+/* with a chip armed, its existing pick is the keypad's current value: lit
+   solid so "move it from HERE" has a visible here */
+.wx-arm-back .wx-back {
+  outline-style: solid;
+  outline-width: 2px;
+  background: rgba(89, 224, 184, 0.18);
+}
+
+.wx-arm-out .wx-active {
+  outline-width: 2px;
 }
 
 .wxstrip-stale {
@@ -1271,11 +1284,6 @@
   border: 1px solid transparent;
 }
 
-.dest-pick {
-  border-style: dashed;
-  border-color: var(--c-border-strong);
-}
-
 .trip-name-input {
   width: 100%;
   background: none;
@@ -1765,8 +1773,31 @@
   color: var(--c-text-faint);
 }
 
+/* Out and back each own a colour, worn everywhere the end appears — the
+   chip's label here, the hour tile on the strip, the armed banner. Accent
+   for leaving; the home-ward green (the Home star's, the track's) for the
+   ride back. The times stay neutral: facts, not grades. */
+.win-out .win-k {
+  color: var(--c-accent);
+}
+
+.win-back:not(:disabled) .win-k {
+  color: var(--c-track);
+}
+
 .win-chip.win-armed .win-k {
   color: var(--c-accent);
+}
+
+/* armed BACK: the same keypad grammar, wearing back's green */
+.win-back.win-armed {
+  border-color: var(--c-track);
+  background: rgba(89, 224, 184, 0.12);
+  box-shadow: 0 0 0 3px rgba(89, 224, 184, 0.14);
+}
+
+.win-back.win-armed .win-k {
+  color: var(--c-track);
 }
 
 .win-v {
@@ -1839,6 +1870,11 @@
   color: var(--c-accent);
   text-align: center;
   padding: 2px 0;
+}
+
+/* picking the BACK hour: the keypad banner wears back's green */
+.wxstrip-arm-back {
+  color: var(--c-track);
 }
 
 /* ---------- the live leg: time left, arrival, the far end ---------- */
@@ -2091,39 +2127,6 @@
   gap: 6px;
 }
 
-.place-here {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-tile);
-  background: rgba(16, 31, 47, 0.45);
-  padding: 7px 9px 8px;
-  color: var(--c-text);
-  text-align: left;
-}
-
-.place-here .pg-top {
-  gap: 8px;
-}
-
-.place-here .nm {
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.place-here .meta {
-  color: var(--c-text-dim);
-  font-size: 11.5px;
-  margin-left: auto;
-}
-
-.place-here b {
-  font-size: 14px;
-  font-weight: 700;
-}
-
 .place-list {
   display: flex;
   flex-direction: column;
@@ -2272,7 +2275,9 @@
 .places-tools {
   display: flex;
   justify-content: flex-end;
-  margin: -4px 2px;
+  /* first thing under the header now the Here row is gone: air above, so
+     Edit doesn't crowd the close button, and a little pull toward its list */
+  margin: 6px 2px -2px;
 }
 
 .places-tools .linklike {
@@ -2494,10 +2499,28 @@
   font-weight: 700;
 }
 
-.slot-specials {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+/* the two answers above the list: where the boat is, and anywhere on the chart */
+.place-opt {
+  width: 100%;
+  border-style: dashed;
+  border-color: var(--c-border-strong);
+}
+
+.place-opt .pg-top {
+  color: var(--c-accent);
+}
+
+.place-opt .nm {
+  color: var(--c-text);
+}
+
+.place-opt:disabled {
+  opacity: 0.45;
+}
+
+.pg-pin {
+  display: inline-flex;
+  color: var(--c-accent);
 }
 
 /* ---------- first run (§10): welcome cards + first-voyage card ---------- */

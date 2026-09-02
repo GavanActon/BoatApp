@@ -92,7 +92,8 @@ export default function HourlyDetail({
               )}
             </span>
             <span className="hd-right">
-              <b className="numeral">{Math.round(r.tempC)}°</b> <em>{skyLabel(r.weatherCode)}</em>
+              {Number.isFinite(r.tempC) && <b className="numeral">{Math.round(r.tempC)}° </b>}
+              <em>{skyLabel(r.weatherCode)}</em>
             </span>
           </div>
         )

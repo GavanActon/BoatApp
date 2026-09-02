@@ -4,7 +4,8 @@ import { compass, type TripPhase, type TripSample } from '../routing/tripPlan'
 import { useAppStore } from '../state/appStore'
 import { dayLabel, isToday, startOfDayMs, timeLabel } from '../time'
 import { speedUnitLabel, windSpeed } from '../units'
-import { fetchPointForecast, formatPeriod, type PointForecast } from '../weather/openMeteo'
+import { formatPeriod, type PointForecast } from '../weather/openMeteo'
+import { pointForecastCached } from '../weather/weatherLayer'
 import { IconWindArrow } from './icons'
 import HourlyDetail from './panels/HourlyDetail'
 
@@ -85,9 +86,12 @@ function LegForecast({ lon, lat, atMs }: { lon: number; lat: number; atMs: numbe
     let alive = true
     setFc(null)
     setFailed(false)
-    fetchPointForecast(lon, lat)
-      .then((r) => alive && setFc(r.forecast))
-      .catch(() => alive && setFailed(true))
+    // off the cache, never the network — the leg's water is on the grid
+    void pointForecastCached(lon, lat).then((r) => {
+      if (!alive) return
+      if (r) setFc(r.forecast)
+      else setFailed(true)
+    })
     return () => {
       alive = false
     }

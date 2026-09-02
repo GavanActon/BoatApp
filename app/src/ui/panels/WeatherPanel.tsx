@@ -4,9 +4,9 @@ import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
 import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
-import { fetchPointForecast, type PointForecast } from '../../weather/openMeteo'
+import type { PointForecast } from '../../weather/openMeteo'
 import { waveOverlayStatus } from '../../weather/rdwps'
-import { onWeatherGrid, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
+import { onWeatherGrid, pointForecastCached, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
 import { IconLocate, IconRefresh } from '../icons'
 import ForecastCharts from './ForecastCharts'
 import HourlyDetail from './HourlyDetail'
@@ -47,11 +47,14 @@ export default function WeatherPanel() {
     setError(null)
     setSpot(label)
     try {
-      const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat)
-      setForecast(fc)
-      setStale(st)
+      // the panel READS: the strip polls its focus point, the weather clock
+      // polls the grid, and this shows whichever of those covers the spot
+      const r = await pointForecastCached(lon, lat)
+      if (!r) throw new Error('no forecast yet')
+      setForecast(r.forecast)
+      setStale(r.stale)
     } catch {
-      setError('No forecast available — connect to the internet once to fetch it.')
+      setError('No forecast yet — it arrives with the first weather fetch.')
     } finally {
       setLoading(false)
     }

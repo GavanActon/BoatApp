@@ -43,10 +43,6 @@ interface RouteState {
   editing: boolean
   setEditing: (v: boolean) => void
 
-  // "tap the map to set…" mode — what the next map tap places
-  picking: 'dest' | 'start' | null
-  setPicking: (v: 'dest' | 'start' | null) => void
-
   // the map-facing trip card — the trip's home on the nav screen. 'trip' is
   // the planned/under-way card docked over the map; null = dismissed (the top
   // chip stands in). With no destination the dock always shows the home card
@@ -132,7 +128,6 @@ export const useRouteStore = create<RouteState>()(
         set({
           destination,
           viaPoints: [],
-          picking: null,
           editing: false, // a new trip is not a course you were part-way through editing
           focusPoint: null,
           reachedDestAt: null, // a fresh destination has not been reached
@@ -142,7 +137,7 @@ export const useRouteStore = create<RouteState>()(
       // the start survives destination changes — where you launch from rarely
       // changes trip to trip
       startPoint: null,
-      setStartPoint: (startPoint) => set({ startPoint, picking: null }),
+      setStartPoint: (startPoint) => set({ startPoint }),
       moveStartPoint: (lon, lat) =>
         set((s) => (s.startPoint ? { startPoint: { ...s.startPoint, lon, lat } } : {})),
       viaPoints: [],
@@ -166,9 +161,6 @@ export const useRouteStore = create<RouteState>()(
 
       editing: false,
       setEditing: (editing) => set({ editing }),
-
-      picking: null,
-      setPicking: (picking) => set({ picking }),
 
       // the dock is always present; with no destination it rests on the spots
       card: 'trip',

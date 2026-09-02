@@ -22,9 +22,15 @@ import {
 } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn, windSpeed } from '../units'
-import { fetchPointForecast, type PointForecast } from '../weather/openMeteo'
+import type { PointForecast } from '../weather/openMeteo'
 import { seaColor } from '../weather/seaState'
-import { ensureWeatherGrid, gridConditionsAt, onWeatherHour, weatherGridInfo } from '../weather/weatherLayer'
+import {
+  ensureWeatherGrid,
+  gridConditionsAt,
+  onWeatherHour,
+  pointForecastFromGrid,
+  weatherGridInfo,
+} from '../weather/weatherLayer'
 import { IconClose, IconLocate, IconMinus, IconPlus, IconStar, IconSwap } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
@@ -101,36 +107,17 @@ function useWeatherGridTick() {
   return gridTick
 }
 
-const FC_REFRESH_MS = 30 * 60_000
-
-/** The subject's point forecast — the dock reads ONE thing off it, whether
- *  thunder is due today. Same cache the strip fills, so this costs nothing
- *  new while online and still answers offline. */
+/** The subject's forecast, off the cached grid — the dock reads ONE thing
+ *  off it, whether thunder is due today. Never a fetch of its own: the grid
+ *  tick above re-renders the card when a grid lands, and the hour tick moves
+ *  "today" along. */
 function useSubjectForecast(lon: number, lat: number): PointForecast | null {
-  const [fc, setFc] = useState<PointForecast | null>(null)
-  // two decimals is the point cache's own key resolution — finer changes are
-  // GPS jitter, and refetching on jitter would thrash the cache for nothing
+  const [, setHourTick] = useState(0)
+  useEffect(() => onWeatherHour(() => setHourTick((t) => t + 1)), [])
+  // two decimals: finer changes are GPS jitter, not a different sky
   const lonKey = Math.round(lon * 100) / 100
   const latKey = Math.round(lat * 100) / 100
-  useEffect(() => {
-    let alive = true
-    setFc(null)
-    const load = () =>
-      fetchPointForecast(lonKey, latKey)
-        .then((r) => alive && setFc(r.forecast))
-        .catch(() => {
-          /* no chip until a forecast lands */
-        })
-    void load()
-    const t = setInterval(() => void load(), FC_REFRESH_MS)
-    const offHour = onWeatherHour(() => void load()) // hourly data steps hourly
-    return () => {
-      alive = false
-      clearInterval(t)
-      offHour()
-    }
-  }, [lonKey, latKey])
-  return fc
+  return pointForecastFromGrid(lonKey, latKey)
 }
 
 /** Biggest sea on each lane — the plan line quotes both, because on this
@@ -258,7 +245,6 @@ function PlanBlock() {
 export default function TripCard() {
   const card = useRouteStore((s) => s.card)
   const setCard = useRouteStore((s) => s.setCard)
-  const picking = useRouteStore((s) => s.picking)
   const destination = useRouteStore((s) => s.destination)
   const setDestination = useRouteStore((s) => s.setDestination)
   const startPoint = useRouteStore((s) => s.startPoint)
@@ -303,7 +289,7 @@ export default function TripCard() {
   const setArmedSlot = useAppStore((s) => s.setArmedSlot)
 
   // no departure to resolve? arming From IS the answer — the sheet opens
-  // asking where the boat lives, and picking a place stars it
+  // with the boat, the chart, the saved starts and the places on offer
   const noStart = routeError === NO_START_MSG
   useEffect(() => {
     if (noStart) {
@@ -322,9 +308,6 @@ export default function TripCard() {
     setArmedSlot(slot)
     useAppStore.getState().setSheetTab('places')
   }
-
-  // hidden while picking — the map needs the room; the top chip guides
-  if (picking) return null
 
   // no subject, no dock: with nothing picked the chart stands alone and the
   // Places sheet is where you look around (§0.2)
@@ -484,8 +467,8 @@ export default function TripCard() {
 }
 
 /** The water you'd swim in at the subject, off the cached grid — it simply
- *  sits out until the grid lands. Sunset lives on the Places sheet's Here
- *  row now, with the rest of the standing-here facts. */
+ *  sits out until the grid lands. (The Places sheet's Here row, which once
+ *  carried sunset with the rest of the standing-here facts, is gone.) */
 function StandingFacts({ lon, lat }: { lon: number; lat: number }) {
   const water = gridConditionsAt(lon, lat, Date.now())?.waterTempC ?? null
   if (water == null) return null
@@ -547,7 +530,7 @@ function WindowChips() {
   return (
     <div className={`win-chips${picked ? '' : ' win-ghost'}`}>
       <button
-        className={`win-chip ${armedEnd === 'out' ? 'win-armed' : ''}`}
+        className={`win-chip win-out ${armedEnd === 'out' ? 'win-armed' : ''}`}
         onClick={() => wake('out')}
         aria-label={
           picked
@@ -576,7 +559,7 @@ function WindowChips() {
       </span>
 
       <button
-        className={`win-chip ${armedEnd === 'back' ? 'win-armed' : ''}`}
+        className={`win-chip win-back ${armedEnd === 'back' ? 'win-armed' : ''}`}
         onClick={() => wake('back')}
         disabled={!roundTrip}
         aria-label={

@@ -61,6 +61,17 @@ function hourLabel(d: Date): string {
   return `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`
 }
 
+/** The window's effective ends — the same "asked-for wins over worked-out"
+ *  derivation the card's chips show (TripCard.WindowChips), for the effects
+ *  that read imperatively. */
+function effectiveEnd(end: 'out' | 'back'): number | null {
+  const s = useAppStore.getState()
+  const plan = useRouteStore.getState().plan
+  return end === 'back'
+    ? (s.planEndMs ?? plan?.homeMs ?? null)
+    : (s.planTimeMs ?? plan?.departMs ?? null)
+}
+
 export default function WeatherStrip() {
   const enabled = useAppStore((s) => s.wxStrip)
   const weatherOn = useAppStore((s) => s.layers.weather)
@@ -71,6 +82,7 @@ export default function WeatherStrip() {
   const setPlanWindow = useAppStore((s) => s.setPlanWindow)
   // set on the trip card; while it's set this strip is that chip's keypad
   const setPlanPicked = useAppStore((s) => s.setPlanPicked)
+  const picked = useAppStore((s) => s.planPicked)
   const armedEnd = useAppStore((s) => s.armedEnd)
   const setArmedEnd = useAppStore((s) => s.setArmedEnd)
   const showPeriod = useAppStore((s) => s.wavePeriod)
@@ -98,7 +110,14 @@ export default function WeatherStrip() {
   // multi-day window possible: arm Back, tap Sunday, pick an hour.
   const [armDayMs, setArmDayMs] = useState<number | null>(null)
   useEffect(() => {
-    if (!armedEnd) setArmDayMs(null) // disarming forgets the keypad's day
+    if (!armedEnd) {
+      setArmDayMs(null) // disarming forgets the keypad's day
+      return
+    }
+    // arming opens the keypad on the day holding that end's current pick —
+    // the time being moved is the reference, so it must be on screen
+    const ms = effectiveEnd(armedEnd)
+    if (ms != null) setArmDayMs(startOfDayMs(ms))
   }, [armedEnd])
 
   const show = enabled || focusPoint != null // a focused dot always surfaces the strip
@@ -207,35 +226,43 @@ export default function WeatherStrip() {
   // future day. Placed once per day so a forecast refresh (or a tap on an
   // already-visible hour) never yanks the row back.
   const cellsRef = useRef<HTMLDivElement | null>(null)
-  const placedDayRef = useRef<number | null>(null)
+  const placedRef = useRef<string | null>(null)
   useEffect(() => {
     const el = cellsRef.current
     if (!el || rows.length === 0) return
-    if (placedDayRef.current === selDayMs) return
-    placedDayRef.current = selDayMs
-    const planMs = useAppStore.getState().planTimeMs
-    const planHour = planMs == null ? null : floorHourMs(planMs)
+    // re-place when the day changes AND when a chip arms or disarms: the
+    // armed end's existing pick is what the keypad should open looking at
+    const key = `${selDayMs}|${armedEnd ?? ''}`
+    if (placedRef.current === key) return
+    placedRef.current = key
+    const targetMs = armedEnd != null ? effectiveEnd(armedEnd) : useAppStore.getState().planTimeMs
+    const targetHour = targetMs == null ? null : floorHourMs(targetMs)
     let idx =
-      planHour != null ? rows.findIndex((r) => r.time.getTime() === planHour) : -1
+      targetHour != null ? rows.findIndex((r) => r.time.getTime() === targetHour) : -1
     if (idx < 0 && selDayMs !== todayMs) {
       idx = rows.findIndex((r) => r.time.getHours() === DAY_FROM_H)
     }
     const cell = el.children[Math.max(0, idx)] as HTMLElement | undefined
     const first = el.children[0] as HTMLElement | undefined
     if (cell && first) el.scrollLeft = Math.max(0, cell.offsetLeft - first.offsetLeft)
-  }, [selDayMs, todayMs, rows])
+  }, [selDayMs, todayMs, rows, armedEnd])
 
   if (!show || (rows.length === 0 && days.length === 0)) return null
 
   const planHourMs = planTimeMs == null ? null : floorHourMs(planTimeMs)
 
-  // The planned window, drawn where the hours live: with a back time set,
-  // the strip marks the departure (the active cell), the return, and every
-  // hour between — so leaving AND coming back read straight off the strip
-  // instead of only off the card's chips. "Leaving now" floors to the
-  // now-cell's hour.
-  const backHourMs = planEndMs == null ? null : floorHourMs(planEndMs)
-  const outHourMs = backHourMs == null ? null : (planHourMs ?? floorHourMs(Date.now()))
+  // The planned window, drawn where the hours live: the strip marks the
+  // departure (the active cell), the return, and every hour between — so
+  // leaving AND coming back read straight off the strip instead of only off
+  // the card's chips. The ends are derived EXACTLY as the chips derive them
+  // (TripCard.WindowChips): what you asked for wins over what the last plan
+  // worked out — so a back time the planner filled in ("there 3 hours")
+  // lights its tile the same as one you picked. Ghosted while exploring,
+  // like the chips.
+  const backSrcMs = picked ? (planEndMs ?? plan?.homeMs ?? null) : null
+  const backHourMs = backSrcMs == null ? null : floorHourMs(backSrcMs)
+  const outHourMs =
+    backHourMs == null ? null : floorHourMs(planTimeMs ?? plan?.departMs ?? Date.now())
   const outDayMs = outHourMs == null ? null : startOfDayMs(outHourMs)
   const backDayMs = backHourMs == null ? null : startOfDayMs(backHourMs)
 
@@ -326,7 +353,10 @@ export default function WeatherStrip() {
       </div>
 
       {rows.length > 0 ? (
-        <div className="wxstrip-cells" ref={cellsRef}>
+        <div
+          className={`wxstrip-cells${armedEnd ? ` wx-arm-${armedEnd}` : ''}`}
+          ref={cellsRef}
+        >
           {rows.map((r, k) => {
             const cellMs = r.time.getTime()
             const isNowCell = selDayMs === todayMs && k === 0
@@ -433,8 +463,11 @@ export default function WeatherStrip() {
       )}
 
       {armedEnd && (
-        <button className="wxstrip-arm" onClick={() => setArmedEnd(null)}>
-          Pick an hour · cancel
+        <button
+          className={`wxstrip-arm${armedEnd === 'back' ? ' wxstrip-arm-back' : ''}`}
+          onClick={() => setArmedEnd(null)}
+        >
+          Pick {armedEnd === 'back' ? 'the back hour' : 'the out hour'} · cancel
         </button>
       )}
 

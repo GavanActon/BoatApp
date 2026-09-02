@@ -190,22 +190,6 @@ export default function MapView() {
           useAppStore.getState().setArmedSlot(null)
           return
         }
-        if (routeState.picking) {
-          if (routeState.picking === 'start') {
-            routeState.setStartPoint({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
-          } else {
-            // a fresh subject starts at exploring, and the strip must
-            // describe the place just chosen (§0.2, §0.4) — every way of
-            // selecting a destination retargets it
-            useAppStore.getState().setPlanPicked(false)
-            routeState.setDestination({ name: null, lon: e.lngLat.lng, lat: e.lngLat.lat })
-            routeState.setFocusPoint({ lon: e.lngLat.lng, lat: e.lngLat.lat, label: 'Pinned spot' })
-          }
-          // back to the trip card, not the sheet — the whole point of
-          // picking on the map is seeing the run drawn on it
-          routeState.setCard('trip')
-          return
-        }
         // taps near route leg dots focus the leg forecast, not the depth popup
         if (sampleDotAt(map!, e.point)) return
         // taps near a spot badge change the subject, not the depth readout

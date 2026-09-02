@@ -8,6 +8,7 @@ import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo
 import { SEA_BANDS, seaBounds, seaScaleK } from './seaState'
 import { speedUnitLabel, windSpeed, type SpeedUnit } from '../units'
 import { floorHourMs } from '../time'
+import { cachedPointForecast, type PointForecast } from './openMeteo'
 import {
   cachedGridForecast,
   fetchGridForecast,
@@ -837,6 +838,54 @@ export function routeForecastFromGrid(pts: [number, number][]): RouteForecast | 
     return { lon, lat, time: g.time, windKn, gustKn, windDir, weatherCode, waveM, wavePeriodS, waveDir }
   })
   return { fetchedAt: g.fetchedAt, points }
+}
+
+/**
+ * A point forecast synthesised from the cached grid, for the readers nobody
+ * polls — a leg row, a spot with no cached point forecast. The grid carries
+ * no air temperature, so tempC is NaN and the hourly table leaves it blank.
+ */
+export function pointForecastFromGrid(lon: number, lat: number): PointForecast | null {
+  const g = grid
+  if (!g || g.time.length === 0) return null
+  const r = routeForecastFromGrid([[lon, lat]])
+  if (!r) return null
+  const p = r.points[0]
+  const near = nearestCell(lon, lat)
+  return {
+    lon,
+    lat,
+    fetchedAt: g.fetchedAt,
+    hourly: {
+      time: p.time,
+      windKn: p.windKn,
+      gustKn: p.gustKn,
+      windDir: p.windDir,
+      tempC: new Array<number>(g.time.length).fill(NaN),
+      weatherCode: p.weatherCode,
+      precipProbPct: near?.precipProbPct,
+      waveM: p.waveM,
+      wavePeriodS: p.wavePeriodS,
+      waveDir: p.waveDir ?? [],
+    },
+  }
+}
+
+/**
+ * The forecast at a point WITHOUT touching the network. Fetching is the
+ * pollers' job — the strip for its focus point, the weather clock for the
+ * grid — and everything else reads what they left: the cached point
+ * forecast when there is one, else the cached grid. Null only before the
+ * first grid has ever landed.
+ */
+export async function pointForecastCached(
+  lon: number,
+  lat: number,
+): Promise<{ forecast: PointForecast; stale: boolean } | null> {
+  const c = await cachedPointForecast(lon, lat)
+  if (c) return { forecast: c.forecast, stale: c.ageMs > GRID_MAX_AGE_MS }
+  const fromGrid = pointForecastFromGrid(lon, lat)
+  return fromGrid ? { forecast: fromGrid, stale: gridStale } : null
 }
 
 export interface DayBand {

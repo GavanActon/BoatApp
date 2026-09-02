@@ -2,12 +2,11 @@ import { timeLabel } from '../time'
 import { type SpeedUnit } from '../units'
 import {
   conditionFor,
-  fetchRouteForecast,
   hourIndexAt,
   type Condition,
   type RouteForecast,
 } from '../weather/openMeteo'
-import { ensureWeatherGrid, routeForecastFromGrid } from '../weather/weatherLayer'
+import { ensureWeatherGrid, routeForecastFromGrid, weatherGridInfo } from '../weather/weatherLayer'
 import { lockDelayMin, type RouteResult } from './waterRouter'
 
 /**
@@ -29,9 +28,6 @@ export interface TripOptions {
   destName: string | null
   /** Unit the verdict text quotes wind in — its own preference, not the boat's. */
   windUnit: SpeedUnit
-  /** Reuse a cached route forecast younger than this (progress updates while
-   *  under way re-time the trip every couple of minutes without refetching). */
-  maxWxCacheMs?: number
   /** Skip the 7-day departure-window sweep (meaningless once under way). */
   windows?: boolean
   /** Sweep constraints: shortest stay worth going for (defaults to stayMin)
@@ -445,25 +441,18 @@ export async function planTrip(route: RouteResult, opts: TripOptions): Promise<T
     }
   }
 
-  // keyed on destination + sample count only, so the cache keeps hitting as
-  // the start point moves with the boat; samples match by nearest point below
-  const last = route.coords[route.coords.length - 1]
-  const cacheKey = `${binKey(last[0], last[1])}|${pts.length}`
-  let forecast: RouteForecast
-  let stale: boolean
-  try {
-    ;({ forecast, stale } = await fetchRouteForecast(pts, cacheKey, opts.maxWxCacheMs ?? 0))
-  } catch (err) {
-    // The per-point fetch failed (offline, rate-limited). The cached regional
-    // grid covers the same water seven days deep and agrees with the point
-    // API to ~0.02 m — stand it in rather than planning nothing, which used
-    // to leave a tapped point with a route but no segments at all.
-    await ensureWeatherGrid()
-    const fromGrid = routeForecastFromGrid(pts)
-    if (!fromGrid) throw err
-    forecast = fromGrid
-    stale = true
-  }
+  // The verdict reads the CACHED regional grid and never the network. The
+  // grid covers the same water seven days deep (RDWPS waves overlaid where
+  // they run) and agrees with the per-point API to ~0.02 m; the weather
+  // clock refreshes it on its own schedule and the planner re-runs when a
+  // fresh one lands. So a route plots and rates in the time the grid takes
+  // to sample, however slow the forecast host is being today. Only before
+  // the first grid has ever landed is there no verdict — the kick below
+  // fetches one, and the grid listener fills the plan in when it arrives.
+  void ensureWeatherGrid()
+  const forecast = routeForecastFromGrid(pts)
+  if (!forecast) throw new Error('No forecast yet')
+  const stale = weatherGridInfo()?.stale ?? true
 
   const samples = attachWx(itinerary, forecast)
   const verdict = verdictFor(samples)

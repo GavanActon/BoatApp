@@ -8,6 +8,7 @@ import { computeRoute, ensureNav, isAfloat } from './router'
 import { useRouteStore } from './routeStore'
 import { planTrip } from './tripPlan'
 import { haversineNm, lockDelayMin } from './waterRouter'
+import { onWeatherGrid } from '../weather/weatherLayer'
 
 /**
  * Keeps the planned trip current.
@@ -22,9 +23,6 @@ import { haversineNm, lockDelayMin } from './waterRouter'
  * home so the verdict answers "are we good to get back".
  */
 
-const IDLE_REFRESH_MS = 15 * 60_000
-const TRIP_WX_REFRESH_MS = 30 * 60_000
-const PLAN_WX_CACHE_MS = 5 * 60_000 // planning tweaks (time, speed, stay) reuse a recent forecast
 const TICK_MS = 2 * 60_000
 const ARRIVED_NM = 0.5 // within this of the destination = "we're there"
 const TRIP_EXPIRY_MS = 12 * 3600_000 // a persisted "under way" older than this is over
@@ -203,8 +201,6 @@ export async function replan(quiet = false): Promise<void> {
       stayMin: derivedStay ?? s.stayMin,
       destName,
       windUnit: app.windUnit,
-      // under way, the trip is re-timed often but the forecast holds for 30 min
-      maxWxCacheMs: underWay ? TRIP_WX_REFRESH_MS : PLAN_WX_CACHE_MS,
       windows: !underWay,
       minStayMin: s.stayMin,
       backByHour: s.backByHour,
@@ -323,8 +319,17 @@ export function initRoutePlanner() {
     }
   })
 
-  // under way: quiet progress update every 2 min (weather refetches after
-  // 30 min via maxWxCacheMs); just planning: full refresh every 15 min
+  // the plan reads the cached grid, so a fresh grid is a fresh verdict —
+  // quietly, the old one stays up while the new one is prepared. This is
+  // the only weather-driven replan: the weather clock owns the fetching.
+  onWeatherGrid(() => {
+    const s = useRouteStore.getState()
+    if (s.destination) void replan(true)
+  })
+
+  // under way: quiet progress update every 2 min (the boat moved, the trip
+  // re-times from where it is now); just planning, the grid listener above
+  // is the refresh
   setInterval(() => {
     // a chosen departure hour that has arrived flows back into "now"
     const planTime = useAppStore.getState().planTimeMs
@@ -333,26 +338,13 @@ export function initRoutePlanner() {
     }
 
     const s = useRouteStore.getState()
-    if (!s.destination) return
-    if (s.tripStartedAt != null) {
-      void replan(true)
-    } else if (!s.plan || Date.now() - s.plan.fetchedAt >= IDLE_REFRESH_MS) {
-      void replan()
-    }
+    if (s.destination && s.tripStartedAt != null) void replan(true)
   }, TICK_MS)
 
-  // heal a stale plan when connectivity returns or the app comes back to front
-  window.addEventListener('online', () => {
-    if (useRouteStore.getState().destination) void replan(true)
-  })
+  // back to front: re-time from now (the grid's own clock refetches a stale
+  // grid on the same visibility tick, and that lands through the listener)
   document.addEventListener('visibilitychange', () => {
-    const { destination, plan, tripStartedAt } = useRouteStore.getState()
-    if (
-      document.visibilityState === 'visible' &&
-      destination &&
-      (!plan || Date.now() - plan.fetchedAt > IDLE_REFRESH_MS)
-    ) {
-      void replan(tripStartedAt != null)
-    }
+    const { destination, tripStartedAt } = useRouteStore.getState()
+    if (document.visibilityState === 'visible' && destination) void replan(tripStartedAt != null)
   })
 }

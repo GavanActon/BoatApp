@@ -242,7 +242,8 @@ export function dailyOutlook(f: PointForecast, days = 7): DayOutlook[] {
       const t = Date.parse(h.time[i])
       if (t < from || t > to || t < now - 3600_000) continue
       const tc = h.tempC[i]
-      if (tc != null) {
+      // a grid-derived point carries NaN for air temperature (the grid has none)
+      if (tc != null && Number.isFinite(tc)) {
         tempMin = tempMin == null ? tc : Math.min(tempMin, tc)
         tempMax = tempMax == null ? tc : Math.max(tempMax, tc)
       }
@@ -598,79 +599,6 @@ export interface RoutePointWx {
 export interface RouteForecast {
   fetchedAt: number
   points: RoutePointWx[]
-}
-
-export async function fetchRouteForecast(
-  pts: [number, number][],
-  cacheKey: string,
-  maxAgeMs = 0, // reuse the cached forecast if younger than this (0 = always refetch)
-): Promise<{ forecast: RouteForecast; stale: boolean }> {
-  const key = `route:${cacheKey}`
-  if (maxAgeMs > 0) {
-    const cached = await cacheGet<RouteForecast>(key)
-    if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
-      return { forecast: cached.payload, stale: false }
-    }
-  }
-  try {
-    const latStr = pts.map((p) => p[1].toFixed(3)).join(',')
-    const lonStr = pts.map((p) => p[0].toFixed(3)).join(',')
-    const windUrl =
-      `${WIND_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,weather_code` +
-      `&wind_speed_unit=kn&forecast_days=7&timezone=UTC${WIND_MODELS}`
-    const marineUrl =
-      `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
-      `&hourly=wave_height,wave_period,wave_direction&forecast_days=7&timezone=UTC`
-
-    const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
-    const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
-      hourly: ModelHourly
-    }>
-    const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: {
-        wave_height: (number | null)[]
-        wave_period: (number | null)[]
-        wave_direction: (number | null)[]
-      }
-    }>
-
-    const forecast: RouteForecast = {
-      fetchedAt: Date.now(),
-      points: windArr.map((w, i) => ({
-        lon: pts[i][0],
-        lat: pts[i][1],
-        time: w.hourly.time,
-        ...blendWind(w.hourly),
-        weatherCode: bm(w.hourly, 'weather_code') as number[],
-        waveM: marineArr[i]?.hourly?.wave_height ?? [],
-        wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
-        // where the sea is running FROM — a separate field from the wind's,
-        // and on this lake often twenty or thirty degrees off it when the
-        // wind has shifted and the old sea is still up
-        waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
-      })),
-    }
-    // the trip sweep rates departures on these — RDWPS where it covers
-    await ensureWaveOverlay()
-    for (const p of forecast.points) {
-      applyWaveOverlayToSeries(
-        p.lon,
-        p.lat,
-        Date.parse(`${p.time[0]}Z`), // timezone=UTC strings need the Z back
-        p.time.length,
-        p.waveM,
-        p.wavePeriodS,
-        p.waveDir,
-      )
-    }
-    await cachePut(key, forecast)
-    return { forecast, stale: false }
-  } catch (e) {
-    const cached = await cacheGet<RouteForecast>(key)
-    if (cached) return { forecast: cached.payload, stale: true }
-    throw e
-  }
 }
 
 /** Index of the hour in a UTC time array closest to a timestamp.

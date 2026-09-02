@@ -223,7 +223,6 @@ export function initSpotBadges() {
         useAppStore.getState().setPickingHome(false)
         return
       }
-      if (useRouteStore.getState().picking) return
       if (sampleDotAt(map, e.point)) return
       const hit = spotBadgeAt(map, e.point)
       if (!hit) return

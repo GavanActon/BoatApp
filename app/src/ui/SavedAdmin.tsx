@@ -3,11 +3,11 @@ import { applySavedTrip, useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { db, type SavedStart, type SavedTrip } from '../tracking/db'
 import { knToUnit, speedUnitLabel } from '../units'
-import { IconCheck, IconLocate, IconPin, IconRoute, IconStar, IconTrash } from './icons'
+import { IconCheck, IconPin, IconRoute, IconStar, IconTrash } from './icons'
 
 /**
- * The tail of the Places sheet: pick-on-map for the two ends of a run, and
- * the saved trips and start points — kept, renamed, deleted, used.
+ * The tail of the Places sheet: the saved trips and start points — kept,
+ * renamed, deleted, used. (Pick-on-map moved up to the armed slot's head.)
  *
  * This is what survived of the route drawer's admin when the drawer retired.
  * It is deliberately small: choosing a destination is the spots list's job,
@@ -22,7 +22,6 @@ export default function SavedAdmin() {
   const setDestination = useRouteStore((s) => s.setDestination)
   const startPoint = useRouteStore((s) => s.startPoint)
   const setStartPoint = useRouteStore((s) => s.setStartPoint)
-  const setPicking = useRouteStore((s) => s.setPicking)
   const setCard = useRouteStore((s) => s.setCard)
   const viaPoints = useRouteStore((s) => s.viaPoints)
   const roundTrip = useRouteStore((s) => s.roundTrip)
@@ -46,12 +45,6 @@ export default function SavedAdmin() {
     void db.starts.orderBy('createdAt').toArray().then(setStarts)
   }, [])
   useEffect(() => reloadStarts(), [reloadStarts])
-
-  function pickOnMap(what: 'start' | 'dest') {
-    setPicking(what)
-    setSheetTab(null) // get everything out of the way to tap the map
-    setDetent('rest') // and come back at rest, looking at what was picked
-  }
 
   /** Turn the map-picked start into a reusable named one. */
   async function saveStart() {
@@ -119,24 +112,13 @@ export default function SavedAdmin() {
 
   return (
     <div className="saved-admin">
-      <div className="tb-chips saved-pick">
-        <button className="dest-chip dest-pick" onClick={() => pickOnMap('dest')}>
-          <IconPin size={14} /> Destination
-        </button>
-        <button className="dest-chip dest-pick" onClick={() => pickOnMap('start')}>
-          <IconPin size={14} /> Start point
-        </button>
-        {startPoint && (
-          <button className="dest-chip" onClick={() => setStartPoint(null)}>
-            <IconLocate size={13} /> Current location
-          </button>
-        )}
-        {startPoint && !startPoint.name && (
+      {startPoint && !startPoint.name && (
+        <div className="tb-chips saved-pick">
           <button className="dest-chip dest-save-start" onClick={() => void saveStart()}>
             <IconStar size={12} /> Save start
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {(destination || saved.length > 0 || starts.length > 0) && (
         <div className="saved-head">

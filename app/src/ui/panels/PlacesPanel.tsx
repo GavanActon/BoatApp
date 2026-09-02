@@ -4,18 +4,16 @@ import type { Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { allPlaces, homeBase, homeCenter, usePlacesStore } from '../../state/placesStore'
-import { timeLabel } from '../../time'
-import { replan } from '../../routing/planner'
+import { allPlaces, homeCenter, usePlacesStore } from '../../state/placesStore'
 import { isAfloat } from '../../routing/router'
 import { haversineNm } from '../../routing/waterRouter'
+import { db, type SavedStart } from '../../tracking/db'
 import { useGpsStore } from '../../tracking/gpsStore'
-import { seaColor, SEA_UNKNOWN } from '../../weather/seaState'
+import { seaColor } from '../../weather/seaState'
 import { byCalmest, spotConditionsAt } from '../../weather/spotConditions'
-import { sunTimes } from '../../weather/sun'
-import { ensureWeatherGrid, gridConditionsAt } from '../../weather/weatherLayer'
+import { ensureWeatherGrid } from '../../weather/weatherLayer'
 import { distanceUnitFor, runDistance, speedUnitLabel, windSpeed } from '../../units'
-import { IconClose, IconLocate, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
+import { IconClose, IconLocate, IconPin, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
 import LimitsRow from '../LimitsRow'
 import SavedAdmin from '../SavedAdmin'
 
@@ -23,11 +21,9 @@ import SavedAdmin from '../SavedAdmin'
  * The Places sheet — WHICH PLACE, and nothing else (§0.2).
  *
  * This superseded the dock's old "Here" bar: with no run planned the dock is
- * simply gone, and this tab is where you stand instead. The top row is your
- * own position with the standing facts (the water you'd swim in, the light
- * you'll lose — sunset computed locally so the row never depends on a fetch).
- * Under it, every place the app knows — built-in and saved pins alike —
- * calmest first, each wearing the one number its badge wears on the chart.
+ * simply gone, and this tab is the list instead — every place the app knows,
+ * built-in and saved pins alike, calmest first, each wearing the one number
+ * its badge wears on the chart. No "here" row: one shape for every row.
  *
  * Each row is one glance of NOW — name, sky (sun/cloud/rain, a droplet when
  * rain is likely, ⚡ when thunder), how far it is, wind with its arrow, sea
@@ -118,6 +114,14 @@ export default function PlacesPanel() {
     void ensureWeatherGrid().then(() => setGridTick((t) => t + 1))
   }, [])
 
+  // the saved docks and launches: exactly what an armed From wants, so they
+  // ride between the two options and the places. Loaded once per open.
+  const [starts, setStarts] = useState<SavedStart[]>([])
+  useEffect(() => {
+    if (armedSlot !== 'from') return
+    void db.starts.orderBy('createdAt').toArray().then(setStarts)
+  }, [armedSlot])
+
   const [editMode, setEditMode] = useState(false)
   // one field in edit at a time: a place's name or its note
   const [editing, setEditing] = useState<{ name: string; field: 'name' | 'note' } | null>(null)
@@ -149,30 +153,19 @@ export default function PlacesPanel() {
     lon: (homeCenter() ?? HOME.center)[0],
     lat: (homeCenter() ?? HOME.center)[1],
   }
-  const hereWx = gridConditionsAt(here.lon, here.lat, Date.now())
-  const { sunsetMs } = sunTimes(Date.now(), here.lat, here.lon)
 
   const savedNames = new Set(saved.map((p) => p.name))
   const rows = spotConditionsAt(planTimeMs ?? Date.now(), waveLimitM, windLimitKn, allPlaces()).sort(
     byCalmest,
   )
 
-  // chips arm, surfaces answer: with a slot armed, a row FILLS it. Arming
-  // From with nothing to resolve doubles as the one onboarding question —
-  // picking a place then STARS it, so the automatic chip means something.
+  // chips arm, surfaces answer: with a slot armed, a row FILLS it. The home
+  // base is starred in Edit, never asked for here.
   const gps = useGpsStore.getState().fix
-  const asking =
-    armedSlot === 'from' && homeBase() == null && !(gps && isAfloat(gps.lon, gps.lat))
   const fillSlot = (d: { name: string | null; lon: number; lat: number }) => {
     const rs = useRouteStore.getState()
     if (armedSlot === 'from') {
-      if (asking && d.name) {
-        usePlacesStore.getState().setHome(d.name) // the durable home
-        rs.setStartPoint(null) // resolve through the star, stay automatic
-        void replan()
-      } else {
-        rs.setStartPoint({ name: d.name, lon: d.lon, lat: d.lat })
-      }
+      rs.setStartPoint({ name: d.name, lon: d.lon, lat: d.lat })
     } else {
       setPlanPicked(false)
       rs.setDestination({ name: d.name, lon: d.lon, lat: d.lat })
@@ -215,12 +208,37 @@ export default function PlacesPanel() {
     setSheetTab(null) // the point of routing is seeing the run drawn
   }
 
-  // the Here row: back to just standing where you are — subject cleared
-  const goHere = () => {
-    setDestination(null)
-    setPlanPicked(false)
+  // Opened from the trip card (a slot armed), the sheet is that slot's
+  // keypad and leads with the two answers no list can hold — where the boat
+  // is now, and anywhere on the chart — then the places. Opened direct,
+  // none of this shows: just where you stand and the list.
+  const afloat = gps != null && isAfloat(gps.lon, gps.lat)
+  // a start ashore can't be routed from; a destination is any fix at all
+  const hereUsable = gps != null && (armedSlot === 'to' || afloat)
+  const hereWhy = !gps ? 'no GPS fix yet' : !hereUsable ? 'not on the water' : 'where the boat is now'
+  // under To, the boat's position is only an answer when From is pinned
+  // somewhere else — with From automatic, a run to where you already are
+  // is no run, so the option stays out
+  const showHere = armedSlot === 'from' || startPoint != null
+  const useHere = () => {
+    if (!gps) return
+    const rs = useRouteStore.getState()
+    if (armedSlot === 'from') {
+      rs.setStartPoint(null) // automatic: the planner resolves to the fix
+    } else {
+      setPlanPicked(false)
+      rs.setDestination({ name: 'My position', lon: gps.lon, lat: gps.lat })
+      rs.setFocusPoint({ lon: gps.lon, lat: gps.lat, label: 'My position' })
+      rs.setCard('trip')
+    }
+    setArmedSlot(null)
     setSheetTab(null)
-    withMap((m) => m.easeTo({ center: [here.lon, here.lat] }))
+  }
+  // the slot stays armed and the sheet gets out of the way: with a slot
+  // armed any tap on the water fills it, and the banner up top says so
+  const pickOnMap = () => {
+    setDetent('rest')
+    setSheetTab(null)
   }
 
   const commit = () => {
@@ -297,66 +315,65 @@ export default function PlacesPanel() {
 
   return (
     <div className="places-panel">
-      <button className="place-here" onClick={goHere}>
-        <span className="pg-top">
-          <IconLocate size={14} />
-          <span className="nm">{startPoint?.name ?? 'Here'}</span>
-          <span className="meta numeral">
-            {hereWx?.waterTempC != null && <>water {Math.round(hereWx.waterTempC)}° · </>}
-            {sunsetMs != null && <>sets {timeLabel(sunsetMs)}</>}
-          </span>
-          <b className="numeral" style={{ color: hereWx?.waveM != null ? seaColor(hereWx.waveM, seaScale) : SEA_UNKNOWN }}>
-            {hereWx?.waveM != null ? hereWx.waveM.toFixed(1) : '–'}
-          </b>
-        </span>
-      </button>
-
       {armedSlot && (
         <div className="slot-head">
-          <span className="slot-q">{asking ? 'Where does the boat live?' : armedSlot === 'from' ? 'From?' : 'To?'}</span>
-          {armedSlot === 'from' && (
-            <div className="slot-specials">
-              {gps && isAfloat(gps.lon, gps.lat) && (
+          <span className="slot-q">{armedSlot === 'from' ? 'From?' : 'To?'}</span>
+          <div className="place-list">
+            {showHere && (
+              <button
+                className="place-go place-opt"
+                disabled={!hereUsable}
+                onClick={useHere}
+                aria-label={`Current location — ${hereWhy}`}
+              >
+                <span className="pg-top">
+                  <IconLocate size={14} />
+                  <span className="nm">Current location</span>
+                </span>
+                {!hereUsable && <span className="pg-info">{hereWhy}</span>}
+              </button>
+            )}
+            <button className="place-go place-opt" onClick={pickOnMap} aria-label="Pick on map — tap the chart">
+              <span className="pg-top">
+                <IconPin size={14} />
+                <span className="nm">Pick on map</span>
+              </span>
+            </button>
+            {armedSlot === 'from' &&
+              starts.map((sp) => (
                 <button
-                  className="dest-chip"
-                  onClick={() => {
-                    useRouteStore.getState().setStartPoint(null)
-                    setArmedSlot(null)
-                    setSheetTab(null)
-                  }}
+                  key={`start-${sp.id}`}
+                  className="place-go"
+                  onClick={() => fillSlot({ name: sp.name, lon: sp.lon, lat: sp.lat })}
+                  aria-label={`Start from ${sp.name}`}
                 >
-                  <IconLocate size={13} /> My position
+                  <span className="pg-top">
+                    <span className="pg-pin">
+                      <IconPin size={14} />
+                    </span>
+                    <span className="nm">{sp.name}</span>
+                  </span>
+                  <span className="pg-info">saved start</span>
                 </button>
-              )}
-              {homeBase() != null && (
-                <button
-                  className="dest-chip"
-                  onClick={() => {
-                    useRouteStore.getState().setStartPoint(null)
-                    setArmedSlot(null)
-                    setSheetTab(null)
-                  }}
-                >
-                  <IconStar size={12} /> {homeBase()!.name}
-                </button>
-              )}
-            </div>
-          )}
+              ))}
+          </div>
         </div>
       )}
-      <div className="places-tools">
-        <button
-          className="linklike"
-          onClick={() => {
-            setEditing(null)
-            setEditMode(!editMode)
-          }}
-        >
-          {editMode ? 'Done' : 'Edit'}
-        </button>
-      </div>
+      {!armedSlot && (
+        <div className="places-tools">
+          <button
+            className="linklike"
+            onClick={() => {
+              setEditing(null)
+              setEditMode(!editMode)
+            }}
+          >
+            {editMode ? 'Done' : 'Edit'}
+          </button>
+        </div>
+      )}
 
-      {!editMode ? (
+      {!editMode || armedSlot ? (
         <div className="place-list">
           {rows.map((r) => (
             <div
@@ -416,13 +433,15 @@ export default function PlacesPanel() {
                   )}
                 </span>
               </button>
-              <button
-                className="icon-btn place-route"
-                onClick={() => routeTo({ name: r.spot.name, lon: r.spot.lon, lat: r.spot.lat })}
-                aria-label={`Route to ${r.spot.name}`}
-              >
-                <IconRoute size={20} />
-              </button>
+              {!armedSlot && (
+                <button
+                  className="icon-btn place-route"
+                  onClick={() => routeTo({ name: r.spot.name, lon: r.spot.lon, lat: r.spot.lat })}
+                  aria-label={`Route to ${r.spot.name}`}
+                >
+                  <IconRoute size={20} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -499,10 +518,13 @@ export default function PlacesPanel() {
           ))}
         </div>
       )}
-      <div className="place-hint">tap the chart to add a place</div>
-
-      <LimitsRow />
-      <SavedAdmin />
+      {!armedSlot && (
+        <>
+          <div className="place-hint">tap the chart to add a place</div>
+          <LimitsRow />
+          <SavedAdmin />
+        </>
+      )}
     </div>
   )
 }

@@ -1013,7 +1013,6 @@ function showRemovePopup(map: MlMap, idx: number) {
 function beginDrag(map: MlMap, d: Drag, e: MapLayerMouseEvent | MapLayerTouchEvent) {
   if (drag) return
   if (!useRouteStore.getState().editing) return // the course is read-only outside edit mode
-  if (useRouteStore.getState().picking) return
   if (useMeasureStore.getState().active) return // the ruler owns the map
   if ('points' in e && e.points.length > 1) return // pinch, not an edit
   e.preventDefault() // keep the map itself from panning under the gesture

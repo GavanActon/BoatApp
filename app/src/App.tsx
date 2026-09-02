@@ -68,7 +68,7 @@ const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
   { id: 'offline', name: 'Offline', icon: IconDownload },
 ]
 
-/** Guides map-picking, and stands in for a dismissed trip card — tapping it
+/** Stands in for a dismissed trip card — tapping it
  *  brings the card back. While the card is up it says nothing the card
  *  doesn't. */
 /** The armed slot's banner — the same words the strip's armed keypad uses:
@@ -100,8 +100,6 @@ function HomePickChip() {
 function TripChip() {
   const editing = useRouteStore((s) => s.editing)
   const setEditing = useRouteStore((s) => s.setEditing)
-  const picking = useRouteStore((s) => s.picking)
-  const setPicking = useRouteStore((s) => s.setPicking)
   const card = useRouteStore((s) => s.card)
   const setCard = useRouteStore((s) => s.setCard)
   const destination = useRouteStore((s) => s.destination)
@@ -114,13 +112,6 @@ function TripChip() {
     return (
       <button className="chip chip-accent" onClick={() => setEditing(false)}>
         Editing course · done
-      </button>
-    )
-  }
-  if (picking) {
-    return (
-      <button className="chip chip-accent" onClick={() => setPicking(null)}>
-        Set {picking === 'start' ? 'start' : 'destination'} · cancel
       </button>
     )
   }
@@ -265,7 +256,6 @@ function FabStack() {
             // one map gesture owner at a time — the ruler does the same to us
             useMeasureStore.getState().stop()
             useAppStore.getState().setSheetTab(null)
-            useRouteStore.getState().setPicking(null)
             setEditing(true)
           }}
           aria-label={editing ? 'Done editing the course' : 'Edit the course'}
@@ -277,10 +267,9 @@ function FabStack() {
         className={`fab ${measuring ? 'active' : ''}`}
         onClick={() => {
           if (measuring) return useMeasureStore.getState().stop()
-          // the map needs to be tappable: put the sheet, pick mode and the
-          // course editor away
+          // the map needs to be tappable: put the sheet and the course
+          // editor away
           useAppStore.getState().setSheetTab(null)
-          useRouteStore.getState().setPicking(null)
           useRouteStore.getState().setEditing(false)
           useMeasureStore.getState().start()
         }}
