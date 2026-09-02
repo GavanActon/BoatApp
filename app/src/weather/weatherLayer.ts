@@ -4,9 +4,16 @@ import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { depthAt } from '../map/depthGrid'
-import { applyWaveOverlay, refreshWaveOverlay, waveOverlayAgeMs, waveOverlayInfo } from './rdwps'
+import {
+  applyWaveOverlay,
+  ensureWaveOverlay,
+  refreshWaveOverlay,
+  waveOverlayAgeMs,
+  waveOverlayInfo,
+} from './rdwps'
 import {
   applyWindOverlay,
+  ensureWindOverlay,
   onWindOverlay,
   refreshWindOverlay,
   windOverlayAgeMs,
@@ -786,6 +793,16 @@ export function initWeatherLayer() {
       render(map)
     })
     for (const cb of gridListeners) cb()
+    // the disk grid carries whatever overlays it had when written; fetch
+    // today's ECCC sea and wind now rather than at the clock's first tick —
+    // the wind dresses through onWindOverlay, the sea here
+    void ensureWaveOverlay().then(() => {
+      if (grid && applyWaveOverlay(grid)) {
+        withMap(render)
+        for (const cb of gridListeners) cb()
+      }
+    })
+    void ensureWindOverlay()
   })
 
   // layer persisted on from a previous session → fetch without waiting for a

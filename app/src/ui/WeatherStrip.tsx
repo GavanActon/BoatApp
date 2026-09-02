@@ -9,7 +9,6 @@ import { useAppStore } from '../state/appStore'
 import { dayLabel, durationLabel, floorHourMs, startOfDayMs } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import {
-  cachedPointForecast,
   dailyOutlook,
   dayHours,
   fetchPointForecast,
@@ -21,7 +20,7 @@ import {
 import { speedUnitLabel, windSpeed } from '../units'
 import { seaColor, seaName } from '../weather/seaState'
 import { onWindOverlay } from '../weather/hrdps'
-import { onWeatherHour } from '../weather/weatherLayer'
+import { onWeatherGrid, onWeatherHour, pointForecastCached } from '../weather/weatherLayer'
 import { IconClose, IconPin, IconSky, IconWindArrow } from './icons'
 
 /**
@@ -102,6 +101,11 @@ export default function WeatherStrip() {
 
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
+  // for the grid-land retry below: reload only while stale or empty
+  const staleRef = useRef(true)
+  useEffect(() => {
+    staleRef.current = stale || !forecast
+  }, [stale, forecast])
   // which coords the strip last painted, so the cache-first paint below runs
   // once per subject rather than flashing the stale dot on every refresh tick
   const paintedKeyRef = useRef<string | null>(null)
@@ -140,19 +144,22 @@ export default function WeatherStrip() {
       const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? home[0]
       const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? home[1]
       const key = `${lon.toFixed(2)},${lat.toFixed(2)}`
-      try {
-        // Last-known first: paint the disk copy for this subject immediately
-        // (stale dot showing), so the strip has numbers in the first paint
-        // instead of arriving last behind the whole startup fetch queue. The
-        // network result below swaps it out.
-        if (paintedKeyRef.current !== key) {
-          const cached = await cachedPointForecast(lon, lat)
-          if (alive && cached && paintedKeyRef.current !== key) {
-            paintedKeyRef.current = key
-            setForecast(cached.forecast)
-            setStale(true)
-          }
+      // Last-known first: paint the disk copy for this subject immediately
+      // (stale dot showing), so the strip has numbers in the first paint
+      // instead of arriving last behind the whole startup fetch queue — and
+      // with no disk copy, a point cut from the regional grid, which is the
+      // app's last-known truth and carries ECCC's wind and sea. The network
+      // result below swaps it out.
+      const lastKnown = async (force = false) => {
+        const r = await pointForecastCached(lon, lat)
+        if (alive && r && (force || paintedKeyRef.current !== key)) {
+          paintedKeyRef.current = key
+          setForecast(r.forecast)
+          setStale(true)
         }
+      }
+      try {
+        if (paintedKeyRef.current !== key) await lastKnown()
         // a few minutes of freshness dedupes the launch double-fetch (map
         // center first, then the same spot again when the GPS fix lands)
         const { forecast: fc, stale: st } = await fetchPointForecast(lon, lat, 5 * 60_000)
@@ -162,7 +169,14 @@ export default function WeatherStrip() {
           setStale(st)
         }
       } catch {
-        /* keep whatever we had */
+        // Open-Meteo down AND nothing on disk for this spot (a new place, a
+        // fresh install): the grid's point is far better than a blank strip.
+        // The grid may not exist yet either — onWeatherGrid below retries.
+        try {
+          await lastKnown(true)
+        } catch {
+          /* keep whatever we had */
+        }
       }
     }
     void load()
@@ -174,11 +188,18 @@ export default function WeatherStrip() {
     // later): the fetch dedupes against the fresh cache and re-dresses it,
     // so the strip and the map quote the same wind
     const offWind = onWindOverlay(() => void load())
+    // and when a grid lands while the strip is still stale or empty — the
+    // outage case: Open-Meteo's point call failed, the grid (from disk, or
+    // from a later successful fetch) is the strip's fallback
+    const offGrid = onWeatherGrid(() => {
+      if (staleRef.current) void load()
+    })
     return () => {
       alive = false
       clearInterval(t)
       offHour()
       offWind()
+      offGrid()
     }
     // re-fetch when connectivity returns so a stale strip heals itself
   }, [show, online, focusPoint, departFrom, hasFix])
