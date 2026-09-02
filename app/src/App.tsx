@@ -45,6 +45,7 @@ import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 import WelcomeCards from './ui/WelcomeCards'
 import FirstVoyageCard from './ui/FirstVoyageCard'
+import NumbersGuide from './ui/NumbersGuide'
 import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
@@ -408,12 +409,22 @@ export default function App() {
       FOLLOW_DECIDE_TIMEOUT_MS,
     )
 
+    // a route plotted ANY way — the checklist's Sandies row, a badge tap, a
+    // Places route button — counts as the first run (§10.4): the row exists
+    // to teach the gesture, not to gate on one particular button
+    const unsubFirstRoute = useRouteStore.subscribe((s, prev) => {
+      if (s.destination != null && prev.destination == null) {
+        if (!useAppStore.getState().firstRouteDone) useAppStore.getState().setFirstRouteDone(true)
+      }
+    })
+
     const on = () => setOnline(true)
     const off = () => setOnline(false)
     window.addEventListener('online', on)
     window.addEventListener('offline', off)
     return () => {
       unsubGps()
+      unsubFirstRoute()
       clearTimeout(decideTimer)
       window.removeEventListener('online', on)
       window.removeEventListener('offline', off)
@@ -479,6 +490,7 @@ export default function App() {
       )}
 
       <WelcomeCards />
+      <NumbersGuide />
     </div>
   )
 }

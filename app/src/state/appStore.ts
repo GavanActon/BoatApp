@@ -109,14 +109,26 @@ interface AppState {
 
   // First run (DESIGN-SPEC §10). `onboarded`: the three welcome cards have
   // been seen or skipped — either way they never show again. `setupDone`:
-  // location + offline charts + home base were all observed in place at
-  // once, so the first-voyage card has retired for good (conditions alone
-  // can't carry this: GPS re-acquires from scratch each launch, and the
-  // card must not flicker back while it does). Both persisted.
+  // location, a home base, a first route and the numbers guide were all
+  // observed done at once, so the first-voyage card has retired for good
+  // (conditions alone can't carry this: GPS re-acquires from scratch each
+  // launch, and the card must not flicker back while it does). Offline
+  // charts are deliberately NOT a requirement — the Offline tab advertises
+  // itself. All persisted.
   onboarded: boolean
   setOnboarded: (v: boolean) => void
   setupDone: boolean
   setSetupDone: (v: boolean) => void
+  // The first run has been plotted — by the checklist's Sandies row or by
+  // the user finding their own way to any destination. Persisted.
+  firstRouteDone: boolean
+  setFirstRouteDone: (v: boolean) => void
+  // The read-the-water guide was opened and dismissed. Persisted.
+  numbersSeen: boolean
+  setNumbersSeen: (v: boolean) => void
+  // The guide overlay is on screen. Transient.
+  showNumbersGuide: boolean
+  setShowNumbersGuide: (v: boolean) => void
   // The first-voyage card's home pick: the next chart tap saves the point
   // as the starred home base (§10.3). Same arm-then-answer grammar as
   // armedSlot. Transient.
@@ -228,6 +240,8 @@ type PersistedPrefs = Pick<
   | 'lowPower'
   | 'onboarded'
   | 'setupDone'
+  | 'firstRouteDone'
+  | 'numbersSeen'
   | 'gpsWanted'
   | 'wxStrip'
   | 'wavePeriod'
@@ -285,6 +299,12 @@ export const useAppStore = create<AppState>()(
       setOnboarded: (v) => set({ onboarded: v }),
       setupDone: false,
       setSetupDone: (v) => set({ setupDone: v }),
+      firstRouteDone: false,
+      setFirstRouteDone: (v) => set({ firstRouteDone: v }),
+      numbersSeen: false,
+      setNumbersSeen: (v) => set({ numbersSeen: v }),
+      showNumbersGuide: false,
+      setShowNumbersGuide: (v) => set({ showNumbersGuide: v }),
       pickingHome: false,
       setPickingHome: (v) => set({ pickingHome: v }),
       gpsWanted: false,
@@ -386,6 +406,8 @@ export const useAppStore = create<AppState>()(
         lowPower: s.lowPower,
         onboarded: s.onboarded,
         setupDone: s.setupDone,
+        firstRouteDone: s.firstRouteDone,
+        numbersSeen: s.numbersSeen,
         gpsWanted: s.gpsWanted,
         wxStrip: s.wxStrip,
         wavePeriod: s.wavePeriod,

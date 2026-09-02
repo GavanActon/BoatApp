@@ -312,11 +312,14 @@ surface exempt from §1.5's no-sentences rule — it is the app introducing
 itself, not chrome.
 
 **10.2 MUST — Setup is a dock card until it is done.** Narrow exception to
-§2.2's "no dock on fresh install": until location, offline charts and a
-home base have all been observed in place at once, a first-voyage card may
-hold the dock slot — always yielding to a subject, an under-way trip and
-the ruler. Rows are ACTIONS, never toggles: location asks the OS, charts
-opens the Offline tab, home arms the chart. All three done → `setupDone`
+§2.2's "no dock on fresh install": until location, a home base, a first
+route and the numbers guide have all been observed done at once, a
+first-voyage card may hold the dock slot — always yielding to a subject,
+an under-way trip and the ruler. Rows are ACTIONS, never toggles:
+location asks the OS (the FIRST location prompt lives here, never on a
+cold open), home arms the chart, the route row plots the first run, the
+water row opens the guide. Downloading offline charts is deliberately NOT
+a requirement — the Offline tab sells itself. All four done → `setupDone`
 (persisted) and the card retires forever; its ✕ does the same for the
 borrowed-phone case. It never reappears to nag.
 
@@ -325,3 +328,14 @@ top-bar banner names the listening slot with cancel, the same grammar as
 the From/To slots (§0.4) — and the next chart tap saves the point as
 "Home dock" and stars it (renameable in Places like any place). The first
 tap a new user makes is the tap the whole app runs on.
+
+**10.4 MUST — The first run is to The Sandies, and the numbers get named.**
+The route row plots the run to The Sandies exactly the way the Places
+route button would (§0.4: a fresh subject starts at exploring) — but ANY
+route the user plots on their own also completes it: the row teaches the
+gesture, it never gates on one button. The read-the-water guide is one
+card, a first-run surface sharing §10.1's sentence exemption: the strip
+cell's anatomy (hour, wind arrow, speed in the user's unit, wave height ·
+period), the sea-state ramp drawn from `seaState.ts`'s own band colours so
+it can never drift from the water it describes, and the chart's depth
+numbers. Dismissed in one tap; reachable again only while the card lives.
