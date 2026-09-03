@@ -4,7 +4,7 @@ import type { Map as MlMap } from 'maplibre-gl'
 import { withMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
-import { allPlaces, homeCenter, usePlacesStore } from '../../state/placesStore'
+import { allPlaces, homeBase, homeCenter, usePlacesStore } from '../../state/placesStore'
 import { isAfloat } from '../../routing/router'
 import { haversineNm } from '../../routing/waterRouter'
 import { db, type SavedStart } from '../../tracking/db'
@@ -219,6 +219,7 @@ export default function PlacesPanel() {
   // somewhere else — with From automatic, a run to where you already are
   // is no run, so the option stays out
   const showHere = armedSlot === 'from' || startPoint != null
+  const home = homeBase()
   const useHere = () => {
     if (!gps) return
     const rs = useRouteStore.getState()
@@ -341,6 +342,21 @@ export default function PlacesPanel() {
                 <span className="nm">Pick on map</span>
               </span>
             </button>
+            {/* the home dock: where most runs start, first under the two
+                generic answers, ahead of the saved starts */}
+            {armedSlot === 'from' && home && (
+              <button
+                className="place-go place-opt"
+                onClick={() => fillSlot({ name: home.name, lon: home.lon, lat: home.lat })}
+                aria-label={`Start from home — ${home.name}`}
+              >
+                <span className="pg-top">
+                  <IconStar size={14} />
+                  <span className="nm">Home</span>
+                </span>
+                <span className="pg-info">{home.name}</span>
+              </button>
+            )}
             {armedSlot === 'from' &&
               starts.map((sp) => (
                 <button
