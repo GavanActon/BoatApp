@@ -68,7 +68,10 @@ function subscribeAll() {
     // a saved trip applies cruise and back-by wholesale from the Places
     // sheet; only changes made anywhere else are the skipper's own gesture
     const own = useAppStore.getState().sheetTab !== 'places'
-    if (s.cruiseKn !== p.cruiseKn && own) disc.touch('cruise')
+    if (s.cruiseKn !== p.cruiseKn && own) {
+      disc.touch('cruise')
+      if (disc.guide === 'cruise') disc.setGuide(null)
+    }
     if (s.backByHour !== p.backByHour && own) disc.touch('backBy')
     if (s.viaPoints.length > 0 && p.viaPoints.length === 0) disc.touch('via')
     // a fresh subject, or a different named one — a dragged pin keeps its (null) name
@@ -99,6 +102,7 @@ function subscribeAll() {
     if (p.sheetTab === 'discover' && s.sheetTab !== 'discover') disc.markSeen()
     if (s.depthUnit !== p.depthUnit || s.speedUnit !== p.speedUnit || s.windUnit !== p.windUnit) disc.touch('units')
     if (s.seaScaleM !== p.seaScaleM) disc.touch('scale')
+    if (s.waveLimitM !== p.waveLimitM && disc.guide === 'limits') disc.setGuide(null)
     if (s.planPicked && s.planTimeMs != null && (s.planTimeMs !== p.planTimeMs || !p.planPicked)) {
       disc.touch('planTime')
     }

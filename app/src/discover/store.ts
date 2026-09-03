@@ -87,6 +87,9 @@ interface DiscoverState {
   seasonReached: Record<string, number>
   trip: TripCtx | null
   pendingFelt: PendingFelt | null
+  /** A row was tapped that lives elsewhere: the top bar names the place
+   *  until the value moves. Transient. */
+  guide: 'cruise' | 'limits' | null
 
   earn: (id: string, facts: [string, string][]) => void
   /** A chunk finished: note the level and queue the moment. */
@@ -100,6 +103,7 @@ interface DiscoverState {
   setTrip: (t: TripCtx | null) => void
   patchTrip: (p: Partial<TripCtx>) => void
   setPendingFelt: (p: PendingFelt | null) => void
+  setGuide: (g: 'cruise' | 'limits' | null) => void
 }
 
 export const useDiscoverStore = create<DiscoverState>()(
@@ -115,6 +119,8 @@ export const useDiscoverStore = create<DiscoverState>()(
       trip: null,
       pendingFelt: null,
       level: 0,
+      guide: null,
+      setGuide: (guide) => set({ guide }),
 
       levelUp: (level) =>
         set((s) => {

@@ -8,7 +8,9 @@ import { useDiscoverStore } from './store'
  * The glyph on the top bar: the whole notification system. A ring that
  * fills as achievements are earned, around a four-point rose. It appears
  * once the first-voyage card has retired (§10.2 keeps that card's slot),
- * and a tap opens the Discover sheet.
+ * and a tap opens the Discover sheet. Beside it, when a row sent you to a
+ * control that lives elsewhere, a chip names the place — the same
+ * arm-and-answer grammar as the home pick — until the value moves.
  */
 export default function DiscoverGlyph() {
   const onboarded = useAppStore((s) => s.onboarded)
@@ -25,8 +27,27 @@ export default function DiscoverGlyph() {
   if (!onboarded || !cardDone) return null
   const frac = earnedN / ACHIEVEMENTS.length
   return (
-    <button className="dv-glyph" onClick={() => setSheetTab('discover')} aria-label="Discover">
-      <RoseRing frac={frac} full={frac >= 1} />
+    <>
+      <button className="dv-glyph" onClick={() => setSheetTab('discover')} aria-label="Discover">
+        <RoseRing frac={frac} full={frac >= 1} />
+      </button>
+      <GuideChip />
+    </>
+  )
+}
+
+const GUIDE = {
+  cruise: 'Cruise speed · the chip on the trip card ↓',
+  limits: 'My limits · here in Places',
+} as const
+
+function GuideChip() {
+  const guide = useDiscoverStore((s) => s.guide)
+  const setGuide = useDiscoverStore((s) => s.setGuide)
+  if (!guide) return null
+  return (
+    <button className="chip chip-accent dv-guide" onClick={() => setGuide(null)}>
+      {GUIDE[guide]} · ok
     </button>
   )
 }

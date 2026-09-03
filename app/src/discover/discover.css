@@ -282,6 +282,60 @@
   text-align: right;
 }
 
+/* the guide chip sits in the bar's flow, clear of the pinned glyph */
+.dv-guide {
+  margin-left: 40px;
+}
+
+/* ---------- the hub: next up, the rest folded ---------- */
+
+.dv-next {
+  padding-bottom: 4px;
+}
+
+.dv-next-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dv-next-head .panel-section {
+  flex: 1;
+  margin-top: 8px;
+}
+
+.dv-next-head .dv-n {
+  margin-top: 8px;
+}
+
+.dv-more {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-accent);
+  padding: 8px 2px 0;
+}
+
+.dv-fold .dv-chev svg {
+  transition: transform 0.18s;
+  transform: rotate(90deg);
+}
+
+.dv-fold .dv-chev.open svg {
+  transform: rotate(-90deg);
+}
+
+.dv-fv-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+
+.dv-fv .dv-chev {
+  color: var(--c-text-faint);
+}
+
 /* ---------- levels: the ladder, the chunks and their rows ---------- */
 
 .dv-ladder {
@@ -339,7 +393,28 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 4px 4px;
+  padding: 8px 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.dv-chapter {
+  margin-top: 4px;
+  border-radius: var(--r-tile);
+}
+
+.dv-chapter.open {
+  background: rgba(16, 31, 47, 0.35);
+  padding-bottom: 4px;
+}
+
+.dv-chapter-head .dv-chev svg {
+  transition: transform 0.18s;
+  transform: rotate(90deg);
+}
+
+.dv-chapter-head .dv-chev.open svg {
+  transform: rotate(-90deg);
 }
 
 .dv-chapter-head .dv-row-title {

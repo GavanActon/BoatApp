@@ -1,6 +1,8 @@
+import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { usePlacesStore } from '../state/placesStore'
 import { useGpsStore } from '../tracking/gpsStore'
+import { knToUnit, speedUnitLabel } from '../units'
 import { logView } from './log'
 import { useDiscoverStore } from './store'
 
@@ -9,6 +11,10 @@ import { useDiscoverStore } from './store'
  * observed facts; finishing a chunk brings you up a level, in any order.
  * Only things worth changing are here — a default that suits most boats
  * (units, the ramp's scale) is not a task.
+ *
+ * Discover POINTS, it never hosts: every row takes you to the real
+ * control, so that is where you learn it lives. A row that has a value
+ * wears it, so the state is visible without leaving.
  */
 
 export type RowAction =
@@ -16,13 +22,14 @@ export type RowAction =
   | 'pickHome'
   | 'guide'
   | 'sandies'
+  | 'cruise'
+  | 'limits'
   | 'places'
   | 'chart'
   | 'strip'
   | 'offline'
   | 'helm'
   | 'tracks'
-  | 'inline'
 
 export interface SetupRow {
   id: string
@@ -30,6 +37,8 @@ export interface SetupRow {
   hint: string
   action: RowAction
   done: boolean
+  /** The current value, where the row has one. */
+  value?: string
 }
 
 export interface Chapter {
@@ -45,11 +54,17 @@ export const LEVELS = ['Dock Sitter', 'Deckhand', 'Bay Rat', 'Regular', 'Point R
 
 export function chapters(): Chapter[] {
   const app = useAppStore.getState()
+  const rs = useRouteStore.getState()
   const places = usePlacesStore.getState()
   const gps = useGpsStore.getState()
   const t = useDiscoverStore.getState().touched
   const log = logView()
   const pins = places.saved.filter((p) => p.name !== places.homeName).length
+  const cruise = `${Math.round(knToUnit(app.speedUnit, rs.cruiseKn))} ${speedUnitLabel(app.speedUnit)}`
+  const limits =
+    app.waveLimitM != null && app.windLimitKn != null
+      ? `${app.waveLimitM.toFixed(1)} m · ${app.windLimitKn} kn`
+      : '—'
   return [
     {
       id: 'first-voyage',
@@ -57,7 +72,7 @@ export function chapters(): Chapter[] {
       reward: 'The chart follows the boat and the first run is on it.',
       rows: [
         { id: 'location', label: 'Allow location', hint: 'the chart follows', action: 'locate', done: gps.status === 'on' || app.gpsWanted },
-        { id: 'home', label: 'Star your home dock', hint: 'tap it on the chart', action: 'pickHome', done: places.homeName != null },
+        { id: 'home', label: 'Star your home dock', hint: 'tap it on the chart', action: 'pickHome', done: places.homeName != null, value: places.homeName ?? undefined },
         { id: 'numbers', label: 'Read the water', hint: 'the numbers guide', action: 'guide', done: app.numbersSeen },
         { id: 'route', label: 'Route to The Sandies', hint: 'the first run', action: 'sandies', done: app.firstRouteDone },
       ],
@@ -67,8 +82,8 @@ export function chapters(): Chapter[] {
       name: 'Your boat',
       reward: 'Limit dots on every place. Lanes timed to the boat.',
       rows: [
-        { id: 'cruise', label: 'Cruise speed', hint: 'Trip card › speed chip', action: 'inline', done: !!t.cruise },
-        { id: 'limits', label: 'Your limits', hint: 'Places › My limits', action: 'inline', done: app.waveLimitM != null },
+        { id: 'cruise', label: 'Cruise speed', hint: 'the chip on the trip card', action: 'cruise', done: !!t.cruise, value: cruise },
+        { id: 'limits', label: 'Your limits', hint: 'Places › My limits', action: 'limits', done: app.waveLimitM != null, value: limits },
       ],
     },
     {
@@ -76,7 +91,7 @@ export function chapters(): Chapter[] {
       name: 'Your places',
       reward: 'The chart carries your own names.',
       rows: [
-        { id: 'pin', label: 'Save a pin', hint: 'tap the water · Save', action: 'chart', done: pins > 0 },
+        { id: 'pin', label: 'Save a pin', hint: 'tap the water · Save', action: 'chart', done: pins > 0, value: pins ? String(pins) : undefined },
         { id: 'note', label: 'Write a note', hint: 'Places › Edit', action: 'places', done: Object.keys(places.notes).length > 0 },
       ],
     },
@@ -96,7 +111,7 @@ export function chapters(): Chapter[] {
       rows: [
         { id: 'trip', label: 'Start a trip', hint: 'Trip card › Start', action: 'chart', done: !!t.tripStart },
         { id: 'helm', label: 'Helm view', hint: 'the helm FAB', action: 'helm', done: !!t.helm },
-        { id: 'track', label: 'Record a track', hint: 'Tracks', action: 'tracks', done: log.trackCount > 0 },
+        { id: 'track', label: 'Record a track', hint: 'Tracks', action: 'tracks', done: log.trackCount > 0, value: log.trackCount ? String(log.trackCount) : undefined },
       ],
     },
     {
@@ -125,4 +140,9 @@ export function levelOf(ch: Chapter[]): number {
 
 export function levelName(level: number): string {
   return LEVELS[Math.min(level, LEVELS.length - 1)]
+}
+
+/** The chunk to work on: the first unfinished one, in order. */
+export function nextChunk(ch: Chapter[]): Chapter | null {
+  return ch.find((c) => c.rows.some((r) => !r.done)) ?? null
 }

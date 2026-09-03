@@ -10,14 +10,14 @@ import { enterHelmView, locateAndFollow } from '../tracking/gpsService'
 import BottomSheet from '../ui/BottomSheet'
 import LimitsRow from '../ui/LimitsRow'
 import { IconMinus, IconPlus } from '../ui/icons'
-import { knToUnit, speedUnitLabel, unitToKn, distanceUnitFor, runDistance } from '../units'
+import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn } from '../units'
 import { seaColor } from '../weather/seaState'
 import { gridConditionsAt } from '../weather/weatherLayer'
 import { AchGlyph, RoseRing } from './icons'
 import { onLog } from './log'
 import { ACH_BY_ID, ACHIEVEMENTS } from './registry'
 import { SEASON_PLACES } from './season'
-import { chapters, levelName, levelOf, setupCounts, LEVELS, type Chapter, type SetupRow } from './setup'
+import { chapters, levelName, levelOf, nextChunk, setupCounts, LEVELS, type Chapter, type SetupRow } from './setup'
 import { useDiscoverStore } from './store'
 
 type View = { kind: 'hub' } | { kind: 'setup' } | { kind: 'season' } | { kind: 'detail'; id: string }
@@ -98,13 +98,17 @@ function Hub({ go }: { go: (v: View) => void }) {
   const earned = useDiscoverStore((s) => s.earned)
   const fresh = useDiscoverStore((s) => s.fresh)
   const seasonReached = useDiscoverStore((s) => s.seasonReached)
+  const [allEarned, setAllEarned] = useState(false)
+  const [showLocked, setShowLocked] = useState(false)
 
   const ch = chapters()
   const setup = setupCounts(ch)
   const level = levelOf(ch)
+  const next = nextChunk(ch)
   const seasonN = SEASON_PLACES.filter((p) => seasonReached[p.id]).length
   const earnedDefs = ACHIEVEMENTS.filter((a) => earned[a.id]).sort((a, b) => earned[b.id].at - earned[a.id].at)
   const locked = ACHIEVEMENTS.filter((a) => !earned[a.id])
+  const shownEarned = allEarned ? earnedDefs : earnedDefs.slice(0, 3)
 
   return (
     <>
@@ -118,13 +122,30 @@ function Hub({ go }: { go: (v: View) => void }) {
         </div>
       </div>
 
+      {next ? (
+        <div className="dv-next">
+          <div className="dv-next-head">
+            <span className="panel-section">Next up · {next.name}</span>
+            <span className="dv-n numeral">
+              {next.rows.filter((r) => r.done).length}/{next.rows.length}
+            </span>
+          </div>
+          {next.rows
+            .filter((r) => !r.done)
+            .slice(0, 3)
+            .map((r) => (
+              <ActionRow key={r.id} row={r} />
+            ))}
+        </div>
+      ) : null}
+
       <button className="dv-row" onClick={() => go({ kind: 'setup' })}>
         <div className="dv-row-text">
           <span className={`dv-row-title${setup.done === setup.total ? ' done' : ''}`}>Levels</span>
           <Segs n={ch.length} done={level} />
         </div>
         <span className={`dv-n numeral${setup.done === setup.total ? ' done' : ''}`}>
-          {setup.done}/{setup.total}
+          {level}/{ch.length}
         </span>
         <span className="dv-chev">
           <Chevron />
@@ -145,9 +166,16 @@ function Hub({ go }: { go: (v: View) => void }) {
 
       {earnedDefs.length > 0 && (
         <>
-          <div className="panel-section">Earned</div>
+          <div className="dv-next-head">
+            <span className="panel-section">Earned</span>
+            {earnedDefs.length > 3 && (
+              <button className="dv-more" onClick={() => setAllEarned((v) => !v)}>
+                {allEarned ? 'recent' : `all ${earnedDefs.length}`}
+              </button>
+            )}
+          </div>
           <div className="dv-grid">
-            {earnedDefs.map((a) => (
+            {shownEarned.map((a) => (
               <button
                 key={a.id}
                 className={`dv-ach${fresh.includes(a.id) ? ' fresh' : ''}`}
@@ -166,16 +194,25 @@ function Hub({ go }: { go: (v: View) => void }) {
 
       {locked.length > 0 && (
         <>
-          <div className="panel-section">Locked</div>
-          {locked.map((a) => (
-            <button key={a.id} className="dv-lock" onClick={() => go({ kind: 'detail', id: a.id })}>
-              <AchGlyph icon={a.icon} />
-              <span className="dv-lock-text">
-                <span className="dv-lock-name">{a.name}</span>
-                <span className="dv-lock-hint">{a.hint}</span>
-              </span>
-            </button>
-          ))}
+          <button className="dv-row dv-row-last dv-fold" onClick={() => setShowLocked((v) => !v)}>
+            <div className="dv-row-text">
+              <span className="dv-row-title">Locked</span>
+            </div>
+            <span className="dv-n numeral">{locked.length}</span>
+            <span className={`dv-chev${showLocked ? ' open' : ''}`}>
+              <Chevron />
+            </span>
+          </button>
+          {showLocked &&
+            locked.map((a) => (
+              <button key={a.id} className="dv-lock" onClick={() => go({ kind: 'detail', id: a.id })}>
+                <AchGlyph icon={a.icon} />
+                <span className="dv-lock-text">
+                  <span className="dv-lock-name">{a.name}</span>
+                  <span className="dv-lock-hint">{a.hint}</span>
+                </span>
+              </button>
+            ))}
         </>
       )}
     </>
@@ -213,6 +250,9 @@ function Setup() {
   useSetupInputs()
   const ch = chapters()
   const level = levelOf(ch)
+  const next = nextChunk(ch)
+  const [open, setOpen] = useState<string | null>(null)
+  const openId = open ?? next?.id ?? null
   return (
     <>
       <div className="dv-ladder">
@@ -223,103 +263,73 @@ function Setup() {
         ))}
       </div>
       {ch.map((c, i) => (
-        <ChapterBlock key={c.id} chapter={c} n={i + 1} />
+        <ChapterBlock
+          key={c.id}
+          chapter={c}
+          n={i + 1}
+          open={c.id === openId}
+          onToggle={() => setOpen(c.id === openId ? '' : c.id)}
+        />
       ))}
     </>
   )
 }
 
-/** One chunk: finish it and you are up a level, in any order. */
-function ChapterBlock({ chapter, n }: { chapter: Chapter; n: number }) {
+/** One chunk: finish it and you are up a level, in any order. Folded to a
+ *  line unless it is the one being worked on, or tapped open. */
+function ChapterBlock({
+  chapter,
+  n,
+  open,
+  onToggle,
+}: {
+  chapter: Chapter
+  n: number
+  open: boolean
+  onToggle: () => void
+}) {
   const done = chapter.rows.filter((r) => r.done).length
   const all = done === chapter.rows.length
   return (
-    <div className={`dv-chapter${all ? ' done' : ''}`}>
-      <div className="dv-chapter-head">
+    <div className={`dv-chapter${all ? ' done' : ''}${open ? ' open' : ''}`}>
+      <button className="dv-chapter-head" onClick={onToggle} aria-expanded={open}>
         <span className="dv-chapter-n numeral">{all ? '✓' : n}</span>
         <span className={`dv-row-title${all ? ' done' : ''}`}>{chapter.name}</span>
         <Segs n={chapter.rows.length} done={done} />
-      </div>
-      <div className="dv-reward">{chapter.reward}</div>
-      {chapter.rows.map((r) =>
-        r.action === 'inline' ? <InlineRow key={r.id} row={r} /> : <ActionRow key={r.id} row={r} />,
+        <span className={`dv-chev${open ? ' open' : ''}`}>
+          <Chevron />
+        </span>
+      </button>
+      {open && (
+        <>
+          <div className="dv-reward">{chapter.reward}</div>
+          {chapter.rows.map((r) => (
+            <ActionRow key={r.id} row={r} />
+          ))}
+        </>
       )}
     </div>
   )
 }
 
-/** A row is an action: tap, and you are at the real control. */
+/** A row is an action: tap, and you are at the real control. Two rows
+ *  host their control ONCE — cruise speed and limits are set in place the
+ *  first time, with a line saying where they live from now on — and then
+ *  turn into pointers wearing the value. Set it here once; change it there. */
 function ActionRow({ row }: { row: SetupRow }) {
-  const app = useAppStore.getState
-  const act = () => {
-    switch (row.action) {
-      case 'locate':
-        locateAndFollow()
-        app().setSheetTab(null)
-        break
-      case 'pickHome':
-        app().setSheetTab(null)
-        app().setPickingHome(true)
-        break
-      case 'guide':
-        app().setShowNumbersGuide(true)
-        break
-      case 'sandies':
-        routeToSandies()
-        break
-      case 'places':
-        app().setSheetTab('places')
-        break
-      case 'offline':
-        app().setSheetTab('offline')
-        break
-      case 'tracks':
-        app().setSheetTab('tracks')
-        break
-      case 'helm':
-        app().setSheetTab(null)
-        enterHelmView()
-        break
-      default:
-        app().setSheetTab(null)
-    }
-  }
-  return (
-    <button className={`dv-fv${row.done ? ' done' : ''}`} onClick={act}>
-      <span className="dv-box">{row.done ? '✓' : ''}</span>
-      <span className="dv-fv-text">
-        <b>{row.label}</b>
-        <i>{row.hint}</i>
-      </span>
-    </button>
-  )
+  if (!row.done && (row.action === 'cruise' || row.action === 'limits')) return <SetOnceRow row={row} />
+  return <PointerRow row={row} />
 }
 
-/** The same run the first-voyage card plots (§10.4). */
-function routeToSandies() {
-  const d = DESTINATIONS.find((x) => x.name === 'The Sandies') ?? DESTINATIONS[0]
-  if (!d) return
-  useAppStore.getState().setFirstRouteDone(true)
-  useAppStore.getState().setPlanPicked(false)
-  const rs = useRouteStore.getState()
-  rs.setDestination({ name: d.name, lon: d.lon, lat: d.lat })
-  rs.setFocusPoint({ lon: d.lon, lat: d.lat, label: d.name })
-  rs.setCard('trip')
-  useAppStore.getState().setDetent('rest')
-  useAppStore.getState().setSheetTab(null)
-}
-
-/** The boat chapter: the control itself, then where it lives from now on. */
-function InlineRow({ row }: { row: SetupRow }) {
+function SetOnceRow({ row }: { row: SetupRow }) {
   return (
-    <div className={`dv-fv open${row.done ? ' done' : ''}`}>
-      <span className="dv-box">{row.done ? '✓' : ''}</span>
+    <div className="dv-fv open">
+      <span className="dv-box" />
       <span className="dv-fv-text">
         <b>{row.label}</b>
         <div className="dv-ctl">
-          {row.id === 'cruise' && <CruiseStep />}
-          {row.id === 'limits' && <LimitsRow />}
-          <span className="dv-where">{row.hint}</span>
+          {row.action === 'cruise' ? <CruiseStep /> : <LimitsRow />}
+          <span className="dv-where">from now on · {row.hint}</span>
         </div>
       </span>
     </div>
@@ -347,6 +357,79 @@ function CruiseStep() {
   )
 }
 
+function PointerRow({ row }: { row: SetupRow }) {
+  const app = useAppStore.getState
+  const act = () => {
+    switch (row.action) {
+      case 'locate':
+        locateAndFollow()
+        app().setSheetTab(null)
+        break
+      case 'pickHome':
+        app().setSheetTab(null)
+        app().setPickingHome(true)
+        break
+      case 'guide':
+        app().setShowNumbersGuide(true)
+        break
+      case 'sandies':
+        routeToSandies()
+        break
+      case 'cruise':
+        // the speed chip rides the trip card — which needs a subject
+        if (!useRouteStore.getState().destination) routeToSandies()
+        app().setSheetTab(null)
+        useDiscoverStore.getState().setGuide('cruise')
+        break
+      case 'limits':
+        app().setSheetTab('places')
+        useDiscoverStore.getState().setGuide('limits')
+        break
+      case 'places':
+        app().setSheetTab('places')
+        break
+      case 'offline':
+        app().setSheetTab('offline')
+        break
+      case 'tracks':
+        app().setSheetTab('tracks')
+        break
+      case 'helm':
+        app().setSheetTab(null)
+        enterHelmView()
+        break
+      default:
+        app().setSheetTab(null)
+    }
+  }
+  return (
+    <button className={`dv-fv${row.done ? ' done' : ''}`} onClick={act}>
+      <span className="dv-box">{row.done ? '✓' : ''}</span>
+      <span className="dv-fv-text">
+        <b>{row.label}</b>
+        <i>{row.hint}</i>
+      </span>
+      {row.value && <span className="dv-fv-val numeral">{row.value}</span>}
+      <span className="dv-chev">
+        <Chevron />
+      </span>
+    </button>
+  )
+}
+
+/** The same run the first-voyage card plots (§10.4). */
+function routeToSandies() {
+  const d = DESTINATIONS.find((x) => x.name === 'The Sandies') ?? DESTINATIONS[0]
+  if (!d) return
+  useAppStore.getState().setFirstRouteDone(true)
+  useAppStore.getState().setPlanPicked(false)
+  const rs = useRouteStore.getState()
+  rs.setDestination({ name: d.name, lon: d.lon, lat: d.lat })
+  rs.setFocusPoint({ lon: d.lon, lat: d.lat, label: d.name })
+  rs.setCard('trip')
+  useAppStore.getState().setDetent('rest')
+  useAppStore.getState().setSheetTab(null)
+}
 
 // ---------- the season ----------
 
