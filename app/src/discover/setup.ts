@@ -3,6 +3,7 @@ import { useAppStore } from '../state/appStore'
 import { usePlacesStore } from '../state/placesStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { knToUnit, speedUnitLabel } from '../units'
+import { isInstalled } from './install'
 import { logView } from './log'
 import { useDiscoverStore } from './store'
 
@@ -29,6 +30,7 @@ export type RowAction =
   | 'chart'
   | 'strip'
   | 'offline'
+  | 'install'
   | 'helm'
   | 'tracks'
 
@@ -130,6 +132,9 @@ export function chapters(): Chapter[] {
       name: 'Off the grid',
       reward: 'Charts with no bars. A long day on one battery.',
       rows: [
+        // first, because it is what KEEPS the download: Safari clears a
+        // site's storage after seven days away; a Home Screen app is exempt
+        { id: 'install', label: 'Put it on your Home Screen', hint: 'keeps the charts and your crew', action: 'install', done: isInstalled() || !!t.installed },
         { id: 'download', label: 'Download charts', hint: 'Offline', action: 'offline', done: app.offlineReady },
         // beside the charts: both are about the boat being far from anything
         { id: 'lowPower', label: 'Low power', hint: 'Settings › Boat', action: 'settings', done: !!t.lowPower, value: app.lowPower ? 'on' : 'off' },

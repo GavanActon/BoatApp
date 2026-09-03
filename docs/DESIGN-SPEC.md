@@ -340,6 +340,12 @@ the ring, the reward line, nothing else — and the hub (levels, season,
 earned, locked) arrives with level 1, around the next chapter. Where a skipped step bites, the symptom points back: with no
 fix and no home dock, the strip's chip and the trip card's From slot read
 "Star your home dock" and arm the pick (§10.3). Nothing re-shows unasked.
+Off the grid opens with *Put it on your Home Screen*: on iOS the row
+unfolds the two taps (Share, then Add to Home Screen, and where it hides
+under More), since a page cannot install itself there and a Home Screen
+app is the only thing exempt from Safari's seven-day storage clear; where
+the browser offers a prompt the row is a real Install. Done when the app
+runs standalone.
 
 **10.3 MUST — Home is picked on the chart.** The home row arms a pick — a
 top-bar banner names the listening slot with cancel, the same grammar as

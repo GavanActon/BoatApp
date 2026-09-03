@@ -88,7 +88,8 @@ Everything under `app/src/discover/`:
 
 Mount points: `App.tsx` (glyph, sheet, toast, init), `appStore.ts`
 (`'discover'` in SheetTab), `TripCard.tsx` (the strip), `db.ts` (v4),
-`LayersPanel.tsx` (the cruise row lights up when a Discover row sent you).
+`LayersPanel.tsx` (the cruise row lights up when a Discover row sent you),
+`OfflinePanel.tsx` (the seven-day note reads `install.ts`'s standalone check).
 
 Driven end to end in a real browser (Playwright, iPhone viewport,
 spoofed GPS): welcome (Get set up) → levels, First voyage open → All Talk → glyph → hub → set up

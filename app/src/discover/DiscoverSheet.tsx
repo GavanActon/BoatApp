@@ -12,6 +12,7 @@ import { distanceUnitFor, runDistance } from '../units'
 import { seaColor } from '../weather/seaState'
 import { gridConditionsAt } from '../weather/weatherLayer'
 import { AchGlyph, RoseRing } from './icons'
+import { canPromptInstall, onInstallChange, platform, promptInstall } from './install'
 import { onLog } from './log'
 import { ACH_BY_ID, ACHIEVEMENTS } from './registry'
 import { SEASON_PLACES } from './season'
@@ -82,10 +83,17 @@ function useLogTick() {
   useEffect(() => onLog(() => setTick((t) => t + 1)), [])
 }
 
+/** …and when the browser offers an install prompt, or an install lands. */
+function useInstallTick() {
+  const [, setTick] = useState(0)
+  useEffect(() => onInstallChange(() => setTick((t) => t + 1)), [])
+}
+
 /** Everything a set-up row reads, one primitive per selector (a fresh array
  *  would re-render forever) — so the counters can't go stale. */
 function useSetupInputs() {
   useLogTick()
+  useInstallTick()
   useAppStore((s) => s.numbersSeen)
   useAppStore((s) => s.firstRouteDone)
   useAppStore((s) => s.gpsWanted)
@@ -362,7 +370,84 @@ function ChapterBlock({
  *  control and comes back here when that sheet closes (engine.ts), so the
  *  levels are where you left them. */
 function ActionRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: string; inLevels?: boolean }) {
+  // the one row with nowhere to point: iOS has no install button, only two
+  // taps to describe, so the row unfolds them here
+  if (row.action === 'install' && !row.done) return <InstallRow row={row} />
   return <PointerRow row={row} chapterId={chapterId} inLevels={inLevels} />
+}
+
+/**
+ * Putting the app on the Home Screen. Where the browser hands us a prompt
+ * (Android, desktop Chrome) the row is an Install button. On iOS it is the
+ * two taps, drawn: Share, then Add to Home Screen — and where that sits
+ * when the sheet hides it.
+ */
+function InstallRow({ row }: { row: SetupRow }) {
+  const [open, setOpen] = useState(false)
+  const plat = platform()
+  const prompt = canPromptInstall()
+  const touch = useDiscoverStore((s) => s.touch)
+  const install = async () => {
+    if (await promptInstall()) touch('installed')
+  }
+  return (
+    <div className={`dv-fv${open ? ' open' : ''}`}>
+      <span className="dv-box" />
+      <span className="dv-fv-text">
+        <button className="dv-install-head" onClick={() => (prompt ? void install() : setOpen((v) => !v))} aria-expanded={open}>
+          <b>{row.label}</b>
+          <i>{prompt ? 'tap to install' : row.hint}</i>
+        </button>
+        {open && !prompt && (
+          <ol className="dv-steps">
+            {plat === 'ios-other' && (
+              <li>
+                Open <b>sandies.app</b> in <b>Safari</b>
+              </li>
+            )}
+            {plat === 'desktop' ? (
+              <li>Open <b>sandies.app</b> on your phone, or install from Chrome's address bar</li>
+            ) : (
+              <>
+                <li>
+                  Tap <b>Share</b> <ShareGlyph /> {plat === 'android' ? '(or the ⋮ menu)' : 'at the bottom of Safari'}
+                </li>
+                <li>
+                  Tap <b><PlusGlyph /> Add to Home Screen</b>
+                </li>
+                <li className="dv-step-dim">
+                  Not there? Scroll the sheet down, or tap <b>··· More</b>, then <b>Add to Home Screen</b>
+                </li>
+              </>
+            )}
+            <li className="dv-step-dim">Then open Sandies from the Home Screen — the charts and your crew stay put</li>
+          </ol>
+        )}
+      </span>
+      <span className="dv-chev">
+        <Chevron />
+      </span>
+    </div>
+  )
+}
+
+function ShareGlyph() {
+  return (
+    <svg className="dv-glyph-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="share icon">
+      <path d="M12 3v13" />
+      <path d="M8 7l4-4 4 4" />
+      <path d="M5 11v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9" />
+    </svg>
+  )
+}
+
+function PlusGlyph() {
+  return (
+    <svg className="dv-glyph-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  )
 }
 
 function PointerRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: string; inLevels?: boolean }) {

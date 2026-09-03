@@ -12,6 +12,7 @@ import { ACHIEVEMENTS, type Ctx } from './registry'
 import { REACH_NM, SEASON_PLACES, seasonOf } from './season'
 import { chapters, levelOf } from './setup'
 import { useDiscoverStore, type TripCtx } from './store'
+import { initInstall } from './install'
 
 /**
  * The engine: watches the stores the app already keeps, notes the gestures
@@ -46,6 +47,7 @@ export async function initDiscover(): Promise<void> {
 
   // subscriptions first: a slow or failing log must not leave the engine deaf
   subscribeAll()
+  initInstall()
 
   try {
     await loadLog()

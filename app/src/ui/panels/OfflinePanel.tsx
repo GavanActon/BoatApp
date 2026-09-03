@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BUILD, buildReport, REPORT_EMAIL, reportMailto } from '../../diagnostics'
+import { isInstalled } from '../../discover/install'
 import { BUNDLES, DATA_BASE } from '../../config'
 import {
   deleteStoredFile,
@@ -159,6 +160,14 @@ export default function OfflinePanel() {
       )}
 
       <div className="panel-note row-desc">Charts offline · weather shows its age</div>
+      {/* the one thing that keeps the download on an iPhone: Safari clears
+          a site's storage after seven days away; a Home Screen app is exempt */}
+      {!isInstalled() && (
+        <div className="panel-note row-desc">
+          In Safari a download lasts seven days without a visit. On the Home Screen it stays: Share, then Add to
+          Home Screen — the steps are in Discover.
+        </div>
+      )}
 
       <div className="panel-section">Something wrong?</div>
       <div className="row">

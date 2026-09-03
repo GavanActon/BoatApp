@@ -23,6 +23,7 @@ export type TouchKey =
   | 'rename'
   | 'newRoute'
   | 'placesRoute'
+  | 'installed'
   | 'tripStart'
 
 export interface Earned {

@@ -428,6 +428,59 @@
   color: var(--c-text-faint);
 }
 
+/* the install row: a head that unfolds the two taps */
+.dv-install-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.dv-install-head b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.dv-install-head i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--c-text-faint);
+}
+
+.dv-steps {
+  margin: 8px 0 2px;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--c-text-dim);
+}
+
+.dv-steps b {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.dv-step-dim {
+  color: var(--c-text-faint);
+  font-size: 12px;
+}
+
+.dv-glyph-inline {
+  display: inline-block;
+  vertical-align: -2px;
+  color: var(--c-accent);
+}
+
 /* ---------- levels: the ladder, the chunks and their rows ---------- */
 
 .dv-ladder {
