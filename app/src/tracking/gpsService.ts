@@ -1,5 +1,6 @@
 import maplibregl from 'maplibre-gl'
 import { withMap, getMap } from '../map/mapController'
+import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { db } from './db'
 import { distanceNm, useGpsStore, type Fix } from './gpsStore'
@@ -138,10 +139,12 @@ function followCamera(map: maplibregl.Map, fix: Fix, courseUp: boolean) {
   // Course-up holds its heading when the boat is not making way. COG is
   // derived from successive fixes, so tied up or drifting it is not a course
   // at all — it swings through whatever the noise says, and every swing threw
-  // the flow field away. A plotter behaves the same: stopped, the chart holds.
+  // the flow field away. A plotter behaves the same: stopped, the chart holds
+  // — unless a trip is under way at the helm, when the run's own course from
+  // here is the direction of travel, known before the boat has moved.
   const now = map.getBearing()
   const steering = courseUp && fix.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
-  const want = steering ? fix.cog! : now
+  const want = steering ? fix.cog! : (courseUp ? plannedCourse(fix.lon, fix.lat) : null) ?? now
   const turnedDeg = Math.abs(((want - now + 540) % 360) - 180)
   const bearing = turnedDeg >= TURN_DEG ? want : now
   const turning = bearing !== now
@@ -282,14 +285,90 @@ export function locateAndFollow() {
 // Helm view geometry. The pitch matches the map's maxPitch, so the gesture
 // and the toggle land on the same horizon. The padding pushes the camera's
 // center point (the boat, while following) down the screen: MapLibre places
-// the center in the middle of the UNPADDED area, so reserving the top half
-// renders the boat at ~75% height — a quarter of the screen of water behind,
-// three quarters of what's coming up ahead.
+// the center in the middle of the UNPADDED area, so reserving everything
+// above the bottom cards but a sliver renders the boat just clear of them —
+// the whole screen above is what's coming up ahead, and the cards never
+// cover the boat.
 const HELM_PITCH = 60
-const HELM_TOP_PAD = 0.5 // fraction of the viewport height reserved above
+const HELM_AHEAD_PX = 44 // water between the boat and the top of the cards
 const HELM_MIN_ZOOM = 13 // "what's coming up" scale, not the passage overview
 
 const flatPadding = { top: 0, bottom: 0, left: 0, right: 0 }
+
+function helmPadding(map: maplibregl.Map) {
+  const h = map.getContainer().clientHeight
+  const bar = document.querySelector('.bottombar')?.getBoundingClientRect().height ?? 0
+  const bottom = Math.round(bar)
+  const top = Math.max(0, h - bottom - HELM_AHEAD_PX * 2)
+  return { ...flatPadding, top, bottom }
+}
+
+// the cards under the boat change height — the live card minimised, the
+// arrival strip arriving — and the boat has to stay clear of them
+let helmRo: ResizeObserver | null = null
+
+function watchHelmPadding() {
+  helmRo?.disconnect()
+  helmRo = null
+  if (typeof ResizeObserver === 'undefined') return
+  const bar = document.querySelector('.bottombar')
+  if (!bar) return
+  // seeded with the height the helm ease already used: an observer fires
+  // once on observe, and an ease from that callback cancelled the pitch
+  let last = Math.round(bar.getBoundingClientRect().height)
+  helmRo = new ResizeObserver(() => {
+    const map = getMap()
+    if (!map || !useAppStore.getState().helm) return
+    const p = helmPadding(map)
+    if (p.bottom === last) return
+    last = p.bottom
+    map.easeTo({ padding: p, duration: 400 })
+  })
+  helmRo.observe(bar)
+}
+
+const KM_LAT = 111.2
+
+/** Bearing (° true) from a to b — the flat-earth version is plenty at bay scale. */
+function bearingDeg(a: [number, number], b: [number, number]): number {
+  const kx = Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180)
+  const dx = (b[0] - a[0]) * kx
+  const dy = b[1] - a[1]
+  return ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360
+}
+
+/**
+ * The plotted run's course from where the boat is: from the nearest route
+ * point to the one about 300 m on. Only while a trip is under way at the
+ * helm — that is when the run IS the direction of travel, before the boat
+ * has moved enough for COG to say so. Null otherwise.
+ */
+function plannedCourse(lon: number, lat: number): number | null {
+  const app = useAppStore.getState()
+  const rs = useRouteStore.getState()
+  if (!app.helm || rs.tripStartedAt == null) return null
+  const coords = rs.route?.coords
+  if (!coords || coords.length < 2) return null
+  const kx = Math.cos((lat * Math.PI) / 180)
+  let bi = 0
+  let bd = Infinity
+  for (let i = 0; i < coords.length; i++) {
+    const d = ((coords[i][0] - lon) * kx) ** 2 + (coords[i][1] - lat) ** 2
+    if (d < bd) {
+      bd = d
+      bi = i
+    }
+  }
+  if (bi >= coords.length - 1) return null // at the far end: nowhere on to point
+  // far enough on that a sharp corner right at the boat doesn't set the course
+  let j = bi + 1
+  let km = 0
+  while (j < coords.length - 1 && km < 0.3) {
+    km += Math.hypot((coords[j][0] - coords[j - 1][0]) * kx * KM_LAT, (coords[j][1] - coords[j - 1][1]) * KM_LAT)
+    j++
+  }
+  return bearingDeg(coords[bi], coords[j])
+}
 
 /**
  * Pitch the chart into helm view and follow the boat course-up. A camera
@@ -305,15 +384,17 @@ export function enterHelmView() {
   const ease = (map: maplibregl.Map) => {
     cameraHoldUntil = Date.now() + 1600
     const steering = fix?.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
+    const planned = fix ? plannedCourse(fix.lon, fix.lat) : null
     map.easeTo({
       ...(fix ? { center: [fix.lon, fix.lat] } : {}),
       zoom: Math.max(map.getZoom(), HELM_MIN_ZOOM),
       pitch: HELM_PITCH,
-      bearing: steering ? fix.cog! : map.getBearing(),
-      padding: { ...flatPadding, top: Math.round(map.getContainer().clientHeight * HELM_TOP_PAD) },
+      bearing: steering ? fix.cog! : (planned ?? map.getBearing()),
+      padding: helmPadding(map),
       duration: 1400,
       essential: true,
     })
+    watchHelmPadding()
   }
   const map = getMap()
   if (map) ease(map)
@@ -354,6 +435,8 @@ export function setHeadingUpMode(on: boolean) {
 /** Flatten back to the top-down chart. Follow stays however it was. */
 export function exitHelmView() {
   useAppStore.getState().setHelm(false)
+  helmRo?.disconnect()
+  helmRo = null
   withMap((map) => map.easeTo({ pitch: 0, padding: flatPadding, duration: 800 }))
 }
 

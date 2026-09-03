@@ -22,23 +22,18 @@ function fmtCog(cog: number | null): string {
   return `${Math.round(cog).toString().padStart(3, '0')}°`
 }
 
-export default function InstrumentBar() {
-  const fix = useGpsStore((s) => s.fix)
-  const status = useGpsStore((s) => s.status)
-  const recording = useGpsStore((s) => s.recording)
+/**
+ * The recording pill: the dot, the distance, and under way the ONE control
+ * that ends things. Ending a trip is more than stopping a track — it
+ * dismisses the subject and clears the dock — so a bump on a bouncing boat
+ * must not do it: the first tap arms, names what the second will do, and
+ * stands down on its own; the same arm-and-answer grammar as the strip's
+ * chips. A plain track stops at once.
+ */
+export function RecPill() {
   const distanceNm = useGpsStore((s) => s.recordingDistanceNm)
-  const depthUnit = useAppStore((s) => s.depthUnit)
   const speedUnit = useAppStore((s) => s.speedUnit)
   const underWay = useRouteStore((s) => s.tripStartedAt) != null
-
-  const depth = fix ? depthAt(fix.lon, fix.lat) : null
-  const hasGps = status === 'on' && fix != null
-
-  // Under way the pill is the ONE control that ends things, and ending a
-  // trip is more than stopping a track — it dismisses the subject and
-  // clears the dock — so a bump on a bouncing boat must not do it: the
-  // first tap arms, names what the second will do, and stands down on its
-  // own; the same arm-and-answer grammar as the strip's chips.
   const [armed, setArmed] = useState(false)
   useEffect(() => {
     if (!armed) return
@@ -48,13 +43,59 @@ export default function InstrumentBar() {
   useEffect(() => {
     if (!underWay) setArmed(false)
   }, [underWay])
+  const dist = `${runDistance(speedUnit, distanceNm)} ${distanceUnitFor(speedUnit)}`
+  if (!underWay) {
+    // plain track recording: the pill IS the stop — the Tracks panel's stop
+    // is behind a sheet, so this is the only one on screen
+    return (
+      <button className="rec-btn recording" onClick={() => void stopRecording()} aria-label="Stop recording track">
+        <span className="rec-dot" />
+        {dist}
+      </button>
+    )
+  }
+  return (
+    <button
+      className={`rec-btn recording${armed ? ' rec-arm' : ''}`}
+      onClick={() => {
+        if (!armed) {
+          setArmed(true)
+          return
+        }
+        setArmed(false)
+        haptic('confirm')
+        endTrip()
+      }}
+      aria-label={armed ? 'End trip — tap again' : 'Recording — tap to end the trip'}
+    >
+      <span className="rec-dot" />
+      {armed ? 'End trip · tap again' : dist}
+    </button>
+  )
+}
+
+/**
+ * SOG, COG, depth and the pill. On its own glass while a plain track
+ * records; under way the live trip card hosts it (`embedded`), so the
+ * dock is one card, not two.
+ */
+export default function InstrumentBar({ embedded = false }: { embedded?: boolean }) {
+  const fix = useGpsStore((s) => s.fix)
+  const status = useGpsStore((s) => s.status)
+  const recording = useGpsStore((s) => s.recording)
+  const depthUnit = useAppStore((s) => s.depthUnit)
+  const speedUnit = useAppStore((s) => s.speedUnit)
+  const underWay = useRouteStore((s) => s.tripStartedAt) != null
+
+  const depth = fix ? depthAt(fix.lon, fix.lat) : null
+  const hasGps = status === 'on' && fix != null
 
   // tied up, the bar is three dashes and a button the trip card already
   // carries — the map gets the room until we're actually moving
-  if (!recording && !underWay) return null
+  if (!embedded && !recording && !underWay) return null
 
   return (
-    <div className="instruments glass">
+    <div className={`instruments${embedded ? ' inst-embedded' : ' glass'}`}>
       <div className="inst">
         <span className="inst-label">SOG</span>
         <span className="inst-value numeral">{hasGps ? fmtSog(fix.sogKn, speedUnit) : '—'}</span>
@@ -72,39 +113,7 @@ export default function InstrumentBar() {
         <span className="inst-value numeral">{hasGps ? formatDepth(depth, depthUnit) : '—'}</span>
         <span className="inst-unit">{depthUnit}</span>
       </div>
-      {underWay ? (
-        // trip running: the recording tell — distance covered, the dot —
-        // and the one control there is: tap, then tap again, and the trip
-        // and its track end together. The trip card carries no End of its
-        // own; a stop that lives in two places reads as two controls.
-        <button
-          className={`rec-btn recording${armed ? ' rec-arm' : ''}`}
-          onClick={() => {
-            if (!armed) {
-              setArmed(true)
-              return
-            }
-            setArmed(false)
-            haptic('confirm')
-            endTrip()
-          }}
-          aria-label={armed ? 'End trip — tap again' : 'Recording — tap to end the trip'}
-        >
-          <span className="rec-dot" />
-          {armed ? 'End trip · tap again' : `${runDistance(speedUnit, distanceNm)} ${distanceUnitFor(speedUnit)}`}
-        </button>
-      ) : (
-        // plain track recording: here the pill IS the stop — the Tracks
-        // panel's stop is behind a sheet, so this is the only one on screen
-        <button
-          className="rec-btn recording"
-          onClick={() => void stopRecording()}
-          aria-label="Stop recording track"
-        >
-          <span className="rec-dot" />
-          {runDistance(speedUnit, distanceNm)} {distanceUnitFor(speedUnit)}
-        </button>
-      )}
+      <RecPill />
     </div>
   )
 }

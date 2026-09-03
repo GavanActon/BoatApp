@@ -415,6 +415,46 @@
   gap: 10px;
 }
 
+/* inside the live trip card: a row under the leg, not a pane of its own */
+.instruments.inst-embedded {
+  margin-top: 8px;
+  padding: 8px 0 0;
+  border-radius: 0;
+  border-top: 1px solid rgba(126, 178, 224, 0.1);
+}
+
+.inst-embedded .inst-value {
+  font-size: 22px;
+}
+
+.inst-embedded .rec-btn {
+  padding: 8px 12px;
+}
+
+/* the live card folded to a line: heading, time left, the pill */
+.tb-folded .leg-head {
+  gap: 8px;
+}
+
+.leg-fold-time {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+
+.leg-fold-time small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-dim);
+}
+
+.tb-folded .rec-btn {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
 .inst {
   flex: 1;
   display: flex;

@@ -470,7 +470,9 @@ export default function App() {
             })}
           </div>
         )}
-        <InstrumentBar />
+        {/* under way the live trip card hosts the instruments (one card,
+            not two); on their own only for a plain track recording */}
+        {tripStartedAt == null && <InstrumentBar />}
       </div>
 
       {activeTab && (

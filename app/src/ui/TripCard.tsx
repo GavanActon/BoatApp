@@ -35,6 +35,7 @@ import {
   weatherGridInfo,
 } from '../weather/weatherLayer'
 import { IconClose, IconLocate, IconMinus, IconPlus, IconStar, IconSwap } from './icons'
+import InstrumentBar, { RecPill } from './InstrumentBar'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
 import { ArrivalStrip } from '../discover'
@@ -274,6 +275,11 @@ export default function TripCard() {
   void useWeatherGridTick()
 
   const raised = detent === 'raised'
+  // under way the card folds to a line — the heading, the time left, the
+  // pill — so the helm gets the screen; a new trip opens it again
+  const [folded, setFolded] = useState(false)
+  const tripKey = useRouteStore((s) => s.tripStartedAt)
+  useEffect(() => setFolded(false), [tripKey])
   // swipe up anywhere on the card raises it; swipe down brings it back down
   const swipe = useSwipeUp(
     () => setDetent('raised'),
@@ -367,16 +373,23 @@ export default function TripCard() {
   // ---------- under way: the live leg; raised, what's left of the run ----------
   if (destination && tripStartedAt != null) {
     return (
-      <div className={`tripbuilder glass tripcard-live ${raised ? 'tb-raised' : ''}`} {...swipe}>
+      <div className={`tripbuilder glass tripcard-live ${raised ? 'tb-raised' : ''}${folded ? ' tb-folded' : ''}`} {...swipe}>
         {grab}
         <LiveLeg
           destLabel={destLabel}
+          folded={folded}
+          onFold={() => {
+            setFolded((v) => !v)
+            if (raised) setDetent('rest')
+          }}
           onOpen={() => setDetent('raised')}
           onHide={() => {
             setCard(null)
             setDetent('rest')
           }}
         />
+        {/* the instruments ride in the card: one card under way, not two */}
+        {!folded && <InstrumentBar embedded />}
         {/* back at the dock: sea felt, and what the trip earned (the discover trial) */}
         <ArrivalStrip />
         {raised && (
@@ -650,10 +663,14 @@ function SpeedChip() {
  */
 function LiveLeg({
   destLabel,
+  folded,
+  onFold,
   onOpen,
   onHide,
 }: {
   destLabel: string
+  folded: boolean
+  onFold: () => void
   onOpen: () => void
   onHide: () => void
 }) {
@@ -681,15 +698,33 @@ function LiveLeg({
     <>
       <div className="leg-head">
         <span className="leg-title">{heading}</span>
-        <SharingNote />
-        {/* no End here: the instrument bar's recording pill is the one
-            control that ends a trip, and it ends the track with it */}
+        {!folded && <SharingNote />}
+        {/* folded: the one number that works at the wheel, and the pill —
+            the one control. No End here either way: the pill ends a trip,
+            and the track with it */}
+        {folded && ready && (
+          <span className="leg-fold-time numeral">
+            {durationLabel(leg.timeLeftMin!)}
+            <small> left</small>
+          </span>
+        )}
+        {folded && <RecPill />}
+        <button
+          className="icon-btn leg-fold"
+          onClick={onFold}
+          aria-label={folded ? 'Show trip details' : 'Fold trip card'}
+          aria-expanded={!folded}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {folded ? <path d="M6 14.5 12 8.5l6 6" /> : <path d="M6 9.5 12 15.5l6-6" />}
+          </svg>
+        </button>
         <button className="icon-btn" onClick={onHide} aria-label="Hide trip card">
           <IconClose size={16} />
         </button>
       </div>
 
-      {!ready ? (
+      {folded ? null : !ready ? (
         <div className="leg-body">
           <span className="numeral">…</span>
         </div>
