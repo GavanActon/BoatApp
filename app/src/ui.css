@@ -2865,9 +2865,21 @@
   animation-timing-function: var(--ease-out);
 }
 
-/* the depth / boat card fades in under the finger instead of popping */
+/* the depth / boat card fades in under the finger instead of popping.
+   Opacity ONLY: MapLibre places a popup with an inline transform, and an
+   animation whose keyframes touch transform overrides that for as long as
+   its fill lasts — settle-up's `transform: none` left every popup pinned
+   to the map's top-left corner, under the outlook strip. */
+@keyframes popup-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 .maplibregl-popup {
-  animation: settle-up 0.16s var(--ease-out) both;
+  animation: popup-in 0.16s var(--ease-out) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
