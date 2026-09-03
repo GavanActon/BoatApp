@@ -95,9 +95,23 @@ spoofed GPS): welcome → All Talk → first voyage → glyph → hub → set up
 Lines Off → arrival latched at the Sandies → home → sea felt → End →
 seven earned, one outing and two arrivals in the log, no console errors.
 
+Rules the engine keeps (from the code review, 2026-09-03):
+
+- Arrival is the boat's own fix within 0.5 nm of the destination; the
+  planner's latch is trusted only when it was measured from the boat.
+  One-way trips arrive too.
+- Being somewhere counts from the WATER (`isAfloat`), never at home,
+  never at a hidden place, once per place per day.
+- The sea-felt question sits on the live card from arrival; a trip ended
+  before it was answered is asked once more over the chart (skippable).
+- Saved trips and pin drags are not gestures; only the skipper's own
+  changes touch cruise / back-by / somewhere-new.
+- One trip a day for every count of outings.
+- Unlock moments: at most three queued, never replayed after a reload.
+
 Trial-harness notes: progress replans fire on `visibilitychange`, not
 `online`; a spoofed fix must be AFLOAT (the config Sandies point is a
-beach — park the boat just off it).
+beach — park the boat just off it); `window.__gps` reads the live fix.
 
 ## How the code stays removable
 
