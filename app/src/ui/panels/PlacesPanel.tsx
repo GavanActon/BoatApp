@@ -259,7 +259,10 @@ export default function PlacesPanel() {
   const remove = (name: string) => {
     if (savedNames.has(name)) removePlace(name)
     else hidePlace(name) // built-ins hide, and can be restored below
-    if (destination?.name === name) setDestination(null)
+    if (destination?.name === name) {
+      setDestination(null)
+      setPlanPicked(false) // its trip goes with it, window included
+    }
   }
 
   const editField = (name: string, field: 'name' | 'note', current: string) => {
