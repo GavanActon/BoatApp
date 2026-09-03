@@ -44,16 +44,33 @@ jobs:
 
       - name: Is there anything new to deploy?
         id: waves
-        # a scheduled run exists only to carry a newer RDWPS run to the site;
-        # when the site already serves the run we just fetched (the usual
-        # case for the catch-up slot), there is nothing to build
+        # Compare RUN STAMPS, not equality: a failed fetch leaves the repo's
+        # committed file behind, and that file is usually OLDER than what the
+        # site serves — on 2026-09-03 an equality check redeployed a two-day-
+        # old run over the fresh one. The ISO stamps sort lexically.
+        #  - schedule: deploy only when the fetched run is newer than live
+        #  - push/dispatch: always deploy, but never carry a stale waves file
+        #    — when live is newer, build with the live copy
         run: |
           local=$(python -c "import json;print(json.load(open('app/public/data/waves-superior.json'))['run'])")
-          live=$(curl -sf "https://sandies.app/data/waves-superior.json?t=$(date +%s)" | python -c "import json,sys;print(json.load(sys.stdin)['run'])" || echo none)
+          if curl -sf "https://sandies.app/data/waves-superior.json?t=$(date +%s)" -o /tmp/live-waves.json; then
+            live=$(python -c "import json;print(json.load(open('/tmp/live-waves.json'))['run'])")
+          else
+            live=none
+          fi
           echo "fetched run: $local · live run: $live · event: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$local" = "$live" ]; then
+          if [ "$live" != none ] && [ "$live" \> "$local" ]; then
+            echo "site's run is newer than what we have — keeping the live waves file"
+            cp /tmp/live-waves.json app/public/data/waves-superior.json
+            newer=false
+          elif [ "$live" != "$local" ]; then
+            newer=true
+          else
+            newer=false
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$newer" = false ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "site already serves this run — skipping the deploy"
+            echo "nothing newer to carry to the site — skipping the deploy"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
