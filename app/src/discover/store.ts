@@ -13,6 +13,7 @@ import { persist } from 'zustand/middleware'
 export type TouchKey =
   | 'cruise'
   | 'units'
+  | 'unitsSeen'
   | 'scale'
   | 'planTime'
   | 'backBy'
@@ -21,6 +22,7 @@ export type TouchKey =
   | 'lowPower'
   | 'rename'
   | 'newRoute'
+  | 'placesRoute'
   | 'tripStart'
 
 export interface Earned {
@@ -87,9 +89,23 @@ interface DiscoverState {
   seasonReached: Record<string, number>
   trip: TripCtx | null
   pendingFelt: PendingFelt | null
-  /** A row was tapped that lives elsewhere: the top bar names the place
-   *  until the value moves. Transient. */
-  guide: 'cruise' | null
+  /** Where the sheet should open next time: the welcome card's Get set up
+   *  lands on the levels, First voyage unfolded. Consumed on open. Transient. */
+  entry: 'setup' | null
+  /** Later on the welcome card: a "Set up · N left" chip beside the glyph
+   *  until the sheet is opened once. Transient — the glyph's own mark is
+   *  what persists, by being computed. */
+  nudge: boolean
+  /** A row sent you to a control that lives in another sheet: that sheet
+   *  lands on the control (`target` names it, for a beat of highlight) and
+   *  closing it brings you back here (`returnTo`). Transient. */
+  target: 'cruise' | 'units' | null
+  returnTo: boolean
+  /** The chapter the row was in, so the round trip lands back on it. */
+  entryChapter: string | null
+  /** When the last level was reached — the glyph glows for a beat after.
+   *  Transient: a reload should not replay it. */
+  glow: number
 
   earn: (id: string, facts: [string, string][]) => void
   /** A chunk finished: note the level and queue the moment. */
@@ -103,7 +119,11 @@ interface DiscoverState {
   setTrip: (t: TripCtx | null) => void
   patchTrip: (p: Partial<TripCtx>) => void
   setPendingFelt: (p: PendingFelt | null) => void
-  setGuide: (g: 'cruise' | null) => void
+  setEntry: (e: 'setup' | null) => void
+  setNudge: (v: boolean) => void
+  setTarget: (t: 'cruise' | 'units' | null) => void
+  setReturnTo: (v: boolean) => void
+  setEntryChapter: (c: string | null) => void
 }
 
 export const useDiscoverStore = create<DiscoverState>()(
@@ -119,13 +139,22 @@ export const useDiscoverStore = create<DiscoverState>()(
       trip: null,
       pendingFelt: null,
       level: 0,
-      guide: null,
-      setGuide: (guide) => set({ guide }),
+      entry: null,
+      setEntry: (entry) => set({ entry }),
+      nudge: false,
+      setNudge: (nudge) => set({ nudge }),
+      target: null,
+      setTarget: (target) => set({ target }),
+      returnTo: false,
+      setReturnTo: (returnTo) => set({ returnTo }),
+      entryChapter: null,
+      setEntryChapter: (entryChapter) => set({ entryChapter }),
+      glow: 0,
 
       levelUp: (level) =>
         set((s) => {
           if (level <= s.level) return { level: Math.max(level, s.level) }
-          return { level, queue: [...s.queue, `level:${level}`] }
+          return { level, queue: [...s.queue, `level:${level}`], glow: Date.now() }
         }),
       earn: (id, facts) =>
         set((s) => {

@@ -54,7 +54,7 @@ Decided 2026-09-02 (Gavan):
 
 ### The list
 
-Setup (straight): All Talk · Knows the Boat · Has a Home · Cartographer ·
+Setup (straight): All Talk · Knows the Boat · Has a Home · Address Book · Cartographer ·
 Local Knowledge · Points North · Ride Home · Scenic Route · Off the Grid ·
 Logbook
 
@@ -87,10 +87,11 @@ Everything under `app/src/discover/`:
   sea felt + what was earned), `UnlockToast` (the moment).
 
 Mount points: `App.tsx` (glyph, sheet, toast, init), `appStore.ts`
-(`'discover'` in SheetTab), `TripCard.tsx` (the strip), `db.ts` (v4).
+(`'discover'` in SheetTab), `TripCard.tsx` (the strip), `db.ts` (v4),
+`LayersPanel.tsx` (the cruise row lights up when a Discover row sent you).
 
 Driven end to end in a real browser (Playwright, iPhone viewport,
-spoofed GPS): welcome → All Talk → first voyage → glyph → hub → set up
+spoofed GPS): welcome (Get set up) → levels, First voyage open → All Talk → glyph → hub → set up
 (cruise/units/limits/scale in place) → season → detail → Start trip →
 Lines Off → arrival latched at the Sandies → home → sea felt → End →
 seven earned, one outing and two arrivals in the log, no console errors.

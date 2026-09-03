@@ -8,8 +8,7 @@ import { dateShort } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import { enterHelmView, locateAndFollow } from '../tracking/gpsService'
 import BottomSheet from '../ui/BottomSheet'
-import { IconMinus, IconPlus } from '../ui/icons'
-import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn } from '../units'
+import { distanceUnitFor, runDistance } from '../units'
 import { seaColor } from '../weather/seaState'
 import { gridConditionsAt } from '../weather/weatherLayer'
 import { AchGlyph, RoseRing } from './icons'
@@ -24,18 +23,38 @@ type View = { kind: 'hub' } | { kind: 'setup' } | { kind: 'season' } | { kind: '
 const TITLES = { hub: 'Discover', setup: 'Levels', season: 'Season', detail: 'Discover' } as const
 
 /**
- * The Discover sheet: the hub (what's earned, what's locked and how), the
- * set-up chapters, the season's places, and one achievement opened.
+ * The Discover sheet, disclosed as it is earned. At level 0 it is the
+ * First voyage chapter and nothing else — four rows and the ring that
+ * counts them. From level 1 the hub arrives around the current chapter:
+ * the levels, the season's places, what's earned, what's locked and how.
  */
 export default function DiscoverSheet() {
-  const [view, setView] = useState<View>({ kind: 'hub' })
+  // sent here by the welcome card: land on the levels, not the scoreboard
+  const [view, setView] = useState<View>(() => {
+    const d = useDiscoverStore.getState()
+    if (d.entry === 'setup') {
+      d.setEntry(null)
+      return { kind: 'setup' }
+    }
+    return { kind: 'hub' }
+  })
+  // opening the sheet at all answers the welcome card's nudge chip
+  useEffect(() => {
+    const d = useDiscoverStore.getState()
+    if (d.nudge) d.setNudge(false)
+  }, [])
   // the fresh outlines are for the first look — the engine clears them when
   // the sheet closes (an unmount effect here would fire twice under
   // StrictMode and clear them on open)
 
   const back = () => setView({ kind: 'hub' })
+  // the hub opens on what's next and no more — the header and the current
+  // chapter's rows; levels, the season, what's earned sit below the fold,
+  // a scroll away. The sub-views take the room a list needs.
+  const level = useDiscoverStore((s) => s.level)
+  const halfPct = view.kind !== 'hub' ? 62 : level === 0 ? 46 : 48
   return (
-    <BottomSheet title={TITLES[view.kind]} halfPct={view.kind === 'hub' ? 70 : 62}>
+    <BottomSheet title={view.kind === 'hub' && level === 0 ? 'First voyage' : TITLES[view.kind]} halfPct={halfPct}>
       {view.kind !== 'hub' && (
         <button className="dv-back" onClick={back}>
           <Chevron left /> Discover
@@ -109,10 +128,34 @@ function Hub({ go }: { go: (v: View) => void }) {
   const locked = ACHIEVEMENTS.filter((a) => !earned[a.id])
   const shownEarned = allEarned ? earnedDefs : earnedDefs.slice(0, 3)
 
+  const nextDone = next ? next.rows.filter((r) => r.done).length : 0
+
+  // level 0: the chapter, whole, and nothing else to wonder about
+  if (level === 0 && next) {
+    return (
+      <>
+        <div className="dv-head">
+          <RoseRing size={56} frac={0} level={0} segs={{ n: next.rows.length, done: nextDone }} />
+          <div className="dv-head-text">
+            <span className="dv-count numeral">
+              {nextDone} of {next.rows.length} done
+            </span>
+            <span className="dv-sub">{next.reward}</span>
+          </div>
+        </div>
+        <div className="dv-next">
+          {next.rows.map((r) => (
+            <ActionRow key={r.id} row={r} chapterId={next.id} />
+          ))}
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <div className="dv-head">
-        <RoseRing frac={level / ch.length} size={56} full={level >= ch.length} />
+        <RoseRing frac={level / ch.length} size={56} full={level >= ch.length} level={level} />
         <div className="dv-head-text">
           <span className="dv-count">{levelName(level)}</span>
           <span className="dv-sub numeral">
@@ -126,15 +169,12 @@ function Hub({ go }: { go: (v: View) => void }) {
           <div className="dv-next-head">
             <span className="panel-section">Next up · {next.name}</span>
             <span className="dv-n numeral">
-              {next.rows.filter((r) => r.done).length}/{next.rows.length}
+              {nextDone}/{next.rows.length}
             </span>
           </div>
-          {next.rows
-            .filter((r) => !r.done)
-            .slice(0, 3)
-            .map((r) => (
-              <ActionRow key={r.id} row={r} />
-            ))}
+          {next.rows.map((r) => (
+            <ActionRow key={r.id} row={r} chapterId={next.id} />
+          ))}
         </div>
       ) : null}
 
@@ -250,7 +290,13 @@ function Setup() {
   const ch = chapters()
   const level = levelOf(ch)
   const next = nextChunk(ch)
-  const [open, setOpen] = useState<string | null>(null)
+  // back from a control a row sent you to: the chapter you left is open
+  const [open, setOpen] = useState<string | null>(() => {
+    const d = useDiscoverStore.getState()
+    const c = d.entryChapter
+    if (c) d.setEntryChapter(null)
+    return c
+  })
   const openId = open ?? next?.id ?? null
   return (
     <>
@@ -303,7 +349,7 @@ function ChapterBlock({
         <>
           <div className="dv-reward">{chapter.reward}</div>
           {chapter.rows.map((r) => (
-            <ActionRow key={r.id} row={r} />
+            <ActionRow key={r.id} row={r} chapterId={chapter.id} inLevels />
           ))}
         </>
       )}
@@ -311,54 +357,21 @@ function ChapterBlock({
   )
 }
 
-/** A row is an action: tap, and you are at the real control. Two rows
- *  host their control ONCE — cruise speed and limits are set in place the
- *  first time, with a line saying where they live from now on — and then
- *  turn into pointers wearing the value. Set it here once; change it there. */
-function ActionRow({ row }: { row: SetupRow }) {
-  if (!row.done && row.action === 'cruise') return <SetOnceRow row={row} />
-  return <PointerRow row={row} />
+/** A row is an action: tap, and you are at the real control — Discover
+ *  points, it never hosts. A row that opens another sheet lands on its
+ *  control and comes back here when that sheet closes (engine.ts), so the
+ *  levels are where you left them. */
+function ActionRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: string; inLevels?: boolean }) {
+  return <PointerRow row={row} chapterId={chapterId} inLevels={inLevels} />
 }
 
-function SetOnceRow({ row }: { row: SetupRow }) {
-  return (
-    <div className="dv-fv open">
-      <span className="dv-box" />
-      <span className="dv-fv-text">
-        <b>{row.label}</b>
-        <div className="dv-ctl">
-          <CruiseStep />
-          <span className="dv-where">from now on · {row.hint}</span>
-        </div>
-      </span>
-    </div>
-  )
-}
-
-function CruiseStep() {
-  const cruiseKn = useRouteStore((s) => s.cruiseKn)
-  const setCruiseKn = useRouteStore((s) => s.setCruiseKn)
-  const speedUnit = useAppStore((s) => s.speedUnit)
-  const shown = Math.round(knToUnit(speedUnit, cruiseKn))
-  const step = (d: number) => setCruiseKn(unitToKn(speedUnit, shown + d))
-  return (
-    <span className="speed-step">
-      <button className="nudge" onClick={() => step(-1)} aria-label="Slower">
-        <IconMinus size={11} />
-      </button>
-      <b className="numeral">
-        {shown} {speedUnitLabel(speedUnit)}
-      </b>
-      <button className="nudge" onClick={() => step(1)} aria-label="Faster">
-        <IconPlus size={11} />
-      </button>
-    </span>
-  )
-}
-
-function PointerRow({ row }: { row: SetupRow }) {
+function PointerRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: string; inLevels?: boolean }) {
   const app = useAppStore.getState
   const act = () => {
+    const disc = useDiscoverStore.getState()
+    // the round trip lands where the row was: the hub, or Levels on its chapter
+    disc.setEntry(inLevels ? 'setup' : null)
+    disc.setEntryChapter(inLevels ? (chapterId ?? null) : null)
     switch (row.action) {
       case 'locate':
         locateAndFollow()
@@ -374,21 +387,33 @@ function PointerRow({ row }: { row: SetupRow }) {
       case 'sandies':
         routeToSandies()
         break
-      case 'cruise':
-        // lives at the top of Settings, under Boat
+      case 'units':
+        // the trip itself is the task: seen once is done
+        disc.touch('unitsSeen')
+        disc.setTarget('units')
+        disc.setReturnTo(true)
         app().setSheetTab('layers')
-        useDiscoverStore.getState().setGuide('cruise')
+        break
+      case 'cruise':
+        // lives at the top of Settings, under Boat — land ON it
+        disc.setTarget('cruise')
+        disc.setReturnTo(true)
+        app().setSheetTab('layers')
         break
       case 'settings':
+        disc.setReturnTo(true)
         app().setSheetTab('layers')
         break
       case 'places':
+        disc.setReturnTo(true)
         app().setSheetTab('places')
         break
       case 'offline':
+        disc.setReturnTo(true)
         app().setSheetTab('offline')
         break
       case 'tracks':
+        disc.setReturnTo(true)
         app().setSheetTab('tracks')
         break
       case 'helm':

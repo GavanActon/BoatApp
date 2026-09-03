@@ -70,7 +70,6 @@ function subscribeAll() {
     const own = useAppStore.getState().sheetTab !== 'places'
     if (s.cruiseKn !== p.cruiseKn && own) {
       disc.touch('cruise')
-      if (disc.guide === 'cruise') disc.setGuide(null)
     }
     if (s.backByHour !== p.backByHour && own) disc.touch('backBy')
     if (s.viaPoints.length > 0 && p.viaPoints.length === 0) disc.touch('via')
@@ -82,6 +81,9 @@ function subscribeAll() {
     ) {
       disc.touch('newRoute')
     }
+    // a run plotted from the Places sheet — its route button, or a row
+    // filling the armed To slot; the sheet is still up when the store moves
+    if (s.destination && s.destination !== p.destination && !own) disc.touch('placesRoute')
     if (s.tripStartedAt != null && p.tripStartedAt == null) onTripStart()
     if (s.tripStartedAt == null && p.tripStartedAt != null) {
       // the route store ends the trip before recording stops, so the
@@ -100,6 +102,17 @@ function subscribeAll() {
     const disc = useDiscoverStore.getState()
     // the fresh outlines are for the first look at the hub
     if (p.sheetTab === 'discover' && s.sheetTab !== 'discover') disc.markSeen()
+    // a row sent you to another sheet: closing THAT sheet is the way back
+    // to the levels, exactly where you left them; going somewhere else
+    // instead is your own move, and the round trip is forgotten
+    if (disc.returnTo && s.sheetTab !== p.sheetTab && p.sheetTab != null && p.sheetTab !== 'discover') {
+      disc.setReturnTo(false)
+      disc.setTarget(null)
+      if (s.sheetTab == null) {
+        useAppStore.getState().setSheetTab('discover')
+        return
+      }
+    }
     if (s.depthUnit !== p.depthUnit || s.speedUnit !== p.speedUnit || s.windUnit !== p.windUnit) disc.touch('units')
     if (s.seaScaleM !== p.seaScaleM) disc.touch('scale')
     if (s.planPicked && s.planTimeMs != null && (s.planTimeMs !== p.planTimeMs || !p.planPicked)) {
@@ -189,7 +202,14 @@ export function evaluate(): void {
   }
   // a finished chunk is a level — noticed here, where every input has settled
   const level = levelOf(chapters())
-  if (level !== disc.level) useDiscoverStore.getState().levelUp(level)
+  if (level !== disc.level) {
+    useDiscoverStore.getState().levelUp(level)
+    // the ceremony is on the chart — the glyph glows, the moment drops in
+    // under the strip — so the sheet gets out of its way
+    if (level > disc.level && useAppStore.getState().sheetTab === 'discover') {
+      useAppStore.getState().setSheetTab(null)
+    }
+  }
 }
 
 // ---------- the trip, cast-off to dock ----------

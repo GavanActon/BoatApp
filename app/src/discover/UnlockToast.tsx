@@ -67,7 +67,7 @@ function Moment() {
       aria-label={`${label}: ${name}`}
     >
       <span className="dv-moment-tile">
-        {level != null ? <RoseRing frac={1} size={30} full /> : <AchGlyph icon={def!.icon} size={22} />}
+        {level != null ? <RoseRing frac={1} size={30} level={level} /> : <AchGlyph icon={def!.icon} size={22} />}
         {SPARKS.map((deg) => (
           <i key={deg} className="dv-spark" style={{ transform: `rotate(${deg}deg)` }} />
         ))}

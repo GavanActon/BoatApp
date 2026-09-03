@@ -406,8 +406,21 @@ export default function TripCard() {
       <div className="dock-head sentence-head">
         <button
           className={`end-chip end-from${armedSlot === 'from' ? ' end-armed' : ''}`}
-          onClick={() => armSlot('from')}
-          aria-label="Where the trip starts — tap, then tap the chart or a place"
+          onClick={() => {
+            // planned "from home" with no home dock starred: the run starts
+            // at a default nobody chose. This tap is the fix, not the chooser.
+            if (!startPoint && startFrom === 'home' && !homeBase()) {
+              useAppStore.getState().setSheetTab(null)
+              useAppStore.getState().setPickingHome(true)
+              return
+            }
+            armSlot('from')
+          }}
+          aria-label={
+            !startPoint && startFrom === 'home' && !homeBase()
+              ? 'Trip starts at the default home — tap to star your home dock on the chart'
+              : 'Where the trip starts — tap, then tap the chart or a place'
+          }
         >
           <em>From</em>
           <b>
@@ -415,7 +428,7 @@ export default function TripCard() {
               startPoint.name ?? 'Pinned start'
             ) : startFrom === 'home' ? (
               <>
-                <IconStar size={11} /> {homeBase()?.name ?? '—'}
+                <IconStar size={11} /> {homeBase()?.name ?? 'Star your home dock'}
               </>
             ) : (
               <>

@@ -139,6 +139,14 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     check: (c) => (c.homeName ? [['Home', c.homeName]] : null),
   },
   {
+    id: 'address-book',
+    name: 'Address Book',
+    hint: 'route from Places',
+    icon: 'map',
+    group: 'setup',
+    check: (c) => (c.touched.placesRoute ? [['Routed', dateShort(c.now)]] : null),
+  },
+  {
     id: 'cartographer',
     name: 'Cartographer',
     hint: 'five places',

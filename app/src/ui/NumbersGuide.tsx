@@ -8,7 +8,7 @@ import SeaRamp from './SeaRamp'
  * Read-the-water (DESIGN-SPEC §10.4): one card that decodes the app's whole
  * numeric language — the strip cell's anatomy, the sea-state ramp, the
  * depth soundings. A first-run surface (exempt from §1.5 with the welcome),
- * opened from the first-voyage card and dismissable in one tap; the ramp
+ * opened from Discover's First voyage row and dismissable in one tap; the ramp
  * swatches are the REAL `seaState.ts` colours, so the legend can never
  * drift from the water it describes.
  */

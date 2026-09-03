@@ -44,13 +44,13 @@ import WeatherPanel from './ui/panels/WeatherPanel'
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 import WelcomeCards from './ui/WelcomeCards'
-import FirstVoyageCard from './ui/FirstVoyageCard'
 import NumbersGuide from './ui/NumbersGuide'
 import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
 import { initSeaFlow } from './weather/waveFlow'
 import { DiscoverGlyph, DiscoverSheet, UnlockToast, initDiscover } from './discover'
+import { useDiscoverStore } from './discover/store'
 
 // auto-follow waits for a fix at least this tight before trusting it…
 const GOOD_FIX_ACCURACY_M = 150
@@ -440,15 +440,9 @@ export default function App() {
 
       <div className="bottombar" ref={barRef}>
         {/* one card at a time in the dock — measuring borrows the trip's
-            spot, and with no subject the first-voyage card may hold it
-            until setup is done (§10.2) */}
-        {measuring ? (
-          <MeasureCard />
-        ) : destination != null || tripStartedAt != null ? (
-          <TripCard />
-        ) : (
-          <FirstVoyageCard />
-        )}
+            spot; with no subject the dock is empty (setup lives in
+            Discover, §10.2) */}
+        {measuring ? <MeasureCard /> : destination != null || tripStartedAt != null ? <TripCard /> : null}
         {!routing && (
           <div className="tabdock glass">
             {TABS.map((t) => {
@@ -476,7 +470,8 @@ export default function App() {
       </div>
 
       {activeTab && (
-        <BottomSheet title={activeTab.name}>
+        // sent here by a Discover row: open full, so the control is in view
+        <BottomSheet title={activeTab.name} openPct={useDiscoverStore.getState().target ? 88 : undefined}>
           {sheetTab === 'places' && <PlacesPanel />}
           {sheetTab === 'layers' && <LayersPanel />}
           {sheetTab === 'weather' && <WeatherPanel />}

@@ -171,6 +171,12 @@
   color: var(--c-text-dim);
 }
 
+/* no fix, no home dock: the numbers are for a default nobody chose — the
+   accent says it's a tap, the star says what the tap does */
+.wxstrip-nudge {
+  color: var(--c-accent);
+}
+
 .wxcell {
   position: relative; /* anchors the thunder corner mark */
   /* ten across the visible row (nine 3px gaps), however many hours exist */
@@ -2536,16 +2542,6 @@
   place-items: center;
 }
 
-.welcome-skip {
-  position: absolute;
-  top: calc(var(--sat) + 14px);
-  right: 18px;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--c-text-dim);
-  padding: 6px 10px;
-}
-
 .welcome-card {
   width: min(340px, 86vw);
   background: var(--c-surface-heavy);
@@ -2588,115 +2584,15 @@
   border-radius: 6px;
 }
 
-.welcome-dots {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  margin-top: 18px;
-}
-
-.welcome-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--c-border-strong);
-}
-
-.welcome-dots span.on {
-  background: var(--c-accent);
-}
-
-.fv {
-  border-radius: 6px;
-  padding: 12px 12px 10px;
-  animation: rise-in 0.25s ease-out;
-}
-
-.fv-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 6px;
-  padding: 0 6px;
-}
-
-.fv-title {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.fv-sub {
-  font-size: 11.5px;
-  color: var(--c-text-dim);
-  margin-top: 2px;
-}
-
-.fv-close {
-  color: var(--c-text-faint);
-  padding: 4px;
-  margin: -4px -4px 0 0;
-}
-
-.fv-row {
-  display: flex;
-  width: 100%;
-  gap: 11px;
-  align-items: center;
-  text-align: left;
-  padding: 8px 6px;
-  border-radius: 5px;
-}
-
-.fv-row:active {
-  background: var(--c-accent-dim);
-}
-
-.fv-box {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1.5px solid var(--c-border-strong);
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.fv-row.done .fv-box {
-  background: var(--c-track);
-  border-color: var(--c-track);
-  color: #06121c;
-}
-
-.fv-row.done .fv-text b {
-  color: var(--c-text-dim);
-}
-
-.fv-text b {
+/* the quiet way out — same weight as the old Skip, under the button so a
+   thumb that wants the chart doesn't have to find a corner */
+.welcome-later {
   display: block;
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.fv-text i {
-  font-style: normal;
-  font-size: 11px;
+  margin: 12px auto 0;
+  font-size: 13px;
+  letter-spacing: 0.06em;
   color: var(--c-text-dim);
-}
-
-.fv-prog {
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(126, 178, 224, 0.15);
-  margin: 8px 6px 2px;
-  overflow: hidden;
-}
-
-.fv-prog i {
-  display: block;
-  height: 100%;
-  background: var(--c-track);
-  transition: width 0.3s;
+  padding: 6px 14px;
 }
 
 /* ---------- read-the-water guide (§10.4) ---------- */
@@ -2839,4 +2735,27 @@
 .ng-card .welcome-next {
   display: block;
   margin: 18px auto 0;
+}
+
+/* ---------- report a problem ---------- */
+
+.report-actions {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0 6px;
+}
+
+.btn-secondary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(126, 178, 224, 0.28);
+  background: rgba(126, 178, 224, 0.08);
+  color: var(--c-text);
+  font-size: 15px;
+  font-weight: 600;
 }

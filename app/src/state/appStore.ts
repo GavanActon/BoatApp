@@ -116,14 +116,12 @@ interface AppState {
   lowPower: boolean
   setLowPower: (v: boolean) => void
 
-  // First run (DESIGN-SPEC §10). `onboarded`: the three welcome cards have
-  // been seen or skipped — either way they never show again. `setupDone`:
-  // location, a home base, a first route and the numbers guide were all
-  // observed done at once, so the first-voyage card has retired for good
-  // (conditions alone can't carry this: GPS re-acquires from scratch each
-  // launch, and the card must not flicker back while it does). Offline
-  // charts are deliberately NOT a requirement — the Offline tab advertises
-  // itself. All persisted.
+  // First run (DESIGN-SPEC §10). `onboarded`: the welcome card has been
+  // answered (Get set up or Later) — either way it never shows again.
+  // `setupDone`: kept for installs that had the retired first-voyage card;
+  // setup now lives in Discover's First voyage chapter, which is computed
+  // from the facts and never retires. Offline charts are deliberately NOT a
+  // requirement — the Offline tab advertises itself. All persisted.
   onboarded: boolean
   setOnboarded: (v: boolean) => void
   setupDone: boolean

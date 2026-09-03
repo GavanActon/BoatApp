@@ -32,6 +32,89 @@
   display: block;
 }
 
+/* no location, or no home dock: the app can't do its job yet — a warning
+   dot on the ring's shoulder, in the same amber every other warning wears */
+.dv-glyph-warn::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c-warn);
+  border: 2px solid var(--c-bg);
+  box-sizing: content-box;
+  animation: dv-warn-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes dv-warn-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 180, 84, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 180, 84, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-glyph-warn::after {
+    animation: none;
+  }
+}
+
+/* a level reached: the glyph swells and throws light for a beat, then
+   settles wearing the new colour */
+.dv-glyph-glow {
+  animation: dv-glyph-glow 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes dv-glyph-glow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(63, 200, 255, 0);
+  }
+  25% {
+    transform: scale(1.22);
+    box-shadow:
+      0 0 0 5px rgba(63, 200, 255, 0.35),
+      0 0 22px 8px rgba(63, 200, 255, 0.55);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(63, 200, 255, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-glyph-glow {
+    animation: none;
+  }
+}
+
+/* a control a Discover row sent you to: lit for a beat on arrival */
+.dv-target {
+  border-radius: var(--r-row);
+  animation: dv-target 1.8s ease-out both;
+}
+
+@keyframes dv-target {
+  0%,
+  35% {
+    box-shadow:
+      inset 0 0 0 1px rgba(63, 200, 255, 0.7),
+      0 0 0 3px rgba(63, 200, 255, 0.22);
+    background: rgba(63, 200, 255, 0.1);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(63, 200, 255, 0),
+      0 0 0 3px rgba(63, 200, 255, 0);
+    background: transparent;
+  }
+}
+
 /* ---------- the sheet ---------- */
 
 .dv-back {

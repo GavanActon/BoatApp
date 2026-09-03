@@ -1,3 +1,4 @@
+import { LEVEL_COLORS } from './setup'
 /** Achievement glyphs — stroke icons on the app's 24-grid, one style. */
 
 export type AchIcon =
@@ -86,7 +87,32 @@ export function AchGlyph({ icon, size = 18 }: { icon: AchIcon; size?: number }) 
 
 /** The Discover glyph: a four-point rose, inside a ring that fills as
  *  achievements are earned. Done-colour, never the sea ramp. */
-export function RoseRing({ frac, size = 32, full = false }: { frac: number; size?: number; full?: boolean }) {
+export function RoseRing({
+  frac,
+  size = 32,
+  full = false,
+  level,
+  segs,
+  numeral = false,
+}: {
+  frac: number
+  size?: number
+  full?: boolean
+  /** Colours the rose by level; without it, `full` colours it done. */
+  level?: number
+  /** Count instead of fill: n segments, `done` of them lit — the current
+   *  chapter's rows, readable as 1/4 at a glance. Overrides `frac`. */
+  segs?: { n: number; done: number }
+  /** The level as a numeral in place of the rose — one mark, not a badge. */
+  numeral?: boolean
+}) {
+  const rose =
+    level != null && level > 0
+      ? LEVEL_COLORS[Math.min(level, LEVEL_COLORS.length - 1)]
+      : full
+        ? 'var(--c-track)'
+        : 'currentColor'
+  const lit = 'var(--c-track)'
   const cx = size / 2
   const r = size * 0.375
   const c = 2 * Math.PI * r
@@ -94,7 +120,30 @@ export function RoseRing({ frac, size = 32, full = false }: { frac: number; size
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
       <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(126,178,224,0.22)" strokeWidth="2" />
-      {frac > 0 && (
+      {segs &&
+        segs.n > 0 &&
+        Array.from({ length: segs.n }, (_, i) => {
+          const gap = Math.min(5, c / segs.n / 3.5)
+          const len = c / segs.n - gap
+          const on = i < segs.done
+          return (
+            <circle
+              key={i}
+              cx={cx}
+              cy={cx}
+              r={r}
+              fill="none"
+              stroke={on ? lit : 'rgba(126,178,224,0.2)'}
+              strokeWidth={on ? 2.6 : 2}
+              strokeLinecap="round"
+              strokeDasharray={`${len.toFixed(2)} ${(c - len).toFixed(2)}`}
+              strokeDashoffset={-gap / 2}
+              transform={`rotate(${-90 + (360 * i) / segs.n} ${cx} ${cx})`}
+              style={{ transition: 'stroke 0.4s ease' }}
+            />
+          )
+        })}
+      {!segs && frac > 0 && (
         <circle
           cx={cx}
           cy={cx}
@@ -108,9 +157,24 @@ export function RoseRing({ frac, size = 32, full = false }: { frac: number; size
           style={{ transition: 'stroke-dasharray 0.6s ease' }}
         />
       )}
-      <g transform={`translate(${cx} ${cx}) scale(${k})`} fill={full ? 'var(--c-track)' : 'currentColor'}>
-        <path d="M0 -6.5 L1.6 -1.6 L6.5 0 L1.6 1.6 L0 6.5 L-1.6 1.6 L-6.5 0 L-1.6 -1.6 Z" />
-      </g>
+      {numeral && level != null && level > 0 ? (
+        <text
+          x={cx}
+          y={cx}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={rose}
+          fontSize={size * 0.44}
+          fontWeight={800}
+          style={{ fontVariantNumeric: 'tabular-nums', transition: 'fill 0.6s ease' }}
+        >
+          {level}
+        </text>
+      ) : (
+        <g transform={`translate(${cx} ${cx}) scale(${k})`} fill={rose} style={{ transition: 'fill 0.6s ease' }}>
+          <path d="M0 -6.5 L1.6 -1.6 L6.5 0 L1.6 1.6 L0 6.5 L-1.6 1.6 L-6.5 0 L-1.6 -1.6 Z" />
+        </g>
+      )}
     </svg>
   )
 }

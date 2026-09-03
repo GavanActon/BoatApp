@@ -1,4 +1,5 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useDiscoverStore } from '../../discover/store'
 import { useRouteStore } from '../../routing/routeStore'
 import {
   FLOW_TUNING_DEFAULTS,
@@ -141,6 +142,24 @@ export default function LayersPanel() {
   const cruiseKn = useRouteStore((s) => s.cruiseKn)
   const setCruiseKn = useRouteStore((s) => s.setCruiseKn)
   const [open, setOpen] = useState<GroupId | null>(null)
+
+  // sent here by a Discover row: its control is unfolded, scrolled into
+  // view and lit for a beat, so "it's in Settings" is a place, not a search
+  const target = useDiscoverStore((s) => s.target)
+  const cruiseRef = useRef<HTMLDivElement>(null)
+  const unitsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!target) return
+    if (target === 'units') setOpen('units')
+    const el = target === 'units' ? unitsRef.current : cruiseRef.current
+    // after the group has unfolded
+    const raf = requestAnimationFrame(() => el?.scrollIntoView({ block: 'start' }))
+    const t = window.setTimeout(() => useDiscoverStore.getState().setTarget(null), 1800)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(t)
+    }
+  }, [target])
   // folded by default: the shipped look is the tuned look, and thirteen
   // sliders between the switches and the units buried both
   const [showTuning, setShowTuning] = useState(false)
@@ -166,7 +185,7 @@ export default function LayersPanel() {
     <div className="panel">
       <div className="panel-section">Boat</div>
 
-      <div className="row">
+      <div className={`row${target === 'cruise' ? ' dv-target' : ''}`} ref={cruiseRef}>
         <div className="row-text">
           <span className="row-title">Cruise speed</span>
           <span className="row-desc">What the run and the ride home are timed at</span>
@@ -438,6 +457,7 @@ export default function LayersPanel() {
         </label>
       </Group>
 
+      <div ref={unitsRef} className={target === 'units' ? 'dv-target' : ''}>
       <Group title="Units" summary={unitsSummary} open={open === 'units'} onToggle={toggle('units')}>
         <div className="row">
           <div className="row-text">
@@ -490,6 +510,7 @@ export default function LayersPanel() {
           </div>
         </div>
       </Group>
+      </div>
     </div>
   )
 }
