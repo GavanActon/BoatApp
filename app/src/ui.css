@@ -497,6 +497,18 @@
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+/* first tap under way: the pill names what the second will do */
+.rec-btn.recording.rec-arm {
+  background: rgba(255, 180, 84, 0.16);
+  border-color: rgba(255, 180, 84, 0.55);
+  color: var(--c-warn);
+}
+
+.rec-btn.rec-arm .rec-dot {
+  background: var(--c-warn);
+  animation: none;
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -1902,17 +1914,6 @@
 /* End trip, rehomed from the retired route drawer. A quiet chip in the head
    row: the space-between layout parks it mid-row, well clear of the hide ✕,
    so a miss on either lands on nothing. */
-.leg-end {
-  padding: 3px 12px;
-  border-radius: var(--r-row);
-  border: 1px solid var(--c-border-strong);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--c-text-dim);
-}
-
 .leg-body {
   display: block;
   width: 100%;

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { HOME } from '../config'
 import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
-import { endTrip, NO_START_MSG, startTrip } from '../routing/planner'
+import { NO_START_MSG, startTrip } from '../routing/planner'
 import { useCircleStore } from '../circle/store'
 import { haptic } from './haptics'
 import { stopSharing } from '../circle/sync'
@@ -682,15 +682,8 @@ function LiveLeg({
       <div className="leg-head">
         <span className="leg-title">{heading}</span>
         <SharingNote />
-        <button
-          className="leg-end"
-          onClick={() => {
-            haptic()
-            endTrip()
-          }}
-        >
-          End
-        </button>
+        {/* no End here: the instrument bar's recording pill is the one
+            control that ends a trip, and it ends the track with it */}
         <button className="icon-btn" onClick={onHide} aria-label="Hide trip card">
           <IconClose size={16} />
         </button>
