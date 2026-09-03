@@ -21,7 +21,7 @@ family's real app cannot be touched by anything on this branch.
    **Account · Cloudflare Pages · Edit**. Copy it.
 2. The account id is already in the workflow (it is not a secret).
 3. GitHub → repo → Settings → Secrets and variables → Actions → add
-   `CLOUDFLARE_API_TOKEN`.
+   `next` (the Cloudflare API token).
 4. Push to `discover` (or run the workflow by hand). The first run creates
    the project; the site is at `https://sandies-next.pages.dev`.
 5. Optional custom domain: Pages → sandies-next → Custom domains → add
