@@ -603,6 +603,21 @@
   animation: dv-fade 0.3s ease-in forwards;
 }
 
+/* the sea-felt question, asked after the fact */
+.dv-felt-ask {
+  top: 56%;
+  min-width: 280px;
+  gap: 10px;
+}
+
+.dv-felt-ask .dv-felt-bar {
+  width: 100%;
+}
+
+.dv-felt-ask .dv-hide {
+  padding-top: 2px;
+}
+
 @keyframes dv-pop {
   from {
     opacity: 0;

@@ -88,6 +88,10 @@ export interface Outing {
   feltBand: number | null
   /** Helm view was up on the ride home. */
   helmHome: boolean
+  /** The skipper's wave limit and sea-state scale as the trip cast off —
+   *  so a judgement about that day is made against that day's settings. */
+  limitM?: number | null
+  scaleM?: number | null
 }
 
 const db = new Dexie('sandies') as Dexie & {

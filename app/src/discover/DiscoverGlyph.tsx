@@ -17,13 +17,12 @@ export default function DiscoverGlyph() {
   const numbersSeen = useAppStore((s) => s.numbersSeen)
   const homeName = usePlacesStore((s) => s.homeName)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
-  const hidden = useDiscoverStore((s) => s.glyphHidden)
   const earnedN = useDiscoverStore((s) => Object.keys(s.earned).length)
   // the card retires on setupDone, which waits to SEE all four rows done at
   // once — and the route row hands the dock to the trip card before it can
   // look. The three persisted facts are the same milestone without the wait.
   const cardDone = setupDone || (firstRouteDone && numbersSeen && homeName != null)
-  if (!onboarded || !cardDone || hidden) return null
+  if (!onboarded || !cardDone) return null
   const frac = earnedN / ACHIEVEMENTS.length
   return (
     <button className="dv-glyph" onClick={() => setSheetTab('discover')} aria-label="Discover">

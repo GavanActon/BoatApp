@@ -1,4 +1,3 @@
-import { DESTINATIONS } from '../config'
 import { dateShort, timeLabel, durationLabel } from '../time'
 import type { Outing } from '../tracking/db'
 import { SEA_BANDS } from '../weather/seaState'
@@ -55,8 +54,19 @@ const LATE_MIN = 5
 const LATE_FRAC = 0.1
 const NOSE_MIN = 2
 
+/** One trip a day counts: four ten-minute out-and-backs are one day out. */
+function oneADay(os: Outing[]): Outing[] {
+  const seen = new Set<string>()
+  return os.filter((o) => {
+    const d = new Date(o.startedAt).toDateString()
+    if (seen.has(d)) return false
+    seen.add(d)
+    return true
+  })
+}
+
 function ended(c: Ctx): Outing[] {
-  return c.log.outings.filter((o) => o.endedAt != null)
+  return oneADay(c.log.outings.filter((o) => o.endedAt != null))
 }
 
 function bandName(b: number | null): string {
@@ -386,10 +396,11 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'dusk',
     group: 'going',
     check: (c) => {
+      // after sunset — or before sunrise, for the ones who left at one in the morning
       const o = c.log.outings.find((x) => {
         if (x.leftDestAt == null) return false
         const s = sunTimes(x.destLon, x.destLat, x.leftDestAt)
-        return s != null && x.leftDestAt > s.set
+        return s != null && (x.leftDestAt > s.set || x.leftDestAt < s.rise)
       })
       return o ? [['Left', timeLabel(o.leftDestAt!)], ['From', o.destName ?? 'Pinned spot']] : null
     },
@@ -424,10 +435,12 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     hint: 'flat water, high limits',
     icon: 'glassy',
     group: 'going',
+    // judged against the limits set THAT day, not today's
     check: (c) => {
-      if (c.waveLimitM == null || c.waveLimitM < c.seaScaleM) return null
-      const o = c.log.outings.find((x) => x.arrivedAt != null && x.forecastBand === 0)
-      return o ? [['Limit', `${c.waveLimitM.toFixed(1)} m`], ['Sea', bandName(0)]] : null
+      const o = c.log.outings.find(
+        (x) => x.arrivedAt != null && x.forecastBand === 0 && x.limitM != null && x.scaleM != null && x.limitM >= x.scaleM,
+      )
+      return o ? [['Limit', `${o.limitM!.toFixed(1)} m`], ['Sea', bandName(0)]] : null
     },
   },
   {
@@ -453,8 +466,3 @@ export const ACHIEVEMENTS: AchievementDef[] = [
 ]
 
 export const ACH_BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a]))
-
-/** Names the arrival watcher recognises: the built-ins and the user's pins. */
-export function knownPlaceNames(saved: { name: string }[]): string[] {
-  return [...DESTINATIONS.map((d) => d.name), ...saved.map((p) => p.name)]
-}

@@ -49,17 +49,32 @@ export interface TripCtx {
   forecastBand: number | null
   feltBand: number | null
   helmHome: boolean
+  limitM: number | null
+  scaleM: number | null
   /** The outing row this trip writes to, once it exists. */
   outingId: number | null
   /** Achievements earned since cast-off — the arrival card's strip. */
   earnedIds: string[]
 }
 
+/** A finished trip whose sea-felt question went unanswered: asked once,
+ *  after the fact, until answered or waved off. */
+export interface PendingFelt {
+  startedAt: number
+  destName: string | null
+}
+
+/** Unlock moments queue up to this many; the rest wait in the hub with
+ *  their fresh outline — an existing install adopting the trial can earn
+ *  half a dozen at once, and that is not twenty seconds of toasts. */
+const QUEUE_MAX = 3
+
 interface DiscoverState {
   earned: Record<string, Earned>
   /** Earned but not yet looked at in the hub: the done-colour outline. */
   fresh: string[]
-  /** Unlock moments waiting to play, oldest first. */
+  /** Unlock moments waiting to play, oldest first. Not persisted: a reload
+   *  should not replay an animation. */
   queue: string[]
   touched: Partial<Record<TouchKey, true>>
   /** Trips planned for a later hour that never started. */
@@ -67,9 +82,8 @@ interface DiscoverState {
   pendingPlan: { ms: number; name: string | null } | null
   /** Season place id → when it was first reached this year. */
   seasonReached: Record<string, number>
-  /** The glyph hidden from the top bar — permanent, the hub keeps a way back. */
-  glyphHidden: boolean
   trip: TripCtx | null
+  pendingFelt: PendingFelt | null
 
   earn: (id: string, facts: [string, string][]) => void
   markSeen: () => void
@@ -78,9 +92,9 @@ interface DiscoverState {
   setRainChecks: (n: number) => void
   setPendingPlan: (p: { ms: number; name: string | null } | null) => void
   reachSeason: (id: string, at: number) => void
-  setGlyphHidden: (v: boolean) => void
   setTrip: (t: TripCtx | null) => void
   patchTrip: (p: Partial<TripCtx>) => void
+  setPendingFelt: (p: PendingFelt | null) => void
 }
 
 export const useDiscoverStore = create<DiscoverState>()(
@@ -93,8 +107,8 @@ export const useDiscoverStore = create<DiscoverState>()(
       rainChecks: 0,
       pendingPlan: null,
       seasonReached: {},
-      glyphHidden: false,
       trip: null,
+      pendingFelt: null,
 
       earn: (id, facts) =>
         set((s) => {
@@ -102,7 +116,7 @@ export const useDiscoverStore = create<DiscoverState>()(
           return {
             earned: { ...s.earned, [id]: { at: Date.now(), facts } },
             fresh: [...s.fresh, id],
-            queue: [...s.queue, id],
+            queue: s.queue.length < QUEUE_MAX ? [...s.queue, id] : s.queue,
             trip: s.trip ? { ...s.trip, earnedIds: [...s.trip.earnedIds, id] } : s.trip,
           }
         }),
@@ -118,9 +132,9 @@ export const useDiscoverStore = create<DiscoverState>()(
           if (had != null && new Date(had).getFullYear() === new Date(at).getFullYear()) return {}
           return { seasonReached: { ...s.seasonReached, [id]: at } }
         }),
-      setGlyphHidden: (glyphHidden) => set({ glyphHidden }),
       setTrip: (trip) => set({ trip }),
       patchTrip: (p) => set((s) => (s.trip ? { trip: { ...s.trip, ...p } } : {})),
+      setPendingFelt: (pendingFelt) => set({ pendingFelt }),
     }),
     {
       name: 'sandies-discover',
@@ -128,13 +142,12 @@ export const useDiscoverStore = create<DiscoverState>()(
       partialize: (s) => ({
         earned: s.earned,
         fresh: s.fresh,
-        queue: s.queue,
         touched: s.touched,
         rainChecks: s.rainChecks,
         pendingPlan: s.pendingPlan,
         seasonReached: s.seasonReached,
-        glyphHidden: s.glyphHidden,
         trip: s.trip,
+        pendingFelt: s.pendingFelt,
       }),
     },
   ),

@@ -78,12 +78,6 @@ if (import.meta.env.DEV) {
 }
 
 /** Forget the rolling speed — call when a trip ends or recording stops. */
-// dev-only handle, the same convention as MapView's window.__map and the
-// route store's window.__route — lets the verify harness read the live fix
-if (import.meta.env.DEV) {
-  ;(window as unknown as { __gps?: unknown }).__gps = useGpsStore
-}
-
 export function resetSogAverage() {
   sogHistory = []
   useGpsStore.setState({ avgSogKn: null })

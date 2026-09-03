@@ -65,6 +65,23 @@ function useLogTick() {
   useEffect(() => onLog(() => setTick((t) => t + 1)), [])
 }
 
+/** Everything a set-up row reads, one primitive per selector (a fresh array
+ *  would re-render forever) — so the counters can't go stale. */
+function useSetupInputs() {
+  useLogTick()
+  useAppStore((s) => s.numbersSeen)
+  useAppStore((s) => s.firstRouteDone)
+  useAppStore((s) => s.gpsWanted)
+  useAppStore((s) => s.waveLimitM)
+  useAppStore((s) => s.offlineReady)
+  usePlacesStore((s) => s.saved)
+  usePlacesStore((s) => s.notes)
+  usePlacesStore((s) => s.hidden)
+  usePlacesStore((s) => s.homeName)
+  useGpsStore((s) => s.status)
+  useDiscoverStore((s) => s.touched)
+}
+
 function Segs({ n, done }: { n: number; done: number }) {
   return (
     <div className="dv-segs" aria-hidden>
@@ -78,15 +95,10 @@ function Segs({ n, done }: { n: number; done: number }) {
 // ---------- the hub ----------
 
 function Hub({ go }: { go: (v: View) => void }) {
-  useLogTick()
+  useSetupInputs()
   const earned = useDiscoverStore((s) => s.earned)
   const fresh = useDiscoverStore((s) => s.fresh)
   const seasonReached = useDiscoverStore((s) => s.seasonReached)
-  // the setup rows read several stores; subscribing to each keeps the
-  // segments honest without a tick of their own
-  useAppStore((s) => s.numbersSeen)
-  usePlacesStore((s) => s.saved)
-  useDiscoverStore((s) => s.touched)
 
   const ch = chapters()
   const setup = setupCounts(ch)
@@ -170,20 +182,7 @@ function Hub({ go }: { go: (v: View) => void }) {
           ))}
         </>
       )}
-
-      <HideGlyph />
     </>
-  )
-}
-
-/** Hidden from the top bar is permanent; the hub keeps the way back. */
-function HideGlyph() {
-  const hidden = useDiscoverStore((s) => s.glyphHidden)
-  const setHidden = useDiscoverStore((s) => s.setGlyphHidden)
-  return (
-    <button className="dv-hide" onClick={() => setHidden(!hidden)}>
-      {hidden ? 'Show on the top bar' : 'Hide from the top bar'}
-    </button>
   )
 }
 
@@ -215,20 +214,7 @@ function Detail({ id }: { id: string }) {
 // ---------- set up ----------
 
 function Setup() {
-  useLogTick()
-  // every store a row reads, so a change anywhere redraws the checks
-  // (one primitive per selector — a fresh array would re-render forever)
-  useAppStore((s) => s.numbersSeen)
-  useAppStore((s) => s.firstRouteDone)
-  useAppStore((s) => s.gpsWanted)
-  useAppStore((s) => s.waveLimitM)
-  useAppStore((s) => s.offlineReady)
-  usePlacesStore((s) => s.saved)
-  usePlacesStore((s) => s.notes)
-  usePlacesStore((s) => s.hidden)
-  usePlacesStore((s) => s.homeName)
-  useGpsStore((s) => s.status)
-  useDiscoverStore((s) => s.touched)
+  useSetupInputs()
   return (
     <>
       {chapters().map((c) => (

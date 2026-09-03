@@ -5,15 +5,15 @@ import { ACH_BY_ID } from './registry'
 import { useDiscoverStore } from './store'
 
 /**
- * The arrival card's strip, on the live trip card once the boat is back
- * (or at a one-way destination): the one question — what did the water
- * feel like, one tap on the ramp — and the tiles earned since cast-off.
+ * The arrival card's strip, on the live trip card from the moment the boat
+ * reaches the destination: the one question — what did the water feel
+ * like, one tap on the ramp — and the tiles earned since cast-off. Asked
+ * here, on the ride home, because END at the ramp closes the card; a trip
+ * ended before it was answered gets asked once more (UnlockToast).
  */
 export default function ArrivalStrip() {
   const trip = useDiscoverStore((s) => s.trip)
-  if (!trip) return null
-  const arrived = trip.homeAt != null || (trip.arrivedAt != null && !trip.roundTrip)
-  if (!arrived) return null
+  if (!trip || trip.arrivedAt == null) return null
   const earned = trip.earnedIds.map((id) => ACH_BY_ID.get(id)).filter((a) => a != null)
   return (
     <div className="dv-arrive">
