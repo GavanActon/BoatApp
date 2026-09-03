@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import { HOME } from '../../config'
+import { nearestWater } from '../../map/depthGrid'
 import { getMap } from '../../map/mapController'
 import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
+import { homeCenter } from '../../state/placesStore'
 import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { lastPointSource, openMeteoLastError, type PointForecast } from '../../weather/openMeteo'
@@ -70,10 +73,11 @@ export default function WeatherPanel() {
     if (from) {
       void load(from.lon, from.lat, from.name ?? 'Pinned start')
     } else {
-      const c = getMap()?.getCenter()
-      const lon = fix?.lon ?? c?.lng
-      const lat = fix?.lat ?? c?.lat
-      if (lon != null && lat != null) void load(lon, lat)
+      // no fix: the home dock, like the strip — the map centre can be land;
+      // a fix on land: the nearest water, like the strip
+      const home = homeCenter() ?? HOME.center
+      const at = (fix && nearestWater(fix.lon, fix.lat)) || (fix ? [fix.lon, fix.lat] : home)
+      void load(at[0], at[1])
     }
     // also refresh the map layer grid when the panel opens (cheap, cached)
     void refreshWeatherGrid()

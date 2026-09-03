@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../../state/appStore'
 import { knToUnit, speedUnitLabel } from '../../units'
 import type { PointForecast } from '../../weather/openMeteo'
@@ -12,7 +12,11 @@ import type { PointForecast } from '../../weather/openMeteo'
  */
 
 const HOURS = 168
-const W = 360
+/** Drawn at the container's real pixel width (see the ResizeObserver below)
+ *  rather than scaled up from a fixed viewBox: on a 2500px desktop window a
+ *  360-wide viewBox stretched to 100% blew every 9px tick label up to the
+ *  size of a headline. This is only the width before the first measurement. */
+const W_DEFAULT = 360
 const PAD_L = 34
 const PAD_R = 10
 const WIND_TOP = 16
@@ -22,8 +26,6 @@ const WAVE_TOP = WIND_TOP + WIND_H + GAP
 const WAVE_H = 72
 const AXIS_H = 20
 const TOTAL_H = WAVE_TOP + WAVE_H + AXIS_H
-
-const PLOT_W = W - PAD_L - PAD_R
 
 const COL_WIND = '#2b9fdb'
 const COL_GUST = '#c98500'
@@ -105,6 +107,24 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
   const [scrub, setScrub] = useState<number | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // one SVG unit = one CSS pixel, whatever the sheet's width
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [W, setW] = useState(W_DEFAULT)
+  useLayoutEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const measure = () => {
+      const w = Math.round(el.getBoundingClientRect().width)
+      if (w > 0) setW(w)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const PLOT_W = W - PAD_L - PAD_R
+
   // crosshair defaults to the app-wide planning time when one is picked
   const planTimeMs = useAppStore((s) => s.planTimeMs)
   const planIdx = useMemo(() => {
@@ -157,7 +177,7 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
   })
 
   return (
-    <div className="fc-charts">
+    <div className="fc-charts" ref={wrapRef}>
       <div className="fc-readout">
         <span className="fc-time numeral">{timeLabel}</span>
         <span className="fc-chip">
@@ -177,7 +197,9 @@ export default function ForecastCharts({ forecast }: { forecast: PointForecast }
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${TOTAL_H}`}
-        style={{ width: '100%', touchAction: 'pan-y' }}
+        width={W}
+        height={TOTAL_H}
+        style={{ width: '100%', display: 'block', touchAction: 'pan-y' }}
         onPointerDown={onPointer}
         onPointerMove={(e) => e.buttons > 0 && onPointer(e)}
       >
