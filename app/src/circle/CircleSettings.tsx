@@ -31,9 +31,9 @@ export default function CircleSettings() {
       const c = await createCircle(name, deviceId, deviceKey)
       addCircle(c)
       setNewName('')
-      setNote(`Started "${c.name}". Invite people with the code ${joinCode(c)}.`)
-    } catch (e) {
-      setNote(`Couldn't start the circle: ${e instanceof Error ? e.message : String(e)}`)
+      setNote(`Started · ${c.name} · code ${joinCode(c)}`)
+    } catch {
+      setNote('No answer from the circle')
     } finally {
       setBusy(false)
     }
@@ -46,9 +46,9 @@ export default function CircleSettings() {
     try {
       const c = await joinCircle(code)
       setCode('')
-      setNote(`Joined "${c.name}".`)
+      setNote(`Joined · ${c.name}`)
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e))
+      setNote(e instanceof Error && /code/.test(e.message) ? 'Not a circle code' : 'No such circle')
     } finally {
       setBusy(false)
     }
@@ -66,16 +66,16 @@ export default function CircleSettings() {
     }
     try {
       await navigator.clipboard.writeText(text)
-      setNote(`Invite copied — paste it into a message. Code ${joinCode(c)}.`)
+      setNote(`Invite copied · code ${joinCode(c)}`)
     } catch {
-      setNote(`Code for "${c.name}": ${joinCode(c)}`)
+      setNote(`Code · ${joinCode(c)}`)
     }
   }
 
   const leave = async (c: Circle) => {
     setNote(null)
     await leaveCircle(c)
-    setNote(`Left "${c.name}".`)
+    setNote(`Left · ${c.name}`)
   }
 
   return (
@@ -85,7 +85,7 @@ export default function CircleSettings() {
       <div className="row">
         <div className="row-text">
           <span className="row-title">Skipper card</span>
-          <span className="row-desc">How your boat is named to friends</span>
+          <span className="row-desc">name · boat · as friends see you</span>
         </div>
       </div>
       <div className="row circle-fields">
@@ -155,10 +155,7 @@ export default function CircleSettings() {
         </button>
       </div>
       {note && <div className="circle-note">{note}</div>}
-      <div className="circle-note dim">
-        Sharing is per trip: the trip card asks before cast-off, and it stops on its own when the trip
-        ends. Friends see your position, where you're going and when. Nothing is kept afterwards.
-      </div>
+      <div className="circle-note dim">shared per trip · position · where to · when · nothing kept</div>
     </>
   )
 }

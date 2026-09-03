@@ -37,7 +37,7 @@ export default function BoatsOut() {
         <span>Boats out</span>
         <span className="bo-meta">
           {fetchError && online
-            ? 'can’t reach the circle'
+            ? 'no answer'
             : fetchedAt
               ? `checked ${agoLabel(now - fetchedAt)}`
               : online
@@ -46,7 +46,7 @@ export default function BoatsOut() {
         </span>
       </div>
       {friends.length === 0 ? (
-        <div className="bo-empty">Nobody out.</div>
+        <div className="bo-empty">Nobody out</div>
       ) : (
         friends.map((b) => (
           <button

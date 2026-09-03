@@ -725,8 +725,8 @@ function ShareOptIn() {
   return (
     <label className="row circle-optin">
       <div className="row-text">
-        <span className="row-title">Show {who} where I am</span>
-        <span className="row-desc">Position, where you're going and when · stops when the trip ends</span>
+        <span className="row-title">Show {who}</span>
+        <span className="row-desc">position · where to · when · this trip</span>
       </div>
       <input
         type="checkbox"
