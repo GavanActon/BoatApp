@@ -50,6 +50,7 @@ import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
 import { initSeaFlow } from './weather/waveFlow'
+import { DiscoverGlyph, DiscoverSheet, UnlockToast, initDiscover } from './discover'
 
 // auto-follow waits for a fix at least this tight before trusting it…
 const GOOD_FIX_ACCURACY_M = 150
@@ -222,6 +223,7 @@ function TopBar() {
       <SlotChip />
       <HomePickChip />
       <TripChip />
+      <DiscoverGlyph />
     </div>
   )
 }
@@ -370,6 +372,7 @@ export default function App() {
     initWindFlow()
     initSeaFlow()
     initForecastWatch()
+    void initDiscover()
 
     // grab a position right away — but only when that costs no PROMPT: the
     // first location ask belongs to onboarding (§10.2), never to a cold
@@ -481,7 +484,9 @@ export default function App() {
           {sheetTab === 'offline' && <OfflinePanel />}
         </BottomSheet>
       )}
+      {sheetTab === 'discover' && <DiscoverSheet />}
 
+      <UnlockToast />
       <WelcomeCards />
       <NumbersGuide />
     </div>

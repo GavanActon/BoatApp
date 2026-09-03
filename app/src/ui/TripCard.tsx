@@ -34,6 +34,7 @@ import {
 import { IconClose, IconLocate, IconMinus, IconPlus, IconStar, IconSwap } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
+import { ArrivalStrip } from '../discover'
 
 /**
  * The dock — WHO the screen is about and WHAT HAPPENS NEXT, and nothing
@@ -366,6 +367,8 @@ export default function TripCard() {
             setDetent('rest')
           }}
         />
+        {/* back at the dock: sea felt, and what the trip earned (the discover trial) */}
+        <ArrivalStrip />
         {raised && (
           <div className="tb-scroll">
             <RunDetail />
