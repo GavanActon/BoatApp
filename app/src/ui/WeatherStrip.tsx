@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HOME } from '../config'
-import { homeCenter } from '../state/placesStore'
-import { getMap } from '../map/mapController'
+import { nearestWater } from '../map/depthGrid'
+import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { adoptWindow } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
 import type { HourRating } from '../routing/tripPlan'
@@ -92,6 +92,7 @@ export default function WeatherStrip() {
   // the first fix arrives after mount; without a pinned start it IS the
   // trip's start, so the strip has to come off home waters when it lands
   const hasFix = useGpsStore((s) => s.fix != null)
+  const homeName = usePlacesStore((s) => s.homeName)
   const focusPoint = useRouteStore((s) => s.focusPoint)
   const setFocusPoint = useRouteStore((s) => s.setFocusPoint)
   const destination = useRouteStore((s) => s.destination)
@@ -139,10 +140,18 @@ export default function WeatherStrip() {
     let alive = true
     const load = async () => {
       const fix = useGpsStore.getState().fix
-      const c = getMap()?.getCenter()
+      // No fix (a desktop, a phone that said no): the HOME DOCK, not the map
+      // centre — a centre that happens to sit over land has no sea at all,
+      // and the strip read "no wave data" while the map showed it fine.
       const home = homeCenter() ?? HOME.center
-      const lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? c?.lng ?? home[0]
-      const lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? c?.lat ?? home[1]
+      let lon = focusPoint?.lon ?? departFrom?.lon ?? fix?.lon ?? home[0]
+      let lat = focusPoint?.lat ?? departFrom?.lat ?? fix?.lat ?? home[1]
+      // a fix on land (the phone in town) has no sea of its own: the
+      // nearest water is the shore you'd launch from, and has a forecast
+      if (!focusPoint && !departFrom && fix) {
+        const w = nearestWater(lon, lat)
+        if (w) [lon, lat] = w
+      }
       const key = `${lon.toFixed(2)},${lat.toFixed(2)}`
       // Last-known first: paint the disk copy for this subject immediately
       // (stale dot showing), so the strip has numbers in the first paint
@@ -338,6 +347,22 @@ export default function WeatherStrip() {
           <IconPin size={11} />
           <span>{departFrom.name ?? 'Pinned start'}</span>
         </span>
+      )}
+
+      {/* no fix and no home dock: these numbers are for a default nobody
+          chose — say so where it bites, and make the fix one tap */}
+      {!focusPoint && !departFrom && !hasFix && !homeName && (
+        <button
+          className="wxstrip-focus wxstrip-nudge"
+          onClick={() => {
+            useAppStore.getState().setSheetTab(null)
+            useAppStore.getState().setPickingHome(true)
+          }}
+          aria-label="Forecast is for the default home — tap to star your home dock on the chart"
+        >
+          <IconPin size={11} />
+          <span>Star your home dock</span>
+        </button>
       )}
 
       <div className="wxstrip-days" role="tablist" aria-label="Pick a day">

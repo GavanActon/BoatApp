@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -94,12 +95,33 @@ function omCache(): Plugin {
   }
 }
 
+/**
+ * Which build is this? Stamped into the bundle for the "Report a problem"
+ * email (src/diagnostics.ts) — a report that names its commit is one you
+ * can actually reproduce. CI has GITHUB_SHA; a local build asks git.
+ */
+function buildStamp(): { sha: string; at: string } {
+  const sha =
+    process.env.GITHUB_SHA ??
+    (() => {
+      try {
+        return execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+          .toString()
+          .trim()
+      } catch {
+        return 'local'
+      }
+    })()
+  return { sha: sha.slice(0, 7), at: new Date().toISOString() }
+}
+
 // BASE_PATH lets the same build target GitHub Pages project sites (e.g. /BoatApp/)
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
   // the family's phones are current; es2022 output skips the helpers older
   // targets need and parses faster on the phone at launch
   build: { target: ['es2022', 'safari16'] },
+  define: { __BUILD__: JSON.stringify(buildStamp()) },
   // allow phone/tunnel access to the local servers
   server: { host: true, allowedHosts: true },
   preview: { host: true, allowedHosts: true },

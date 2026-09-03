@@ -21,23 +21,31 @@ export default function BottomSheet({
   title,
   children,
   halfPct = 52,
+  openPct,
 }: {
   title: string
   children: ReactNode
   /** The half snap: Places rests lower so the chart keeps most of the screen. */
   halfPct?: number
+  /** Where the sheet opens, when that is not the half snap: a sheet sent
+   *  for by a Discover row opens full, so the control it lands on is in
+   *  view without a scroll. Read once, at mount. */
+  openPct?: number
 }) {
   const setSheetTab = useAppStore((s) => s.setSheetTab)
   // a text field in edit stretches the sheet to full — the keyboard eats the
   // bottom half of the screen, and a half-height sheet vanishes behind it
   const tall = useAppStore((s) => s.sheetTall)
-  const [heightPct, setHeightPct] = useState(halfPct)
+  const [heightPct, setHeightPct] = useState(openPct ?? halfPct)
   const drag = useRef<{ startY: number; startPct: number } | null>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   // the live height during a drag. React state would re-render the whole
   // panel on every pointermove — with the places list inside that recomputes
   // conditions for every spot per frame, which is what made the drag chunky
-  const livePct = useRef(halfPct)
+  const livePct = useRef(openPct ?? halfPct)
+  // what the last reset was for — StrictMode runs the effect twice on
+  // mount, so "first run" can't be what guards the opening height
+  const lastSnap = useRef<[string, number]>([title, halfPct])
 
   /** Write the height straight to the node: a drag has to track the finger,
    *  and a render per frame cannot. */
@@ -48,6 +56,10 @@ export default function BottomSheet({
   }
 
   useEffect(() => {
+    // the opening height stands; a NEW title or snap resets to the snap
+    const [t, h] = lastSnap.current
+    if (t === title && h === halfPct) return
+    lastSnap.current = [title, halfPct]
     setHeightPct(halfPct)
     applyHeight(halfPct)
   }, [title, halfPct])

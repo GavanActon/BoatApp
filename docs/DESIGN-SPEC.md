@@ -307,25 +307,39 @@ A clean browser context is a fresh install. To simulate an existing one, seed
 
 ## 10. First run
 
-**10.1 MUST — The welcome says the pitch once, then never again.** Three
-cards before the chart, first launch only: the lake's own models (trust
-leads — ECCC HRDPS wind, RDWPS 1 km waves, named), offline charts, the
-pick-a-place-pick-an-hour grammar. Skippable at every card; finishing or
-skipping is permanent (`onboarded`, persisted). This overlay is the ONE
-surface exempt from §1.5's no-sentences rule — it is the app introducing
-itself, not chrome.
+**10.1 MUST — The welcome says the pitch once, then never again.** ONE
+card before the chart, first launch only: the lake's own models (trust
+leads — ECCC HRDPS wind, RDWPS 1 km waves, named) and charts that work
+with no signal. One answer, *Open the chart*, and nothing else opens:
+the bays are the first screen, with a default home already set, and the
+app is usable at once. Permanent (`onboarded`, persisted). This overlay is the ONE surface exempt from
+§1.5's no-sentences rule — it is the app introducing itself, not chrome.
+(It was three cards; the second and third were what a person in town
+skipped, and their pitch lives on as the chapters' reward lines.)
 
-**10.2 MUST — Setup is a dock card until it is done.** Narrow exception to
-§2.2's "no dock on fresh install": until location, a home base, a first
-route and the numbers guide have all been observed done at once, a
-first-voyage card may hold the dock slot — always yielding to a subject,
-an under-way trip and the ruler. Rows are ACTIONS, never toggles:
-location asks the OS (the FIRST location prompt lives here, never on a
-cold open), home arms the chart, the route row plots the first run, the
-water row opens the guide. Downloading offline charts is deliberately NOT
-a requirement — the Offline tab sells itself. All four done → `setupDone`
-(persisted) and the card retires forever; its ✕ does the same for the
-borrowed-phone case. It never reappears to nag.
+**10.2 MUST — Setup lives in Discover, and the way back is always on
+screen.** No dock card (§2.2 holds: no dock on a fresh install). The
+First voyage chapter — location, a home dock, one look at the units in
+Settings (seen is done; changing them is optional), the numbers guide,
+the first run — is computed from the facts and never retires, so nothing can
+be dismissed into nowhere. Rows are ACTIONS, never toggles: location asks
+the OS (the FIRST location prompt lives here, never on a cold open), home
+arms the chart, the route row plots the first run, the water row opens
+the guide. Downloading offline charts is deliberately NOT a requirement —
+the Offline tab sells itself. The glyph is on the top bar from the first
+launch. Its ring is the current chapter in segments, lit as rows are done
+— 1/4 at a glance — and its rose wears the colour of the level reached (a
+level is a finished chapter, in any order); reaching one closes the sheet
+and the glyph glows for a beat while the moment drops in under the strip
+— the ceremony is on the chart, not in a list. It wears a breathing amber
+warning dot while location or the home dock is missing: without one of
+those the app has nowhere to stand. Until Discover is opened once, a
+"Set up · N left" chip beside it counts what is left. Disclosure follows
+the levels: at level 0 the sheet IS the First voyage chapter — four rows,
+the ring, the reward line, nothing else — and the hub (levels, season,
+earned, locked) arrives with level 1, around the next chapter. Where a skipped step bites, the symptom points back: with no
+fix and no home dock, the strip's chip and the trip card's From slot read
+"Star your home dock" and arm the pick (§10.3). Nothing re-shows unasked.
 
 **10.3 MUST — Home is picked on the chart.** The home row arms a pick — a
 top-bar banner names the listening slot with cancel, the same grammar as

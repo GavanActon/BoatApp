@@ -46,12 +46,13 @@ const WeatherPanel = lazy(() => import('./ui/panels/WeatherPanel'))
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
 const WelcomeCards = lazy(() => import('./ui/WelcomeCards'))
-const FirstVoyageCard = lazy(() => import('./ui/FirstVoyageCard'))
 const NumbersGuide = lazy(() => import('./ui/NumbersGuide'))
 import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
 import { initSeaFlow } from './weather/waveFlow'
+import { DiscoverGlyph, DiscoverSheet, UnlockToast, initDiscover } from './discover'
+import { useDiscoverStore } from './discover/store'
 
 // auto-follow waits for a fix at least this tight before trusting it…
 const GOOD_FIX_ACCURACY_M = 150
@@ -224,6 +225,7 @@ function TopBar() {
       <SlotChip />
       <HomePickChip />
       <TripChip />
+      <DiscoverGlyph />
     </div>
   )
 }
@@ -374,6 +376,7 @@ export default function App() {
     initWindFlow()
     initSeaFlow()
     initForecastWatch()
+    void initDiscover()
 
     // grab a position right away — but only when that costs no PROMPT: the
     // first location ask belongs to onboarding (§10.2), never to a cold
@@ -441,15 +444,9 @@ export default function App() {
 
       <div className="bottombar" ref={barRef}>
         {/* one card at a time in the dock — measuring borrows the trip's
-            spot, and with no subject the first-voyage card may hold it
-            until setup is done (§10.2) */}
-        {measuring ? (
-          <MeasureCard />
-        ) : destination != null || tripStartedAt != null ? (
-          <TripCard />
-        ) : (
-          <Suspense fallback={null}><FirstVoyageCard /></Suspense>
-        )}
+            spot; with no subject the dock is empty (setup lives in
+            Discover, §10.2) */}
+        {measuring ? <MeasureCard /> : destination != null || tripStartedAt != null ? <TripCard /> : null}
         {!routing && (
           <div className="tabdock glass">
             {TABS.map((t) => {
@@ -477,7 +474,8 @@ export default function App() {
       </div>
 
       {activeTab && (
-        <BottomSheet title={activeTab.name}>
+        // sent here by a Discover row: open full, so the control is in view
+        <BottomSheet title={activeTab.name} openPct={useDiscoverStore.getState().target ? 88 : undefined}>
           <Suspense fallback={null}>
             {sheetTab === 'places' && <PlacesPanel />}
             {sheetTab === 'layers' && <LayersPanel />}
@@ -487,7 +485,9 @@ export default function App() {
           </Suspense>
         </BottomSheet>
       )}
+      {sheetTab === 'discover' && <DiscoverSheet />}
 
+      <UnlockToast />
       <Suspense fallback={null}><WelcomeCards /></Suspense>
       <Suspense fallback={null}><NumbersGuide /></Suspense>
     </div>

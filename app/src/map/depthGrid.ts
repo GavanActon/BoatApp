@@ -57,6 +57,50 @@ async function doLoad(): Promise<boolean> {
   }
 }
 
+/**
+ * The nearest water to a point, within `maxKm` — the point itself if it is
+ * already wet. For a GPS fix that is on land (the phone in town, the truck
+ * at the ramp): a sea forecast for the shore you are nearest is the honest
+ * "close to you", where the fix's own cell has no sea at all. Rings of
+ * grid cells outward, the first ring with water wins, nearest cell in it.
+ */
+export function nearestWater(lon: number, lat: number, maxKm = 12): [number, number] | null {
+  if (!header || !data) return null
+  if (depthAt(lon, lat) != null) return [lon, lat]
+  const { west, south, east, north, nx, ny } = header
+  const dLon = (east - west) / (nx - 1)
+  const dLat = (north - south) / (ny - 1)
+  const ix0 = Math.round((lon - west) / dLon)
+  const iy0 = Math.round((north - lat) / dLat)
+  const kmLat = 111.2
+  const kmLon = kmLat * Math.cos((lat * Math.PI) / 180)
+  const maxR = Math.ceil(maxKm / Math.min(dLat * kmLat, dLon * kmLon))
+  let best: [number, number] | null = null
+  let bestKm = Infinity
+  const consider = (ix: number, iy: number) => {
+    if (sample(ix, iy) === NODATA) return
+    const cLon = west + ix * dLon
+    const cLat = north - iy * dLat
+    const km = Math.hypot((cLon - lon) * kmLon, (cLat - lat) * kmLat)
+    if (km < bestKm) {
+      bestKm = km
+      best = [cLon, cLat]
+    }
+  }
+  for (let r = 1; r <= maxR; r++) {
+    for (let d = -r; d <= r; d++) {
+      consider(ix0 + d, iy0 - r)
+      consider(ix0 + d, iy0 + r)
+      if (d > -r && d < r) {
+        consider(ix0 - r, iy0 + d)
+        consider(ix0 + r, iy0 + d)
+      }
+    }
+    if (best) break
+  }
+  return bestKm <= maxKm ? best : null
+}
+
 export function depthGridLoaded(): boolean {
   return data !== null
 }

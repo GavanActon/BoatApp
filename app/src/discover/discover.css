@@ -1,0 +1,1009 @@
+/* ============================================================
+   Discover — the achievements trial. Everything prefixed dv-; delete
+   the folder and nothing else in the app references these.
+   ============================================================ */
+
+/* the glyph rides the left end of the top bar — which has to span the
+   width for that to mean anything (it shrink-wraps its chips otherwise) */
+.topbar {
+  position: relative;
+  align-self: stretch;
+  min-height: 32px;
+}
+
+.dv-glyph {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-tile);
+  display: grid;
+  place-items: center;
+  background: var(--c-surface-heavy);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-dim);
+  -webkit-backdrop-filter: blur(var(--blur));
+  backdrop-filter: blur(var(--blur));
+  animation: rise-in 0.25s ease;
+}
+
+.dv-glyph svg {
+  display: block;
+}
+
+/* no location, or no home dock: the app can't do its job yet — a warning
+   dot on the ring's shoulder, in the same amber every other warning wears */
+.dv-glyph-warn::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c-warn);
+  border: 2px solid var(--c-bg);
+  box-sizing: content-box;
+  animation: dv-warn-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes dv-warn-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 180, 84, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 180, 84, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-glyph-warn::after {
+    animation: none;
+  }
+}
+
+/* a level reached: the glyph swells and throws light for a beat, then
+   settles wearing the new colour */
+.dv-glyph-glow {
+  animation: dv-glyph-glow 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes dv-glyph-glow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(63, 200, 255, 0);
+  }
+  25% {
+    transform: scale(1.22);
+    box-shadow:
+      0 0 0 5px rgba(63, 200, 255, 0.35),
+      0 0 22px 8px rgba(63, 200, 255, 0.55);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(63, 200, 255, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-glyph-glow {
+    animation: none;
+  }
+}
+
+/* a control a Discover row sent you to: lit for a beat on arrival */
+.dv-target {
+  border-radius: var(--r-row);
+  animation: dv-target 1.8s ease-out both;
+}
+
+@keyframes dv-target {
+  0%,
+  35% {
+    box-shadow:
+      inset 0 0 0 1px rgba(63, 200, 255, 0.7),
+      0 0 0 3px rgba(63, 200, 255, 0.22);
+    background: rgba(63, 200, 255, 0.1);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(63, 200, 255, 0),
+      0 0 0 3px rgba(63, 200, 255, 0);
+    background: transparent;
+  }
+}
+
+/* ---------- the sheet ---------- */
+
+.dv-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-dim);
+  padding: 2px 0 8px;
+}
+
+.dv-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 4px 10px;
+}
+
+.dv-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dv-count {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.dv-sub {
+  font-size: 12.5px;
+  color: var(--c-text-dim);
+}
+
+.dv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 4px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+  width: 100%;
+  text-align: left;
+}
+
+.dv-row:last-child,
+.dv-row.dv-row-last {
+  border-bottom: none;
+}
+
+.dv-row-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.dv-row-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.dv-row-title.done {
+  color: var(--c-text-dim);
+}
+
+.dv-segs {
+  display: flex;
+  gap: 2px;
+  height: 5px;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 140px;
+}
+
+.dv-segs i {
+  flex: 1;
+  background: rgba(126, 178, 224, 0.15);
+}
+
+.dv-segs i.on {
+  background: var(--c-track);
+}
+
+.dv-n {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  min-width: 32px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dv-n.done {
+  color: var(--c-track);
+}
+
+.dv-chev {
+  color: var(--c-text-faint);
+  display: grid;
+}
+
+/* ---------- achievement tiles ---------- */
+
+.dv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dv-ach {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 76px;
+  padding: 8px 9px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-tile);
+  background: rgba(16, 31, 47, 0.45);
+  text-align: left;
+  min-width: 0;
+}
+
+.dv-ach svg {
+  color: var(--c-track);
+  flex-shrink: 0;
+}
+
+.dv-ach b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--c-text);
+}
+
+.dv-ach i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--c-text-dim);
+}
+
+.dv-ach.fresh {
+  border-color: var(--c-track);
+  background: rgba(89, 224, 184, 0.08);
+}
+
+.dv-lock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+  width: 100%;
+  text-align: left;
+}
+
+.dv-lock:last-child {
+  border-bottom: none;
+}
+
+.dv-lock svg {
+  color: var(--c-text-faint);
+  flex-shrink: 0;
+}
+
+.dv-lock-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dv-lock-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--c-text-dim);
+}
+
+.dv-lock-hint {
+  font-size: 11px;
+  color: var(--c-text-faint);
+}
+
+/* ---------- one achievement, opened ---------- */
+
+.dv-det {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 14px;
+}
+
+.dv-det-tile {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--r-tile);
+  border: 1px solid var(--c-track);
+  background: rgba(89, 224, 184, 0.08);
+  display: grid;
+  place-items: center;
+  color: var(--c-track);
+}
+
+.dv-det-tile.locked {
+  border-color: var(--c-border-strong);
+  background: rgba(16, 31, 47, 0.45);
+  color: var(--c-text-faint);
+}
+
+.dv-det-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dv-det-when {
+  font-size: 12px;
+  color: var(--c-text-dim);
+}
+
+.dv-fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+  font-size: 13px;
+}
+
+.dv-fact:last-child {
+  border-bottom: none;
+}
+
+.dv-fact span {
+  color: var(--c-text-dim);
+}
+
+.dv-fact b {
+  font-weight: 700;
+  text-align: right;
+}
+
+/* a Settings group, opened: its rows step in under the group's line. Lives
+   here rather than ui.css only because that file has uncommitted work of
+   Gavan's in it right now — it belongs with the panel when this is merged. */
+.group-body {
+  padding-left: 10px;
+  border-left: 2px solid rgba(126, 178, 224, 0.12);
+  margin: 0 0 6px 4px;
+}
+
+/* the guide chip sits in the bar's flow, clear of the pinned glyph */
+.dv-guide {
+  margin-left: 40px;
+}
+
+/* ---------- the hub: next up, the rest folded ---------- */
+
+.dv-next {
+  padding-bottom: 4px;
+}
+
+.dv-next-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dv-next-head .panel-section {
+  flex: 1;
+  margin-top: 8px;
+}
+
+.dv-next-head .dv-n {
+  margin-top: 8px;
+}
+
+.dv-more {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--c-accent);
+  padding: 8px 2px 0;
+}
+
+.dv-fold .dv-chev svg {
+  transition: transform 0.18s;
+  transform: rotate(90deg);
+}
+
+.dv-fold .dv-chev.open svg {
+  transform: rotate(-90deg);
+}
+
+.dv-fv-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+}
+
+.dv-fv .dv-chev {
+  color: var(--c-text-faint);
+}
+
+/* ---------- levels: the ladder, the chunks and their rows ---------- */
+
+.dv-ladder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 6px;
+}
+
+.dv-rung {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: var(--r-row);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-faint);
+}
+
+.dv-rung.on {
+  color: var(--c-text-dim);
+  border-color: rgba(89, 224, 184, 0.35);
+}
+
+.dv-rung.now {
+  color: #06121c;
+  background: var(--c-track);
+  border-color: var(--c-track);
+}
+
+.dv-chapter-n {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border-strong);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--c-text-dim);
+  flex-shrink: 0;
+}
+
+.dv-chapter.done .dv-chapter-n {
+  background: var(--c-track);
+  border-color: var(--c-track);
+  color: #06121c;
+}
+
+.dv-chapter {
+  margin-top: 14px;
+}
+
+.dv-chapter-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.dv-chapter {
+  margin-top: 4px;
+  border-radius: var(--r-tile);
+}
+
+.dv-chapter.open {
+  background: rgba(16, 31, 47, 0.35);
+  padding-bottom: 4px;
+}
+
+.dv-chapter-head .dv-chev svg {
+  transition: transform 0.18s;
+  transform: rotate(90deg);
+}
+
+.dv-chapter-head .dv-chev.open svg {
+  transform: rotate(-90deg);
+}
+
+.dv-chapter-head .dv-row-title {
+  flex: 1;
+}
+
+.dv-reward {
+  font-size: 12.5px;
+  color: var(--c-text-dim);
+  line-height: 1.35;
+  padding: 2px 4px 6px;
+}
+
+.dv-fv {
+  display: flex;
+  width: 100%;
+  gap: 11px;
+  align-items: center;
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: var(--r-tile);
+}
+
+.dv-fv.open {
+  align-items: flex-start;
+}
+
+.dv-fv:active {
+  background: var(--c-accent-dim);
+}
+
+.dv-fv.open:active {
+  background: none;
+}
+
+.dv-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border-strong);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.dv-fv.done .dv-box {
+  background: var(--c-track);
+  border-color: var(--c-track);
+  color: #06121c;
+}
+
+.dv-fv.done .dv-fv-text b {
+  color: var(--c-text-dim);
+}
+
+.dv-fv-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dv-fv-text b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.dv-fv-text i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--c-text-dim);
+}
+
+.dv-ctl {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 6px;
+}
+
+.dv-where {
+  font-size: 10.5px;
+  color: var(--c-text-faint);
+  letter-spacing: 0.02em;
+}
+
+.dv-segrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dv-seglab {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+  width: 42px;
+}
+
+.dv-ctl .seg {
+  align-self: flex-start;
+}
+
+.dv-ctl .speed-step {
+  align-self: flex-start;
+}
+
+.dv-ctl .limits-row {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.dv-ctl .limits-set {
+  margin-top: 0;
+}
+
+.dv-ctl input[type='range'] {
+  width: 100%;
+}
+
+/* ---------- the season ---------- */
+
+.dv-q {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(126, 178, 224, 0.08);
+  width: 100%;
+  text-align: left;
+}
+
+.dv-q:last-child {
+  border-bottom: none;
+}
+
+.dv-qmark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--c-text-faint);
+}
+
+.dv-qmark.on {
+  color: var(--c-track);
+}
+
+.dv-qtext {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dv-qname {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dv-qname.on {
+  color: var(--c-text-dim);
+}
+
+.dv-qinfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--c-text-dim);
+}
+
+.dv-qinfo b {
+  font-weight: 700;
+}
+
+.dv-sea {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+  margin: 0 2px 0 3px;
+}
+
+.dv-qdate {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-track);
+}
+
+.dv-hide {
+  color: var(--c-text-faint);
+  font-size: 12px;
+  padding: 14px 6px 0;
+  text-align: center;
+  width: 100%;
+}
+
+/* ---------- the arrival card: sea felt, and what was earned ---------- */
+
+.dv-arrive {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 10px 8px;
+}
+
+.dv-felt {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dv-felt-lab {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-faint);
+}
+
+.dv-felt-bar {
+  display: flex;
+  gap: 3px;
+  height: 28px;
+}
+
+.dv-felt-bar button {
+  flex: 1;
+  border-radius: 4px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.dv-felt-bar button.on {
+  opacity: 1;
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+.dv-felt-bar.picked button:not(.on) {
+  opacity: 0.3;
+}
+
+.dv-earned {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dv-earned .dv-ach {
+  flex: 1 1 45%;
+  min-height: 52px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- the moment: a small glass pill, alive for three seconds ---------- */
+
+.dv-moment {
+  position: fixed;
+  left: 50%;
+  /* under the strip AND the top bar's chip row, so a moment never sits on a chip */
+  top: calc(var(--sat, 0px) + 196px);
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px 8px 8px;
+  border-radius: 12px;
+  overflow: hidden;
+  color: var(--c-text);
+  text-align: left;
+  border-color: rgba(89, 224, 184, 0.45);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(89, 224, 184, 0.12),
+    0 0 28px rgba(89, 224, 184, 0.22),
+    0 1px 0 rgba(255, 255, 255, 0.14) inset;
+  animation: dv-drop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+.dv-moment.out {
+  animation: dv-lift 0.28s ease-in forwards;
+}
+
+.dv-moment-tile {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  border: 1px solid rgba(89, 224, 184, 0.7);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%),
+    rgba(89, 224, 184, 0.14);
+  display: grid;
+  place-items: center;
+  color: var(--c-track);
+  flex-shrink: 0;
+  animation: dv-ring 1.1s ease-out 0.15s 2;
+}
+
+.dv-moment-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dv-moment-k {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-track);
+  font-weight: 800;
+}
+
+.dv-moment-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.dv-moment-level .dv-moment-tile {
+  border-radius: 50%;
+}
+
+/* sparks: eight, out from the tile and gone. The spark is a rotated arm;
+   the dot at its end is what flies. */
+.dv-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px;
+  pointer-events: none;
+}
+
+.dv-spark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--c-track);
+  box-shadow: 0 0 6px rgba(89, 224, 184, 0.9);
+  animation: dv-spark 0.75s ease-out 0.12s both;
+}
+
+/* the shine: one sweep across the glass */
+.dv-shine {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -40%;
+  width: 40%;
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: skewX(-18deg);
+  animation: dv-shine 0.9s ease-out 0.35s both;
+  pointer-events: none;
+}
+
+@keyframes dv-drop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes dv-lift {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.94);
+  }
+}
+
+@keyframes dv-spark {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-34px) scale(1.1);
+  }
+}
+
+@keyframes dv-shine {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 120%;
+  }
+}
+
+/* the sea-felt ask keeps the older, bigger card — it is a question, not a flourish */
+
+.dv-toast {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 22px 14px;
+  border-radius: 10px;
+  min-width: 200px;
+  color: var(--c-text);
+  animation: dv-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.dv-toast-tile {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-tile);
+  border: 1px solid var(--c-track);
+  background: rgba(89, 224, 184, 0.1);
+  display: grid;
+  place-items: center;
+  color: var(--c-track);
+  box-shadow: 0 0 0 0 rgba(89, 224, 184, 0.5);
+  animation: dv-ring 1.4s ease-out 0.2s 2;
+}
+
+.dv-toast-k {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-track);
+  font-weight: 700;
+}
+
+.dv-toast-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dv-toast.out {
+  animation: dv-fade 0.3s ease-in forwards;
+}
+
+/* the sea-felt question, asked after the fact */
+.dv-felt-ask {
+  top: 56%;
+  min-width: 280px;
+  gap: 10px;
+}
+
+.dv-felt-ask .dv-felt-bar {
+  width: 100%;
+}
+
+.dv-felt-ask .dv-hide {
+  padding-top: 2px;
+}
+
+@keyframes dv-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes dv-ring {
+  from {
+    box-shadow: 0 0 0 0 rgba(89, 224, 184, 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 22px rgba(89, 224, 184, 0);
+  }
+}
+
+@keyframes dv-fade {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+}

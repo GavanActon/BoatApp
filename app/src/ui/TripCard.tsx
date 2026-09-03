@@ -37,6 +37,7 @@ import {
 import { IconClose, IconLocate, IconMinus, IconPlus, IconStar, IconSwap } from './icons'
 import RunDetail from './RunDetail'
 import { useSwipeUp } from './useSwipeUp'
+import { ArrivalStrip } from '../discover'
 
 /**
  * The dock — WHO the screen is about and WHAT HAPPENS NEXT, and nothing
@@ -376,6 +377,8 @@ export default function TripCard() {
             setDetent('rest')
           }}
         />
+        {/* back at the dock: sea felt, and what the trip earned (the discover trial) */}
+        <ArrivalStrip />
         {raised && (
           <div className="tb-scroll">
             <RunDetail />
@@ -413,8 +416,21 @@ export default function TripCard() {
       <div className="dock-head sentence-head">
         <button
           className={`end-chip end-from${armedSlot === 'from' ? ' end-armed' : ''}`}
-          onClick={() => armSlot('from')}
-          aria-label="Where the trip starts — tap, then tap the chart or a place"
+          onClick={() => {
+            // planned "from home" with no home dock starred: the run starts
+            // at a default nobody chose. This tap is the fix, not the chooser.
+            if (!startPoint && startFrom === 'home' && !homeBase()) {
+              useAppStore.getState().setSheetTab(null)
+              useAppStore.getState().setPickingHome(true)
+              return
+            }
+            armSlot('from')
+          }}
+          aria-label={
+            !startPoint && startFrom === 'home' && !homeBase()
+              ? 'Trip starts at the default home — tap to star your home dock on the chart'
+              : 'Where the trip starts — tap, then tap the chart or a place'
+          }
         >
           <em>From</em>
           <b>
@@ -422,7 +438,7 @@ export default function TripCard() {
               startPoint.name ?? 'Pinned start'
             ) : startFrom === 'home' ? (
               <>
-                <IconStar size={11} /> {homeBase()?.name ?? '—'}
+                <IconStar size={11} /> {homeBase()?.name ?? 'Star your home dock'}
               </>
             ) : (
               <>
