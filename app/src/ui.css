@@ -2762,9 +2762,10 @@
   border-bottom: 1px solid rgba(233, 242, 250, 0.1);
 }
 .circle-code {
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
   color: var(--c-accent);
   user-select: all;
   -webkit-user-select: all;
