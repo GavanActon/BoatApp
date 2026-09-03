@@ -1,7 +1,8 @@
 import { REGION_BBOX } from '../config'
 import { db } from '../tracking/db'
 import { applyWaveOverlayToSeries, ensureWaveOverlay } from './rdwps'
-import { applyWindOverlayToSeries, ensureWindOverlay } from './hrdps'
+import { applyWindOverlayToSeries, ensureWindOverlay, type ApplyOptions } from './hrdps'
+import { fetchMetNoPoint } from './metno'
 
 /**
  * Open-Meteo client. Free, no API key, CORS-enabled.
@@ -16,6 +17,9 @@ export interface PointForecast {
   lon: number
   lat: number
   fetchedAt: number
+  /** Who answered: Open-Meteo normally, MET Norway when it was down. Absent
+   *  on copies cached before this field existed (all Open-Meteo). */
+  source?: 'open-meteo' | 'met.no'
   hourly: {
     time: string[]
     windKn: number[]
@@ -44,6 +48,9 @@ export interface GridCell {
   precipProbPct?: (number | null)[]
   /** Optional: a grid cached before the field was fetched has none. */
   waterTempC?: (number | null)[]
+  /** Air temperature, °C — only from the HRDPS overlay (Open-Meteo's grid
+   *  call doesn't ask for it); null where the overlay has no hour. */
+  tempC?: (number | null)[]
   weatherCode?: (number | null)[]
   waveDir?: (number | null)[]
 }
@@ -467,7 +474,7 @@ function pointKey(lon: number, lat: number): string {
  * fetches — it dresses with whatever run is in hand, and the strip re-runs
  * this through onWindOverlay when the rest lands.
  */
-export async function dressPointForecast(forecast: PointForecast): Promise<void> {
+export async function dressPointForecast(forecast: PointForecast, opts: ApplyOptions = {}): Promise<void> {
   const h = forecast.hourly
   if (!h.time.length) return
   const t0 = Date.parse(h.time[0]) // timezone=auto strings parse as local time
@@ -482,7 +489,14 @@ export async function dressPointForecast(forecast: PointForecast): Promise<void>
     h.waveDir,
   )
   void ensureWindOverlay()
-  applyWindOverlayToSeries(forecast.lon, forecast.lat, t0, h.time.length, h.windKn, h.gustKn, h.windDir)
+  applyWindOverlayToSeries(forecast.lon, forecast.lat, t0, h.time.length, h, opts)
+}
+
+/** Where the last point forecast came from — the Data row says so when it
+ *  wasn't Open-Meteo. */
+let lastSource: 'open-meteo' | 'met.no' | 'cache' | null = null
+export function lastPointSource(): typeof lastSource {
+  return lastSource
 }
 
 export async function fetchPointForecast(
@@ -500,6 +514,7 @@ export async function fetchPointForecast(
       if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
         // an overlay may have landed since this was written — dress again
         await dressPointForecast(cached.payload)
+        lastSource = cached.payload.source ?? 'open-meteo'
         return { forecast: cached.payload, stale: false }
       }
     }
@@ -523,6 +538,7 @@ export async function fetchPointForecast(
       lon,
       lat,
       fetchedAt: Date.now(),
+      source: 'open-meteo',
       hourly: {
         time: wh.time,
         windKn: blended.windKn,
@@ -540,14 +556,29 @@ export async function fetchPointForecast(
     // and the map must never quote two different seas for the same hour
     await dressPointForecast(forecast)
     await cachePut(key, forecast)
+    lastSource = 'open-meteo'
     return { forecast, stale: false }
   } catch (e) {
+    // Second source: MET Norway answers the same question (temperature,
+    // wind, sky, rain) for nine days, keyless and CORS-open. A live answer
+    // from a different provider beats our own stale copy — and it is
+    // cached under the same key, so it IS the copy next time.
+    try {
+      const alt = await fetchMetNoPoint(lon, lat)
+      await dressPointForecast(alt)
+      await cachePut(key, alt)
+      lastSource = 'met.no'
+      return { forecast: alt, stale: false }
+    } catch {
+      /* both providers down — the disk copy, below */
+    }
     const cached = await cacheGet<PointForecast>(key)
     if (cached) {
-      // the ECCC overlays may well be reachable when Open-Meteo isn't — an
-      // old copy with today's HRDPS wind and RDWPS sea on it beats the old
-      // copy as cached
-      await dressPointForecast(cached.payload)
+      // the ECCC overlays may well be reachable when the providers aren't —
+      // an old copy with today's HRDPS wind, gusts, temperature and sky and
+      // RDWPS sea on it beats the old copy as cached
+      await dressPointForecast(cached.payload, { sky: true })
+      lastSource = 'cache'
       return { forecast: cached.payload, stale: true }
     }
     throw e
