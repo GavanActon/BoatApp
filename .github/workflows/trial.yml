@@ -7,7 +7,9 @@ name: Trial build to Cloudflare Pages
 # touch the family's real app. main → sandies.app is untouched by this file.
 #
 # One-time setup (dashboard, ~5 minutes) — see docs/DISCOVER-TRIAL.md:
-#   repo secrets CLOUDFLARE_API_TOKEN (Pages: Edit) and CLOUDFLARE_ACCOUNT_ID.
+#   one repo secret, CLOUDFLARE_API_TOKEN (Account · Cloudflare Pages · Edit).
+#   The account id is not a secret — it is printed on the dashboard — so it
+#   lives here in the clear.
 
 on:
   push:
@@ -56,7 +58,7 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ebcafd8e3dbdaad405e17dfb174c0f0f
           # the project is created on the first run; later runs fall through
           preCommands: npx wrangler pages project create sandies-next --production-branch=discover || true
           command: pages deploy app/dist --project-name=sandies-next --branch=discover --commit-dirty=true
