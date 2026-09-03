@@ -19,7 +19,12 @@ export const HOME = {
   zoom: 10.5,
 }
 
-export const DATA_BASE = `${import.meta.env.BASE_URL}data/`
+// Where the chart data lives. Same-origin by default; a build may point it
+// elsewhere (the discover trial on Cloudflare Pages serves from sandies.app,
+// whose 25+ MiB pmtiles exceed the Pages per-file limit — GitHub Pages
+// answers with `Access-Control-Allow-Origin: *` and byte ranges, so the
+// map, the depth grid and the offline download all work cross-origin).
+export const DATA_BASE: string = import.meta.env.VITE_DATA_BASE ?? `${import.meta.env.BASE_URL}data/`
 
 /** Map data files (PMTiles). key = pmtiles:// protocol key used in the style. */
 export interface DataFileDef {

@@ -51,8 +51,16 @@ jobs:
 
       - name: Build
         working-directory: app
-        # served at the root of its own origin — no BASE_PATH prefix
-        run: npm run build
+        # served at the root of its own origin — no BASE_PATH prefix. Chart
+        # data comes from sandies.app: Pages refuses files over 25 MiB and the
+        # satellite pmtiles is 28.9 MiB. Only the waves file ships here, so
+        # the trial still gets the run fetched above.
+        env:
+          VITE_DATA_BASE: https://sandies.app/data/
+        run: |
+          npm run build
+          find dist/data -type f ! -name 'waves-superior.json' -delete
+          ls -la dist/data
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
