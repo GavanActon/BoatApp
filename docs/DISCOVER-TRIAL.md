@@ -67,6 +67,38 @@ Called It (felt sea = forecast band, three trips running) · Got Distracted ·
 First Light · Sunburn · Closing Time · Walk of Shame (home after back-by) ·
 Designated Skipper · Overdressed · Rain Check · Season Ticket
 
+## What is built (2026-09-03)
+
+Everything under `app/src/discover/`:
+
+- `registry.ts` — the 32 achievements, each a check over observed state.
+- `engine.ts` — subscribes to the app's stores; notes gestures a value
+  can't show (`touched`); keeps the trip's context cast-off → dock;
+  records arrivals (planner latch + a proximity sampler every 20 s,
+  once per place per day) and outings; evaluates on every change.
+- `log.ts` — Dexie `arrivals` + `outings` (db v4) mirrored in memory.
+- `store.ts` — `sandies-discover`: earned, fresh, unlock queue, touched,
+  season flags, the trip context, the glyph's hidden flag.
+- `setup.ts` — six set-up chapters, 21 rows, each an observed fact.
+- `season.ts` — the five places; the Sandies pair placed on the depth
+  grid's two land masses (confirm on the water).
+- UI: `DiscoverGlyph` (top bar), `DiscoverSheet` (hub · set up · season ·
+  one achievement), `ArrivalStrip` (on the live trip card once home:
+  sea felt + what was earned), `UnlockToast` (the moment).
+
+Mount points: `App.tsx` (glyph, sheet, toast, init), `appStore.ts`
+(`'discover'` in SheetTab), `TripCard.tsx` (the strip), `db.ts` (v4).
+
+Driven end to end in a real browser (Playwright, iPhone viewport,
+spoofed GPS): welcome → All Talk → first voyage → glyph → hub → set up
+(cruise/units/limits/scale in place) → season → detail → Start trip →
+Lines Off → arrival latched at the Sandies → home → sea felt → End →
+seven earned, one outing and two arrivals in the log, no console errors.
+
+Trial-harness notes: progress replans fire on `visibilitychange`, not
+`online`; a spoofed fix must be AFLOAT (the config Sandies point is a
+beach — park the boat just off it).
+
 ## How the code stays removable
 
 - Everything under `app/src/discover/`: the registry (a list of predicates
