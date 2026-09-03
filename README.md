@@ -49,3 +49,10 @@ Data sources: NOAA NCEI Great Lakes Bathymetry · Copernicus Sentinel-2 ·
 OpenStreetMap/Protomaps · OpenSeaMap · weather via Open-Meteo, built on
 ECCC's HRDPS 2.5 km (wind) and RDWPS 1 km (waves) models.
 Not for navigation — always carry official charts.
+
+## Found a problem?
+
+In the app, open the Offline tab and tap **Report a problem**. It opens an email
+to info@sandies.app with the build, your position and the age of every cached
+forecast filled in; add what happened. Technical users can also open a GitHub
+issue on this repo.
