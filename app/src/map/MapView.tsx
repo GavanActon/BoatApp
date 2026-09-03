@@ -12,6 +12,7 @@ import { registerAllDataFiles } from './pmtilesRegistry'
 import { useMeasureStore } from '../measure/measureStore'
 import { routeEditedRecently, sampleDotAt } from '../routing/routeLayer'
 import { spotBadgeAt } from '../routing/spotBadges'
+import { circleBoatAt } from '../circle/circleLayer'
 import { useRouteStore } from '../routing/routeStore'
 import { compass } from '../routing/tripPlan'
 import { floorHourMs } from '../time'
@@ -194,6 +195,8 @@ export default function MapView() {
         if (sampleDotAt(map!, e.point)) return
         // taps near a spot badge change the subject, not the depth readout
         if (spotBadgeAt(map!, e.point)) return
+        // taps on a friend's boat open its card (the circle layer's own handler)
+        if (circleBoatAt(map!, e.point)) return
         const { depthUnit, planTimeMs, wavePeriod } = useAppStore.getState()
         const d = depthAt(e.lngLat.lng, e.lngLat.lat)
         popup?.remove()

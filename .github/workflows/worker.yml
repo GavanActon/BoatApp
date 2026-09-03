@@ -1,0 +1,30 @@
+name: Deploy API worker
+
+# api.sandies.app — the circle ("Boats out") API. Deploys on any push to
+# main that touches worker/. Needs the CF_WORKER_TOKEN repo secret
+# (Workers Scripts, D1, Workers Routes, DNS · Edit on the sandies.app zone).
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/worker.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ebcafd8e3dbdaad405e17dfb174c0f0f
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply schema (idempotent)
+        working-directory: worker
+        run: npx --yes wrangler@4.128.0 d1 execute sandies-api --remote --yes --file=schema.sql
+      - name: Deploy
+        working-directory: worker
+        run: npx --yes wrangler@4.128.0 deploy
+      - name: Smoke
+        run: curl -sf https://api.sandies.app/health

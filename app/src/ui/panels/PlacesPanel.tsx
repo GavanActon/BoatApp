@@ -16,6 +16,7 @@ import { distanceUnitFor, runDistance, speedUnitLabel, windSpeed } from '../../u
 import { IconClose, IconLocate, IconPin, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
 import LimitsRow from '../LimitsRow'
 import SavedAdmin from '../SavedAdmin'
+import BoatsOut from '../../circle/BoatsOut'
 
 /**
  * The Places sheet — WHICH PLACE, and nothing else (§0.2).
@@ -318,6 +319,7 @@ export default function PlacesPanel() {
 
   return (
     <div className="places-panel">
+      {!armedSlot && <BoatsOut />}
       {armedSlot && (
         <div className="slot-head">
           <span className="slot-q">{armedSlot === 'from' ? 'From?' : 'To?'}</span>

@@ -8,6 +8,7 @@ import {
 } from '../../state/appStore'
 import { SPEED_UNITS } from '../../units'
 import SeaRamp from '../SeaRamp'
+import CircleSettings from '../../circle/CircleSettings'
 
 /** One tuning slider row — the motion layers are dialled in on the water,
  *  not in code, so every parameter that shapes the look gets one of these. */
@@ -127,6 +128,8 @@ export default function LayersPanel() {
           onChange={(e) => setLowPower(e.target.checked)}
         />
       </label>
+
+      <CircleSettings />
 
       <div className="panel-section">Chart</div>
 

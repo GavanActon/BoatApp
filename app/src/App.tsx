@@ -14,6 +14,8 @@ import {
 } from './tracking/gpsService'
 import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
+import { initCircle } from './circle/sync'
+import { initCircleLayer } from './circle/circleLayer'
 import { useRouteStore } from './routing/routeStore'
 import { initMeasureLayer } from './measure/measureLayer'
 import { useMeasureStore } from './measure/measureStore'
@@ -367,6 +369,8 @@ export default function App() {
     initRouteLayer()
     initMeasureLayer() // after the route layer, so measurements draw on top
     initRoutePlanner()
+    initCircle()
+    initCircleLayer() // after the route layer: friends' courses draw under the run
     initWindFlow()
     initSeaFlow()
     initForecastWatch()

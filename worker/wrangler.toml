@@ -1,0 +1,26 @@
+# The Sandies API — one Worker at api.sandies.app.
+#
+# Deployed by .github/workflows/worker.yml on every push to main that touches
+# worker/, with the CF_WORKER_TOKEN repo secret. Storage is D1 (the KV free
+# tier caps writes at 1 000/day; four boats posting every two minutes on a
+# long day would hit it — D1 allows 100 000).
+name = "sandies-api"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+account_id = "ebcafd8e3dbdaad405e17dfb174c0f0f"
+
+# the custom domain: Cloudflare creates the proxied DNS record itself and
+# leaves the apex (GitHub Pages, grey-cloud) alone
+routes = [{ pattern = "api.sandies.app", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sandies-api"
+database_id = "d104e9f1-29c3-4215-ac35-70f3db8e1c87"
+
+# hourly purge: boats silent 12 h, circles idle 90 d
+[triggers]
+crons = ["17 * * * *"]
+
+[observability]
+enabled = true

@@ -3,6 +3,8 @@ import { HOME } from '../config'
 import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
 import { endTrip, NO_START_MSG, startTrip } from '../routing/planner'
+import { useCircleStore } from '../circle/store'
+import { stopSharing } from '../circle/sync'
 import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
 import type { TripPlan } from '../routing/tripPlan'
@@ -210,6 +212,7 @@ function PlanBlock() {
           <span className="tb-dim">{planError}</span>
         ) : null}
       </div>
+      <ShareOptIn />
       {soon ? (
         // leaving now (or within the hour) always gets the real button — no
         // return time required, no ceremony. Only a trip planned for LATER
@@ -655,6 +658,7 @@ function LiveLeg({
     <>
       <div className="leg-head">
         <span className="leg-title">{heading}</span>
+        <SharingNote />
         <button className="leg-end" onClick={() => endTrip()}>
           End
         </button>
@@ -707,5 +711,44 @@ function LiveLeg({
         </button>
       )}
     </>
+  )
+}
+
+/** Per-trip opt-in (the plan's rule: nothing shares without a tap at
+ *  cast-off). Only exists once this phone is in a circle. */
+function ShareOptIn() {
+  const circles = useCircleStore((s) => s.circles)
+  const sharing = useCircleStore((s) => s.sharing)
+  const setSharing = useCircleStore((s) => s.setSharing)
+  if (!circles.length) return null
+  const who = circles.map((c) => c.name).join(', ')
+  return (
+    <label className="row circle-optin">
+      <div className="row-text">
+        <span className="row-title">Show {who} where I am</span>
+        <span className="row-desc">Position, where you're going and when · stops when the trip ends</span>
+      </div>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={sharing}
+        onChange={(e) => setSharing(e.target.checked)}
+      />
+    </label>
+  )
+}
+
+/** Under way: who is being shown this trip, and the one way to stop. */
+function SharingNote() {
+  const circles = useCircleStore((s) => s.circles)
+  const sharing = useCircleStore((s) => s.sharing)
+  if (!sharing || !circles.length) return null
+  return (
+    <span className="tb-dim sharing-note">
+      sharing with {circles.map((c) => c.name).join(', ')} ·{' '}
+      <button className="linklike" onClick={() => void stopSharing()}>
+        stop
+      </button>
+    </span>
   )
 }

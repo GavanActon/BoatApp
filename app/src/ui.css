@@ -2840,3 +2840,50 @@
   display: block;
   margin: 18px auto 0;
 }
+
+/* ---------- circles: Boats out ---------- */
+.circle-fields { gap: 8px; }
+.circle-fields input[type='text'] {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(233, 242, 250, 0.18);
+  background: rgba(8, 20, 34, 0.55);
+  color: inherit;
+  font: inherit;
+}
+.circle-fields input[type='text']:focus-visible { outline: 2px solid #3fc8ff; outline-offset: 1px; }
+.circle-actions { display: flex; gap: 14px; align-items: center; }
+.circle-note { padding: 4px 16px 10px; font-size: 0.86rem; line-height: 1.4; }
+.circle-note.dim { opacity: 0.6; }
+.circle-optin { border-top: 1px solid rgba(233, 242, 250, 0.1); }
+
+.boats-out { padding: 6px 0 4px; border-bottom: 1px solid rgba(233, 242, 250, 0.1); margin-bottom: 6px; }
+.bo-head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 16px 4px; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
+.bo-meta { text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.bo-empty { padding: 4px 16px 8px; opacity: 0.6; }
+.bo-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name age' 'what what';
+  gap: 2px 10px;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+.bo-row:disabled { opacity: 0.6; }
+.bo-name { grid-area: name; font-weight: 600; }
+.bo-age { grid-area: age; opacity: 0.65; font-size: 0.86rem; }
+.bo-what { grid-area: what; opacity: 0.85; font-size: 0.92rem; }
+
+.boat-popup .boat-card { display: grid; gap: 2px; min-width: 180px; }
+.boat-card-who { font-weight: 700; }
+.boat-card-what { font-size: 0.92rem; }
+.boat-card-age { font-size: 0.8rem; opacity: 0.65; }
+.boat-popup .maplibregl-popup-content { white-space: normal; max-width: min(300px, 78vw); }
+.boat-popup .boat-card-what { white-space: normal; }
