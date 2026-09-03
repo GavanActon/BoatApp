@@ -570,7 +570,7 @@ export function refreshWeatherGrid(): Promise<{ fetchedAt: number; stale: boolea
       // fetches are NOT waited for: dress with what's in hand, and the
       // onWindOverlay hook (init) re-dresses the grid when the rest lands.
       if (windOverlayAgeMs() > 30 * 60_000) void refreshWindOverlay()
-      applyWindOverlay(grid)
+      applyWindOverlay(grid, { sky: gridStale })
       withMap((map) => {
         addLayers(map)
         render(map)
@@ -759,7 +759,7 @@ export function initWeatherLayer() {
   // whenever a run arrives, dress whatever grid is in hand and tell every
   // reader — badges, flow layers, the trip sweep, the forecast watch
   onWindOverlay(() => {
-    if (grid && applyWindOverlay(grid)) {
+    if (grid && applyWindOverlay(grid, { sky: gridStale })) {
       withMap(render)
       for (const cb of gridListeners) cb()
     }
@@ -770,6 +770,7 @@ export function initWeatherLayer() {
       gridConditionsAt,
       weatherGridInfo,
       windOverlayStatus,
+      pointForecastFromGrid,
       depthAt,
     }
   }
@@ -787,7 +788,7 @@ export function initWeatherLayer() {
     grid = c.grid
     gridStale = true
     applyWaveOverlay(grid)
-    applyWindOverlay(grid)
+    applyWindOverlay(grid, { sky: gridStale })
     withMap((map) => {
       addLayers(map)
       render(map)
@@ -920,7 +921,9 @@ export function pointForecastFromGrid(lon: number, lat: number): PointForecast |
       windKn: p.windKn,
       gustKn: p.gustKn,
       windDir: p.windDir,
-      tempC: new Array<number>(g.time.length).fill(NaN),
+      // air temperature exists on the grid only where the HRDPS overlay put
+      // it (the first ~48 h); NaN elsewhere, which the readers skip
+      tempC: g.time.map((_, i) => near?.tempC?.[i] ?? NaN),
       weatherCode: p.weatherCode,
       precipProbPct: near?.precipProbPct,
       waveM: p.waveM,
@@ -943,9 +946,11 @@ export async function pointForecastCached(
 ): Promise<{ forecast: PointForecast; stale: boolean } | null> {
   const c = await cachedPointForecast(lon, lat)
   if (c) {
-    // the disk copy may predate an overlay that has since landed
-    await dressPointForecast(c.forecast)
-    return { forecast: c.forecast, stale: c.ageMs > GRID_MAX_AGE_MS }
+    // the disk copy may predate an overlay that has since landed; a stale
+    // copy also takes the overlay's sky over its own old one
+    const stale = c.ageMs > GRID_MAX_AGE_MS
+    await dressPointForecast(c.forecast, { sky: stale })
+    return { forecast: c.forecast, stale }
   }
   const fromGrid = pointForecastFromGrid(lon, lat)
   return fromGrid ? { forecast: fromGrid, stale: gridStale } : null

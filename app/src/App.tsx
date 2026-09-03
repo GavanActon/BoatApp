@@ -153,9 +153,10 @@ function ForecastAgeChip() {
   const info = weatherGridInfo()
   const ageMs = info ? Date.now() - info.fetchedAt : 0
   if (ageMs < 3 * 3600_000) return null
-  // with ECCC's own HRDPS wind (and RDWPS sea) overlaid, what's old is only
-  // what Open-Meteo alone supplies — say that, not "the forecast"
-  const what = info?.wind ? 'Gusts & sky' : 'Forecast'
+  // with ECCC's own HRDPS (wind, gusts, temperature, sky) and RDWPS sea
+  // overlaid, what's old is only what Open-Meteo alone supplies — the
+  // outlook beyond 48 h and the rain chance — say that, not "the forecast"
+  const what = info?.wind ? 'Outlook' : 'Forecast'
   return (
     <button
       className="chip chip-warn"

@@ -4,7 +4,7 @@ import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
 import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
-import { openMeteoLastError, type PointForecast } from '../../weather/openMeteo'
+import { lastPointSource, openMeteoLastError, type PointForecast } from '../../weather/openMeteo'
 import { waveOverlayStatus } from '../../weather/rdwps'
 import { windOverlayStatus } from '../../weather/hrdps'
 import { onWeatherGrid, pointForecastCached, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
@@ -198,16 +198,17 @@ function DataStatus() {
     wind.state === 'active'
       ? `HRDPS 2.5 km · run ${agoLabel(wind.runAgeMs)} · ECCC GeoMet`
       : wind.state === 'stale-run'
-        ? 'HRDPS run too old — wind from Open-Meteo'
-        : 'ECCC GeoMet unavailable — wind from Open-Meteo'
+        ? 'HRDPS run too old — using Open-Meteo'
+        : 'ECCC GeoMet unavailable — using Open-Meteo'
   const windWarn = wind.state !== 'active' || wind.runAgeMs > 11 * 3600_000
+  const pointSource = lastPointSource()
 
   return (
     <>
       <div className="panel-section">Data</div>
       <div className="row">
         <div className="row-text">
-          <span className="row-title">Wind</span>
+          <span className="row-title">Wind, gusts, temperature & sky</span>
           <span className="row-desc">{windDesc}</span>
         </div>
         <em className={windWarn ? 'age-badge stale' : 'age-badge'}>
@@ -220,12 +221,15 @@ function DataStatus() {
       </div>
       <div className="row">
         <div className="row-text">
-          <span className="row-title">{wind.state === 'active' ? 'Gusts, sky & outlook' : 'Wind & weather'}</span>
+          <span className="row-title">{wind.state === 'active' ? 'Outlook' : 'Wind & weather'}</span>
           <span className="row-desc">
             {wind.state === 'active'
-              ? 'Open-Meteo · gusts, temperature, rain, days 3–7'
+              ? 'Open-Meteo · rain chance, days 3–7'
               : 'HRDPS 2.5 km wind · Open-Meteo blend'}
           </span>
+          {pointSource === 'met.no' && (
+            <span className="row-desc">strip & panel from MET Norway — Open-Meteo is down</span>
+          )}
           {grid && (
             <span className="row-desc">
               {grid.fetchedAt + GRID_REFRESH_MS > Date.now()
