@@ -65,8 +65,19 @@ function oneADay(os: Outing[]): Outing[] {
   })
 }
 
+/** A real outing: the boat got there, on a run of at least a mile. A tap
+ *  on Start at the dock is not a trip, and a pin beside the dock is not a
+ *  destination. */
+function real(o: Outing): boolean {
+  return o.arrivedAt != null && o.plannedNm != null && o.plannedNm >= 1
+}
+
+function outings(c: Ctx): Outing[] {
+  return c.log.outings.filter(real)
+}
+
 function ended(c: Ctx): Outing[] {
-  return oneADay(c.log.outings.filter((o) => o.endedAt != null))
+  return oneADay(c.log.outings.filter((o) => o.endedAt != null && real(o)))
 }
 
 function bandName(b: number | null): string {
@@ -195,7 +206,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'lines',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings[0]
+      const o = outings(c)[0]
       return o ? [['Cast off', `${dateShort(o.startedAt)} ${timeLabel(o.startedAt)}`]] : null
     },
   },
@@ -206,7 +217,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'home',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find((x) => x.homeAt != null)
+      const o = outings(c).find((x) => x.homeAt != null)
       return o ? [['Home', `${dateShort(o.homeAt!)} ${timeLabel(o.homeAt!)}`]] : null
     },
   },
@@ -276,7 +287,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'club',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find((x) => x.openedAt != null && x.startedAt - x.openedAt <= 60_000)
+      const o = outings(c).find((x) => x.openedAt != null && x.startedAt - x.openedAt <= 60_000)
       return o ? [['Open to go', `${Math.round((o.startedAt - o.openedAt!) / 1000)} s`]] : null
     },
   },
@@ -329,7 +340,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'glassy',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find((x) => x.arrivedAt != null && x.forecastBand === 0)
+      const o = outings(c).find((x) => x.forecastBand === 0)
       return o ? [['Sea', bandName(0)], ['At', o.destName ?? 'Pinned spot']] : null
     },
   },
@@ -367,7 +378,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'dawn',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find((x) => {
+      const o = outings(c).find((x) => {
         const s = sunTimes(x.originLon, x.originLat, x.startedAt)
         return s != null && x.startedAt < s.rise
       })
@@ -381,9 +392,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'sun',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find(
-        (x) => x.arrivedAt != null && x.leftDestAt != null && x.leftDestAt - x.arrivedAt >= 6 * 3600_000,
-      )
+      const o = outings(c).find((x) => x.leftDestAt != null && x.leftDestAt - x.arrivedAt! >= 6 * 3600_000)
       return o
         ? [['There', durationLabel(Math.round((o.leftDestAt! - o.arrivedAt!) / 60_000))], ['At', o.destName ?? 'Pinned spot']]
         : null
@@ -397,7 +406,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     group: 'going',
     check: (c) => {
       // after sunset — or before sunrise, for the ones who left at one in the morning
-      const o = c.log.outings.find((x) => {
+      const o = outings(c).find((x) => {
         if (x.leftDestAt == null) return false
         const s = sunTimes(x.destLon, x.destLat, x.leftDestAt)
         return s != null && (x.leftDestAt > s.set || x.leftDestAt < s.rise)
@@ -412,7 +421,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'shame',
     group: 'going',
     check: (c) => {
-      const o = c.log.outings.find(
+      const o = outings(c).find(
         (x) => x.homeAt != null && x.plannedHomeMs != null && x.homeAt - x.plannedHomeMs >= LATE_MIN * 60_000,
       )
       return o ? [['Back-by', timeLabel(o.plannedHomeMs!)], ['Home', timeLabel(o.homeAt!)]] : null
@@ -437,8 +446,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     group: 'going',
     // judged against the limits set THAT day, not today's
     check: (c) => {
-      const o = c.log.outings.find(
-        (x) => x.arrivedAt != null && x.forecastBand === 0 && x.limitM != null && x.scaleM != null && x.limitM >= x.scaleM,
+      const o = outings(c).find(
+        (x) => x.forecastBand === 0 && x.limitM != null && x.scaleM != null && x.limitM >= x.scaleM,
       )
       return o ? [['Limit', `${o.limitM!.toFixed(1)} m`], ['Sea', bandName(0)]] : null
     },

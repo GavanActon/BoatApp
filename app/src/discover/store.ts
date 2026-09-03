@@ -73,9 +73,12 @@ interface DiscoverState {
   earned: Record<string, Earned>
   /** Earned but not yet looked at in the hub: the done-colour outline. */
   fresh: string[]
-  /** Unlock moments waiting to play, oldest first. Not persisted: a reload
-   *  should not replay an animation. */
+  /** Moments waiting to play, oldest first: an achievement id, or
+   *  `level:<n>` for a level-up. Not persisted: a reload should not replay
+   *  an animation. */
   queue: string[]
+  /** The level last seen, so a chunk finishing is noticed exactly once. */
+  level: number
   touched: Partial<Record<TouchKey, true>>
   /** Trips planned for a later hour that never started. */
   rainChecks: number
@@ -86,6 +89,8 @@ interface DiscoverState {
   pendingFelt: PendingFelt | null
 
   earn: (id: string, facts: [string, string][]) => void
+  /** A chunk finished: note the level and queue the moment. */
+  levelUp: (level: number) => void
   markSeen: () => void
   shiftQueue: () => void
   touch: (k: TouchKey) => void
@@ -109,7 +114,13 @@ export const useDiscoverStore = create<DiscoverState>()(
       seasonReached: {},
       trip: null,
       pendingFelt: null,
+      level: 0,
 
+      levelUp: (level) =>
+        set((s) => {
+          if (level <= s.level) return { level: Math.max(level, s.level) }
+          return { level, queue: [...s.queue, `level:${level}`] }
+        }),
       earn: (id, facts) =>
         set((s) => {
           if (s.earned[id]) return {}
@@ -148,6 +159,7 @@ export const useDiscoverStore = create<DiscoverState>()(
         seasonReached: s.seasonReached,
         trip: s.trip,
         pendingFelt: s.pendingFelt,
+        level: s.level,
       }),
     },
   ),

@@ -5,9 +5,10 @@ import { logView } from './log'
 import { useDiscoverStore } from './store'
 
 /**
- * Set up: the chapters. Each row is an observed fact with a two-word hint;
- * tapping a row takes you to the real control (the sheet decides how). The
- * boat chapter's rows are drawn with the control itself, in place.
+ * Levels: the set-up path in small chunks. Each chunk is two to four
+ * observed facts; finishing a chunk brings you up a level, in any order.
+ * Only things worth changing are here — a default that suits most boats
+ * (units, the ramp's scale) is not a task.
  */
 
 export type RowAction =
@@ -20,7 +21,6 @@ export type RowAction =
   | 'strip'
   | 'offline'
   | 'helm'
-  | 'settings'
   | 'tracks'
   | 'inline'
 
@@ -40,12 +40,14 @@ export interface Chapter {
   rows: SetupRow[]
 }
 
+/** The ladder: one name per level, level = chunks finished. Freshwater words. */
+export const LEVELS = ['Dock Sitter', 'Deckhand', 'Bay Rat', 'Regular', 'Point Reader', 'Skipper', 'Commodore']
+
 export function chapters(): Chapter[] {
   const app = useAppStore.getState()
   const places = usePlacesStore.getState()
   const gps = useGpsStore.getState()
-  const d = useDiscoverStore.getState()
-  const t = d.touched
+  const t = useDiscoverStore.getState().touched
   const log = logView()
   const pins = places.saved.filter((p) => p.name !== places.homeName).length
   return [
@@ -66,9 +68,7 @@ export function chapters(): Chapter[] {
       reward: 'Limit dots on every place. Lanes timed to the boat.',
       rows: [
         { id: 'cruise', label: 'Cruise speed', hint: 'Trip card › speed chip', action: 'inline', done: !!t.cruise },
-        { id: 'units', label: 'Units', hint: 'Settings › Units', action: 'inline', done: !!t.units },
         { id: 'limits', label: 'Your limits', hint: 'Places › My limits', action: 'inline', done: app.waveLimitM != null },
-        { id: 'scale', label: 'Sea-state scale', hint: 'Settings › Weather › Sea-state scale', action: 'inline', done: !!t.scale },
       ],
     },
     {
@@ -77,9 +77,7 @@ export function chapters(): Chapter[] {
       reward: 'The chart carries your own names.',
       rows: [
         { id: 'pin', label: 'Save a pin', hint: 'tap the water · Save', action: 'chart', done: pins > 0 },
-        { id: 'rename', label: 'Name it', hint: 'Places › Edit', action: 'places', done: !!t.rename },
         { id: 'note', label: 'Write a note', hint: 'Places › Edit', action: 'places', done: Object.keys(places.notes).length > 0 },
-        { id: 'hide', label: 'Hide one', hint: 'Places › Edit', action: 'places', done: places.hidden.length > 0 },
       ],
     },
     {
@@ -89,8 +87,6 @@ export function chapters(): Chapter[] {
       rows: [
         { id: 'hour', label: 'Tap an hour', hint: 'the strip up top', action: 'strip', done: !!t.planTime },
         { id: 'backBy', label: 'Set back-by', hint: 'Trip card › Back', action: 'strip', done: !!t.backBy },
-        { id: 'via', label: 'Steer a via', hint: 'the route FAB', action: 'chart', done: !!t.via },
-        { id: 'new', label: 'Somewhere new', hint: 'route to another place', action: 'places', done: !!t.newRoute },
       ],
     },
     {
@@ -100,7 +96,6 @@ export function chapters(): Chapter[] {
       rows: [
         { id: 'trip', label: 'Start a trip', hint: 'Trip card › Start', action: 'chart', done: !!t.tripStart },
         { id: 'helm', label: 'Helm view', hint: 'the helm FAB', action: 'helm', done: !!t.helm },
-        { id: 'lowPower', label: 'Low power', hint: 'Settings', action: 'settings', done: !!t.lowPower },
         { id: 'track', label: 'Record a track', hint: 'Tracks', action: 'tracks', done: log.trackCount > 0 },
       ],
     },
@@ -121,4 +116,13 @@ export function setupCounts(ch: Chapter[]): { done: number; total: number } {
     if (r.done) done++
   }
   return { done, total }
+}
+
+/** Chunks finished = the level. */
+export function levelOf(ch: Chapter[]): number {
+  return ch.filter((c) => c.rows.every((r) => r.done)).length
+}
+
+export function levelName(level: number): string {
+  return LEVELS[Math.min(level, LEVELS.length - 1)]
 }

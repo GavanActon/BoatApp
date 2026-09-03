@@ -2,28 +2,27 @@ import { useEffect, useState } from 'react'
 import { DESTINATIONS } from '../config'
 import { useRouteStore } from '../routing/routeStore'
 import { haversineNm } from '../routing/waterRouter'
-import { SEA_SCALE_MAX_M, SEA_SCALE_MIN_M, useAppStore } from '../state/appStore'
+import { useAppStore } from '../state/appStore'
 import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { dateShort } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import { enterHelmView, locateAndFollow } from '../tracking/gpsService'
 import BottomSheet from '../ui/BottomSheet'
 import LimitsRow from '../ui/LimitsRow'
-import SeaRamp from '../ui/SeaRamp'
 import { IconMinus, IconPlus } from '../ui/icons'
-import { knToUnit, SPEED_UNITS, speedUnitLabel, unitToKn, distanceUnitFor, runDistance } from '../units'
+import { knToUnit, speedUnitLabel, unitToKn, distanceUnitFor, runDistance } from '../units'
 import { seaColor } from '../weather/seaState'
 import { gridConditionsAt } from '../weather/weatherLayer'
 import { AchGlyph, RoseRing } from './icons'
 import { onLog } from './log'
 import { ACH_BY_ID, ACHIEVEMENTS } from './registry'
 import { SEASON_PLACES } from './season'
-import { chapters, setupCounts, type Chapter, type SetupRow } from './setup'
+import { chapters, levelName, levelOf, setupCounts, LEVELS, type Chapter, type SetupRow } from './setup'
 import { useDiscoverStore } from './store'
 
 type View = { kind: 'hub' } | { kind: 'setup' } | { kind: 'season' } | { kind: 'detail'; id: string }
 
-const TITLES = { hub: 'Discover', setup: 'Set up', season: 'Season', detail: 'Discover' } as const
+const TITLES = { hub: 'Discover', setup: 'Levels', season: 'Season', detail: 'Discover' } as const
 
 /**
  * The Discover sheet: the hub (what's earned, what's locked and how), the
@@ -102,30 +101,27 @@ function Hub({ go }: { go: (v: View) => void }) {
 
   const ch = chapters()
   const setup = setupCounts(ch)
-  const chaptersDone = ch.filter((c) => c.rows.every((r) => r.done)).length
+  const level = levelOf(ch)
   const seasonN = SEASON_PLACES.filter((p) => seasonReached[p.id]).length
   const earnedDefs = ACHIEVEMENTS.filter((a) => earned[a.id]).sort((a, b) => earned[b.id].at - earned[a.id].at)
   const locked = ACHIEVEMENTS.filter((a) => !earned[a.id])
-  const frac = earnedDefs.length / ACHIEVEMENTS.length
 
   return (
     <>
       <div className="dv-head">
-        <RoseRing frac={frac} size={56} full={frac >= 1} />
+        <RoseRing frac={level / ch.length} size={56} full={level >= ch.length} />
         <div className="dv-head-text">
-          <span className="dv-count numeral">
-            {earnedDefs.length} of {ACHIEVEMENTS.length}
-          </span>
+          <span className="dv-count">{levelName(level)}</span>
           <span className="dv-sub numeral">
-            {setup.done} of {setup.total} set up
+            Level {level} · {earnedDefs.length} of {ACHIEVEMENTS.length} earned
           </span>
         </div>
       </div>
 
       <button className="dv-row" onClick={() => go({ kind: 'setup' })}>
         <div className="dv-row-text">
-          <span className={`dv-row-title${setup.done === setup.total ? ' done' : ''}`}>Set up</span>
-          <Segs n={ch.length} done={chaptersDone} />
+          <span className={`dv-row-title${setup.done === setup.total ? ' done' : ''}`}>Levels</span>
+          <Segs n={ch.length} done={level} />
         </div>
         <span className={`dv-n numeral${setup.done === setup.total ? ' done' : ''}`}>
           {setup.done}/{setup.total}
@@ -215,26 +211,34 @@ function Detail({ id }: { id: string }) {
 
 function Setup() {
   useSetupInputs()
+  const ch = chapters()
+  const level = levelOf(ch)
   return (
     <>
-      {chapters().map((c) => (
-        <ChapterBlock key={c.id} chapter={c} />
+      <div className="dv-ladder">
+        {LEVELS.map((name, i) => (
+          <span key={name} className={`dv-rung${i <= level ? ' on' : ''}${i === level ? ' now' : ''}`}>
+            {name}
+          </span>
+        ))}
+      </div>
+      {ch.map((c, i) => (
+        <ChapterBlock key={c.id} chapter={c} n={i + 1} />
       ))}
     </>
   )
 }
 
-function ChapterBlock({ chapter }: { chapter: Chapter }) {
+/** One chunk: finish it and you are up a level, in any order. */
+function ChapterBlock({ chapter, n }: { chapter: Chapter; n: number }) {
   const done = chapter.rows.filter((r) => r.done).length
   const all = done === chapter.rows.length
   return (
-    <div className="dv-chapter">
+    <div className={`dv-chapter${all ? ' done' : ''}`}>
       <div className="dv-chapter-head">
+        <span className="dv-chapter-n numeral">{all ? '✓' : n}</span>
         <span className={`dv-row-title${all ? ' done' : ''}`}>{chapter.name}</span>
         <Segs n={chapter.rows.length} done={done} />
-        <span className={`dv-n numeral${all ? ' done' : ''}`}>
-          {done}/{chapter.rows.length}
-        </span>
       </div>
       <div className="dv-reward">{chapter.reward}</div>
       {chapter.rows.map((r) =>
@@ -268,9 +272,6 @@ function ActionRow({ row }: { row: SetupRow }) {
         break
       case 'offline':
         app().setSheetTab('offline')
-        break
-      case 'settings':
-        app().setSheetTab('layers')
         break
       case 'tracks':
         app().setSheetTab('tracks')
@@ -317,9 +318,7 @@ function InlineRow({ row }: { row: SetupRow }) {
         <b>{row.label}</b>
         <div className="dv-ctl">
           {row.id === 'cruise' && <CruiseStep />}
-          {row.id === 'units' && <UnitSegs />}
           {row.id === 'limits' && <LimitsRow />}
-          {row.id === 'scale' && <ScaleSlider />}
           <span className="dv-where">{row.hint}</span>
         </div>
       </span>
@@ -348,67 +347,6 @@ function CruiseStep() {
   )
 }
 
-function UnitSegs() {
-  const depthUnit = useAppStore((s) => s.depthUnit)
-  const setDepthUnit = useAppStore((s) => s.setDepthUnit)
-  const speedUnit = useAppStore((s) => s.speedUnit)
-  const setSpeedUnit = useAppStore((s) => s.setSpeedUnit)
-  const windUnit = useAppStore((s) => s.windUnit)
-  const setWindUnit = useAppStore((s) => s.setWindUnit)
-  return (
-    <>
-      <div className="dv-segrow">
-        <span className="dv-seglab">Depth</span>
-        <div className="seg">
-          {(['m', 'ft'] as const).map((u) => (
-            <button key={u} className={depthUnit === u ? 'seg-on' : ''} onClick={() => setDepthUnit(u)}>
-              {u}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="dv-segrow">
-        <span className="dv-seglab">Boat</span>
-        <div className="seg">
-          {SPEED_UNITS.map((u) => (
-            <button key={u.id} className={speedUnit === u.id ? 'seg-on' : ''} onClick={() => setSpeedUnit(u.id)}>
-              {u.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="dv-segrow">
-        <span className="dv-seglab">Wind</span>
-        <div className="seg">
-          {SPEED_UNITS.map((u) => (
-            <button key={u.id} className={windUnit === u.id ? 'seg-on' : ''} onClick={() => setWindUnit(u.id)}>
-              {u.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </>
-  )
-}
-
-function ScaleSlider() {
-  const seaScaleM = useAppStore((s) => s.seaScaleM)
-  const setSeaScale = useAppStore((s) => s.setSeaScale)
-  return (
-    <>
-      <input
-        type="range"
-        min={SEA_SCALE_MIN_M}
-        max={SEA_SCALE_MAX_M}
-        step={0.1}
-        value={seaScaleM}
-        aria-label="Sea-state scale: the wave height at which Rough begins"
-        onChange={(e) => setSeaScale(Number(e.target.value))}
-      />
-      <SeaRamp roughM={seaScaleM} />
-    </>
-  )
-}
 
 // ---------- the season ----------
 

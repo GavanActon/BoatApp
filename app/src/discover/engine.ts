@@ -10,6 +10,7 @@ import { seaBand } from '../weather/seaState'
 import { addArrival, loadLog, logView, onLog, outingStartedAt, refreshTracks, saveOuting } from './log'
 import { ACHIEVEMENTS, type Ctx } from './registry'
 import { REACH_NM, SEASON_PLACES, seasonOf } from './season'
+import { chapters, levelOf } from './setup'
 import { useDiscoverStore, type TripCtx } from './store'
 
 /**
@@ -183,6 +184,9 @@ export function evaluate(): void {
     }
     if (facts) useDiscoverStore.getState().earn(a.id, facts)
   }
+  // a finished chunk is a level — noticed here, where every input has settled
+  const level = levelOf(chapters())
+  if (level !== disc.level) useDiscoverStore.getState().levelUp(level)
 }
 
 // ---------- the trip, cast-off to dock ----------
