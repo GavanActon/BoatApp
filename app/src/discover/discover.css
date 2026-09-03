@@ -682,7 +682,8 @@
 .dv-moment {
   position: fixed;
   left: 50%;
-  top: calc(var(--sat, 0px) + 150px);
+  /* under the strip AND the top bar's chip row, so a moment never sits on a chip */
+  top: calc(var(--sat, 0px) + 196px);
   transform: translateX(-50%);
   z-index: 30;
   display: flex;
