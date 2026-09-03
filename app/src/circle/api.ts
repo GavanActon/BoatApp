@@ -88,8 +88,8 @@ export function inviteLink(c: Circle): string {
 export function inviteText(c: Circle, from: string): string {
   const who = from.trim() || 'A friend'
   return (
-    `${who} invited you to the "${c.name}" circle on Sandies — see each other's boats on the chart.\n` +
-    `Open the app → Settings → Circle → Join, and paste this code: ${joinCode(c)}\n` +
+    `${who} invited you to share trips with "${c.name}" on Sandies — see each other's boats on the chart.\n` +
+    `Open the app → Settings → Trip sharing → Join, and paste this code: ${joinCode(c)}\n` +
     `${inviteLink(c)}`
   )
 }

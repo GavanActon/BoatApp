@@ -2752,6 +2752,37 @@
 }
 .circle-fields input[type='text']:focus-visible { outline: 2px solid #3fc8ff; outline-offset: 1px; }
 .circle-actions { display: flex; gap: 14px; align-items: center; }
+
+/* the invite card: the code first — it is what always works — then the
+   text ready to copy, then the ways to send it */
+.circle-invite {
+  display: grid;
+  gap: 8px;
+  padding: 6px 16px 12px;
+  border-bottom: 1px solid rgba(233, 242, 250, 0.1);
+}
+.circle-code {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--c-accent);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.circle-invite-text {
+  width: 100%;
+  resize: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(233, 242, 250, 0.18);
+  background: rgba(8, 20, 34, 0.55);
+  color: var(--c-text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.circle-invite-note { font-size: 0.86rem; color: var(--c-track); }
+.linklike.dim { color: var(--c-text-dim); }
 .circle-note { padding: 4px 16px 10px; font-size: 0.86rem; line-height: 1.4; }
 .circle-note.dim { opacity: 0.6; }
 .circle-optin { border-top: 1px solid rgba(233, 242, 250, 0.1); }

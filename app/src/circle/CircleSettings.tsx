@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { createCircle, inviteText, joinCode } from './api'
 import { useCircleStore, type Circle } from './store'
 import { joinCircle, leaveCircle } from './sync'
 import { haptic } from '../ui/haptics'
 
 /**
- * The Circle section of Settings: the skipper card (how this boat is named
- * to friends), the circles this phone is in, and the two doors — start
- * one, or join one by code. Invites go out the share sheet as a text with
- * the code in it; on iPhone a link opens in Safari, whose storage isn't
- * the home-screen app's, so the CODE is what always works.
+ * The Trip sharing section of Settings (a circle in the code, a crew to
+ * the person): the skipper card (how this boat is named to friends), the
+ * crews this phone is in, and the two doors — start one, or join one by
+ * code. Invite opens a card under the circle with the
+ * code large and the text ready to copy, and offers the share sheet where
+ * there is one — so the tap always shows something, including over plain
+ * http on the dev server, where share and clipboard don't exist. On
+ * iPhone a link opens in Safari, whose storage isn't the home-screen
+ * app's, so the CODE is what always works.
  */
 export default function CircleSettings() {
   const skipper = useCircleStore((s) => s.skipper)
@@ -22,6 +26,11 @@ export default function CircleSettings() {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
+  // the circle whose invite card is open, and the card's own word
+  const [inviting, setInviting] = useState<string | null>(null)
+  const [inviteNote, setInviteNote] = useState<string | null>(null)
+  const textRef = useRef<HTMLTextAreaElement>(null)
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
   const start = async () => {
     const name = newName.trim()
@@ -34,7 +43,7 @@ export default function CircleSettings() {
       setNewName('')
       setNote(`Started · ${c.name} · code ${joinCode(c)}`)
     } catch {
-      setNote('No answer from the circle')
+      setNote('No answer from the server')
     } finally {
       setBusy(false)
     }
@@ -50,28 +59,54 @@ export default function CircleSettings() {
       setCode('')
       setNote(`Joined · ${c.name}`)
     } catch (e) {
-      setNote(e instanceof Error && /code/.test(e.message) ? 'Not a circle code' : 'No such circle')
+      setNote(e instanceof Error && /code/.test(e.message) ? 'Not a sharing code' : 'No crew with that code')
     } finally {
       setBusy(false)
     }
   }
 
-  const invite = async (c: Circle) => {
+  const invite = (c: Circle) => {
+    setNote(null)
+    setInviteNote(null)
+    setInviting(inviting === c.id ? null : c.id)
+  }
+
+  const share = async (c: Circle) => {
+    try {
+      await navigator.share({ text: inviteText(c, skipper.name) })
+      setInviteNote('Sent')
+    } catch {
+      /* dismissed — the card is still there */
+    }
+  }
+
+  // the async clipboard needs https; the dev server over the LAN is plain
+  // http, where selecting the text and the old copy command still work
+  const copy = async (c: Circle) => {
     const text = inviteText(c, skipper.name)
     try {
-      if (navigator.share) {
-        await navigator.share({ text })
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        setInviteNote('Copied')
         return
       }
     } catch {
-      /* dismissed — fall through to the clipboard */
+      /* fall through */
     }
-    try {
-      await navigator.clipboard.writeText(text)
-      setNote(`Invite copied · code ${joinCode(c)}`)
-    } catch {
-      setNote(`Code · ${joinCode(c)}`)
+    const ta = textRef.current
+    if (ta) {
+      ta.focus()
+      ta.select()
+      try {
+        if (document.execCommand('copy')) {
+          setInviteNote('Copied')
+          return
+        }
+      } catch {
+        /* no copy command either */
+      }
     }
+    setInviteNote(`Read out the code · ${joinCode(c)}`)
   }
 
   const leave = async (c: Circle) => {
@@ -82,7 +117,7 @@ export default function CircleSettings() {
 
   return (
     <>
-      <div className="panel-section">Circle</div>
+      <div className="panel-section">Trip sharing</div>
 
       <div className="row">
         <div className="row-text">
@@ -110,19 +145,49 @@ export default function CircleSettings() {
       </div>
 
       {circles.map((c) => (
-        <div className="row" key={c.id}>
-          <div className="row-text">
-            <span className="row-title">{c.name}</span>
-            <span className="row-desc numeral">code {joinCode(c)}</span>
+        <div key={c.id}>
+          <div className="row">
+            <div className="row-text">
+              <span className="row-title">{c.name}</span>
+              <span className="row-desc numeral">code {joinCode(c)}</span>
+            </div>
+            <span className="circle-actions">
+              <button className="linklike" onClick={() => invite(c)} aria-expanded={inviting === c.id}>
+                Invite
+              </button>
+              <button className="linklike danger" onClick={() => void leave(c)}>
+                Leave
+              </button>
+            </span>
           </div>
-          <span className="circle-actions">
-            <button className="linklike" onClick={() => void invite(c)}>
-              Invite
-            </button>
-            <button className="linklike danger" onClick={() => void leave(c)}>
-              Leave
-            </button>
-          </span>
+          {inviting === c.id && (
+            <div className="circle-invite" role="group" aria-label={`Invite to ${c.name}`}>
+              <div className="circle-code numeral">{joinCode(c)}</div>
+              <textarea
+                ref={textRef}
+                className="circle-invite-text"
+                readOnly
+                rows={3}
+                value={inviteText(c, skipper.name)}
+                aria-label="Invite text"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <div className="circle-actions">
+                {canShare && (
+                  <button className="linklike" onClick={() => void share(c)}>
+                    Share
+                  </button>
+                )}
+                <button className="linklike" onClick={() => void copy(c)}>
+                  Copy
+                </button>
+                <button className="linklike dim" onClick={() => setInviting(null)}>
+                  Done
+                </button>
+                {inviteNote && <span className="circle-invite-note">{inviteNote}</span>}
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -130,9 +195,9 @@ export default function CircleSettings() {
         <input
           type="text"
           value={newName}
-          placeholder={circles.length ? 'Another circle' : 'Name a circle, e.g. Sandies crew'}
+          placeholder={circles.length ? 'Another crew' : 'Name your crew, e.g. Sandies crew'}
           maxLength={40}
-          aria-label="New circle name"
+          aria-label="New crew name"
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void start()}
         />
@@ -148,7 +213,7 @@ export default function CircleSettings() {
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}
-          aria-label="Circle code"
+          aria-label="Sharing code"
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && void join()}
         />
