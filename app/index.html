@@ -12,6 +12,12 @@
     <meta name="apple-mobile-web-app-title" content="Sandies" />
     <meta name="theme-color" content="#0a1522" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- the weather and the circle: TLS handshakes start with the page, not with the first fetch -->
+    <link rel="preconnect" href="https://api.open-meteo.com" crossorigin />
+    <link rel="preconnect" href="https://marine-api.open-meteo.com" crossorigin />
+    <link rel="preconnect" href="https://geo.weather.gc.ca" crossorigin />
+    <link rel="preconnect" href="https://api.sandies.app" crossorigin />
+    <link rel="dns-prefetch" href="https://api.met.no" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Sandies</title>
   </head>

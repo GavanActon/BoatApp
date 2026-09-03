@@ -2887,3 +2887,97 @@
 .boat-card-age { font-size: 0.8rem; opacity: 0.65; }
 .boat-popup .maplibregl-popup-content { white-space: normal; max-width: min(300px, 78vw); }
 .boat-popup .boat-card-what { white-space: normal; }
+
+
+/* ---------- polish pass: press, settle, arrive ---------- */
+
+/* the strip's cells and the dock's tabs answer the thumb */
+.wxcell,
+.wxday,
+.tab,
+.chip,
+.place-go,
+.bo-row,
+.row,
+.track-row,
+.fv-row {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease,
+    box-shadow var(--dur) ease;
+}
+.wxcell:active,
+.wxday:active,
+.tab:active {
+  transform: scale(0.94);
+  transition-duration: 0.06s;
+}
+.place-go:active,
+.bo-row:active,
+.track-row:active {
+  background: rgba(126, 178, 224, 0.1);
+  transform: none;
+}
+.fab:active {
+  transform: scale(0.9);
+}
+.icon-btn:active {
+  transform: scale(0.9);
+  background: rgba(126, 178, 224, 0.18);
+}
+
+/* the active tab's glyph lifts a hair; the others sit */
+.tab svg {
+  transition: transform var(--dur) var(--ease-out);
+}
+.tab-on svg {
+  transform: translateY(-1px);
+}
+
+/* the one primary action carries the accent's light */
+.btn-primary {
+  box-shadow: var(--shadow-accent);
+}
+.btn-primary:active {
+  transform: scale(0.975);
+  box-shadow: 0 2px 10px rgba(63, 200, 255, 0.18);
+}
+.btn-primary:disabled {
+  box-shadow: none;
+}
+
+/* a sheet's content arrives with it, a beat behind the surface */
+@keyframes settle-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.sheet .panel,
+.sheet .places-panel {
+  animation: settle-up var(--dur) var(--ease-out) both;
+}
+
+/* chips already rise in; give them the same curve */
+.chip {
+  animation-timing-function: var(--ease-out);
+}
+
+/* the depth / boat card fades in under the finger instead of popping */
+.maplibregl-popup {
+  animation: settle-up 0.16s var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet .panel,
+  .sheet .places-panel,
+  .maplibregl-popup {
+    animation: none;
+  }
+}

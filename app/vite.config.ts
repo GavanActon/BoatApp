@@ -97,6 +97,9 @@ function omCache(): Plugin {
 // BASE_PATH lets the same build target GitHub Pages project sites (e.g. /BoatApp/)
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/',
+  // the family's phones are current; es2022 output skips the helpers older
+  // targets need and parses faster on the phone at launch
+  build: { target: ['es2022', 'safari16'] },
   // allow phone/tunnel access to the local servers
   server: { host: true, allowedHosts: true },
   preview: { host: true, allowedHosts: true },

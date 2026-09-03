@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createCircle, inviteText, joinCode } from './api'
 import { useCircleStore, type Circle } from './store'
 import { joinCircle, leaveCircle } from './sync'
+import { haptic } from '../ui/haptics'
 
 /**
  * The Circle section of Settings: the skipper card (how this boat is named
@@ -45,6 +46,7 @@ export default function CircleSettings() {
     setNote(null)
     try {
       const c = await joinCircle(code)
+      haptic('confirm')
       setCode('')
       setNote(`Joined · ${c.name}`)
     } catch (e) {

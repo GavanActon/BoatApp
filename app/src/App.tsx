@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import MapView from './map/MapView'
 import { withMap } from './map/mapController'
 import { REGION_BBOX } from './config'
@@ -38,16 +38,16 @@ import {
   IconDownloadDone,
   IconPlaces,
 } from './ui/icons'
-import LayersPanel from './ui/panels/LayersPanel'
-import PlacesPanel from './ui/panels/PlacesPanel'
-import OfflinePanel from './ui/panels/OfflinePanel'
-import TracksPanel from './ui/panels/TracksPanel'
-import WeatherPanel from './ui/panels/WeatherPanel'
+const LayersPanel = lazy(() => import('./ui/panels/LayersPanel'))
+const PlacesPanel = lazy(() => import('./ui/panels/PlacesPanel'))
+const OfflinePanel = lazy(() => import('./ui/panels/OfflinePanel'))
+const TracksPanel = lazy(() => import('./ui/panels/TracksPanel'))
+const WeatherPanel = lazy(() => import('./ui/panels/WeatherPanel'))
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
-import WelcomeCards from './ui/WelcomeCards'
-import FirstVoyageCard from './ui/FirstVoyageCard'
-import NumbersGuide from './ui/NumbersGuide'
+const WelcomeCards = lazy(() => import('./ui/WelcomeCards'))
+const FirstVoyageCard = lazy(() => import('./ui/FirstVoyageCard'))
+const NumbersGuide = lazy(() => import('./ui/NumbersGuide'))
 import { acknowledgeWxShift, initForecastWatch } from './weather/forecastWatch'
 import { initWeatherLayer, onWeatherGrid, weatherGridInfo } from './weather/weatherLayer'
 import { initWindFlow } from './weather/windFlow'
@@ -448,7 +448,7 @@ export default function App() {
         ) : destination != null || tripStartedAt != null ? (
           <TripCard />
         ) : (
-          <FirstVoyageCard />
+          <Suspense fallback={null}><FirstVoyageCard /></Suspense>
         )}
         {!routing && (
           <div className="tabdock glass">
@@ -478,16 +478,18 @@ export default function App() {
 
       {activeTab && (
         <BottomSheet title={activeTab.name}>
-          {sheetTab === 'places' && <PlacesPanel />}
-          {sheetTab === 'layers' && <LayersPanel />}
-          {sheetTab === 'weather' && <WeatherPanel />}
-          {sheetTab === 'tracks' && <TracksPanel />}
-          {sheetTab === 'offline' && <OfflinePanel />}
+          <Suspense fallback={null}>
+            {sheetTab === 'places' && <PlacesPanel />}
+            {sheetTab === 'layers' && <LayersPanel />}
+            {sheetTab === 'weather' && <WeatherPanel />}
+            {sheetTab === 'tracks' && <TracksPanel />}
+            {sheetTab === 'offline' && <OfflinePanel />}
+          </Suspense>
         </BottomSheet>
       )}
 
-      <WelcomeCards />
-      <NumbersGuide />
+      <Suspense fallback={null}><WelcomeCards /></Suspense>
+      <Suspense fallback={null}><NumbersGuide /></Suspense>
     </div>
   )
 }

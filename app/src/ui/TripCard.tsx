@@ -4,6 +4,7 @@ import { homeCenter } from '../state/placesStore'
 import { legReadout } from '../routing/legReadout'
 import { endTrip, NO_START_MSG, startTrip } from '../routing/planner'
 import { useCircleStore } from '../circle/store'
+import { haptic } from './haptics'
 import { stopSharing } from '../circle/sync'
 import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
@@ -218,7 +219,10 @@ function PlanBlock() {
         // return time required, no ceremony. Only a trip planned for LATER
         // keeps Start quiet, so a Saturday plan never nags on Thursday.
         <div className="tb-actions">
-          <button className="btn-primary" disabled={!plan} onClick={() => startTrip()}>
+          <button className="btn-primary" disabled={!plan} onClick={() => {
+              haptic('confirm')
+              startTrip()
+            }}>
             Start trip
           </button>
         </div>
@@ -234,7 +238,10 @@ function PlanBlock() {
           <button
             className="start-quiet"
             disabled={!plan}
-            onClick={() => startTrip()}
+            onClick={() => {
+              haptic('confirm')
+              startTrip()
+            }}
             aria-label="Start the trip now"
           >
             ▸ Start
@@ -659,7 +666,13 @@ function LiveLeg({
       <div className="leg-head">
         <span className="leg-title">{heading}</span>
         <SharingNote />
-        <button className="leg-end" onClick={() => endTrip()}>
+        <button
+          className="leg-end"
+          onClick={() => {
+            haptic()
+            endTrip()
+          }}
+        >
           End
         </button>
         <button className="icon-btn" onClick={onHide} aria-label="Hide trip card">
