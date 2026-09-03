@@ -102,7 +102,6 @@ function subscribeAll() {
     if (p.sheetTab === 'discover' && s.sheetTab !== 'discover') disc.markSeen()
     if (s.depthUnit !== p.depthUnit || s.speedUnit !== p.speedUnit || s.windUnit !== p.windUnit) disc.touch('units')
     if (s.seaScaleM !== p.seaScaleM) disc.touch('scale')
-    if (s.waveLimitM !== p.waveLimitM && disc.guide === 'limits') disc.setGuide(null)
     if (s.planPicked && s.planTimeMs != null && (s.planTimeMs !== p.planTimeMs || !p.planPicked)) {
       disc.touch('planTime')
     }
@@ -163,7 +162,7 @@ function buildCtx(): Ctx {
     homeName: places.homeName,
     savedPlaces: places.saved,
     noteCount: Object.keys(places.notes).length,
-    waveLimitM: app.waveLimitM,
+    cruiseKn: useRouteStore.getState().cruiseKn,
     seaScaleM: app.seaScaleM,
     offlineReady: app.offlineReady,
     touched: disc.touched,

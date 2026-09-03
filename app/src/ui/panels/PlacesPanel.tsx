@@ -14,7 +14,6 @@ import { byCalmest, spotConditionsAt } from '../../weather/spotConditions'
 import { ensureWeatherGrid } from '../../weather/weatherLayer'
 import { distanceUnitFor, runDistance, speedUnitLabel, windSpeed } from '../../units'
 import { IconClose, IconLocate, IconPin, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
-import LimitsRow from '../LimitsRow'
 import SavedAdmin from '../SavedAdmin'
 
 /**
@@ -524,7 +523,6 @@ export default function PlacesPanel() {
       {!armedSlot && (
         <>
           <div className="place-hint">tap the chart to add a place</div>
-          <LimitsRow />
           <SavedAdmin />
         </>
       )}

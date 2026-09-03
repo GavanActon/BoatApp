@@ -27,7 +27,7 @@ export interface Ctx {
   homeName: string | null
   savedPlaces: { name: string; lon: number; lat: number }[]
   noteCount: number
-  waveLimitM: number | null
+  cruiseKn: number
   seaScaleM: number
   offlineReady: boolean
   touched: Partial<Record<TouchKey, true>>
@@ -119,13 +119,13 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'knows-the-boat',
     name: 'Knows the Boat',
-    hint: 'speed and limits',
+    hint: 'speed and power',
     icon: 'boat',
     group: 'setup',
     check: (c) =>
-      c.touched.cruise && c.waveLimitM != null
+      c.touched.cruise && c.touched.lowPower
         ? [
-            ['Wave limit', `${c.waveLimitM.toFixed(1)} m`],
+            ['Cruise', `${Math.round(c.cruiseKn)} kn`],
             ['Rough from', `${c.seaScaleM.toFixed(1)} m`],
           ]
         : null,
@@ -436,20 +436,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     check: (c) => {
       const n = ended(c).filter((o) => o.helmHome && o.homeAt != null).length
       return n >= 5 ? [['Rides home', String(n)]] : null
-    },
-  },
-  {
-    id: 'overdressed',
-    name: 'Overdressed',
-    hint: 'flat water, high limits',
-    icon: 'glassy',
-    group: 'going',
-    // judged against the limits set THAT day, not today's
-    check: (c) => {
-      const o = outings(c).find(
-        (x) => x.forecastBand === 0 && x.limitM != null && x.scaleM != null && x.limitM >= x.scaleM,
-      )
-      return o ? [['Limit', `${o.limitM!.toFixed(1)} m`], ['Sea', bandName(0)]] : null
     },
   },
   {

@@ -113,6 +113,32 @@ Trial-harness notes: progress replans fire on `visibilitychange`, not
 `online`; a spoofed fix must be AFLOAT (the config Sandies point is a
 beach — park the boat just off it); `window.__gps` reads the live fix.
 
+## Gavan's phone-test rounds (2026-09-03)
+
+- Set-up rows trimmed to what is worth changing; each chunk finished is a
+  LEVEL (Dock Sitter → Deckhand → Bay Rat → Regular → Point Reader →
+  Skipper → Commodore), with its own moment.
+- The glyph sits at the LEFT of the top bar; the unlock is a small glass
+  pill under the strip (sparks, a shine, a haptic where allowed).
+- Going achievements need a real outing — arrived, a mile or more — so a
+  tap on Start at the dock earns nothing.
+- Progressive disclosure: the hub shows Next up (the current chunk's
+  undone rows), Levels and Season as rows, three recent earned, Locked
+  folded; the Levels page is an accordion with the current chunk open.
+- SET ONCE HERE, THEN FOUND THERE: cruise speed is set in place the first
+  time with "from now on · Settings › Boat" under it; done rows wear the
+  value and point, with a chip on the top bar naming the place until the
+  value moves.
+- Settings reorganised by importance (shared UI, `LayersPanel.tsx`): BOAT
+  open at the top — cruise speed, sea-state scale, low power — then More:
+  Chart · Motion · Weather · Units as groups folded to a line each that
+  open on touch. Cruise speed now lives in Settings as well as on the
+  trip card's chip.
+- LIMITS DROPPED entirely (they reached one dot on the Places rows and
+  nothing else): no limits row in Places or Settings, no Overdressed;
+  Knows the Boat = cruise speed + low power touched. `waveLimitM` /
+  `windLimitKn` stay in the prefs store, unused, for a clean revert.
+
 ## How the code stays removable
 
 - Everything under `app/src/discover/`: the registry (a list of predicates

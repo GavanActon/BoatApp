@@ -23,7 +23,7 @@ export type RowAction =
   | 'guide'
   | 'sandies'
   | 'cruise'
-  | 'limits'
+  | 'settings'
   | 'places'
   | 'chart'
   | 'strip'
@@ -61,10 +61,6 @@ export function chapters(): Chapter[] {
   const log = logView()
   const pins = places.saved.filter((p) => p.name !== places.homeName).length
   const cruise = `${Math.round(knToUnit(app.speedUnit, rs.cruiseKn))} ${speedUnitLabel(app.speedUnit)}`
-  const limits =
-    app.waveLimitM != null && app.windLimitKn != null
-      ? `${app.waveLimitM.toFixed(1)} m · ${app.windLimitKn} kn`
-      : '—'
   return [
     {
       id: 'first-voyage',
@@ -80,10 +76,10 @@ export function chapters(): Chapter[] {
     {
       id: 'your-boat',
       name: 'Your boat',
-      reward: 'Limit dots on every place. Lanes timed to the boat.',
+      reward: 'Lanes timed to the boat. A long day on one battery.',
       rows: [
-        { id: 'cruise', label: 'Cruise speed', hint: 'the chip on the trip card', action: 'cruise', done: !!t.cruise, value: cruise },
-        { id: 'limits', label: 'Your limits', hint: 'Places › My limits', action: 'limits', done: app.waveLimitM != null, value: limits },
+        { id: 'cruise', label: 'Cruise speed', hint: 'Settings › Boat', action: 'cruise', done: !!t.cruise, value: cruise },
+        { id: 'lowPower', label: 'Low power', hint: 'Settings › Boat', action: 'settings', done: !!t.lowPower, value: app.lowPower ? 'on' : 'off' },
       ],
     },
     {

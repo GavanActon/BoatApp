@@ -37,8 +37,7 @@ export default function DiscoverGlyph() {
 }
 
 const GUIDE = {
-  cruise: 'Cruise speed · the chip on the trip card ↓',
-  limits: 'My limits · here in Places',
+  cruise: 'Cruise speed · here, under Boat',
 } as const
 
 function GuideChip() {

@@ -282,6 +282,15 @@
   text-align: right;
 }
 
+/* a Settings group, opened: its rows step in under the group's line. Lives
+   here rather than ui.css only because that file has uncommitted work of
+   Gavan's in it right now — it belongs with the panel when this is merged. */
+.group-body {
+  padding-left: 10px;
+  border-left: 2px solid rgba(126, 178, 224, 0.12);
+  margin: 0 0 6px 4px;
+}
+
 /* the guide chip sits in the bar's flow, clear of the pinned glyph */
 .dv-guide {
   margin-left: 40px;

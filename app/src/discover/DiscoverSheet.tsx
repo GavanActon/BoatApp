@@ -8,7 +8,6 @@ import { dateShort } from '../time'
 import { useGpsStore } from '../tracking/gpsStore'
 import { enterHelmView, locateAndFollow } from '../tracking/gpsService'
 import BottomSheet from '../ui/BottomSheet'
-import LimitsRow from '../ui/LimitsRow'
 import { IconMinus, IconPlus } from '../ui/icons'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, unitToKn } from '../units'
 import { seaColor } from '../weather/seaState'
@@ -317,7 +316,7 @@ function ChapterBlock({
  *  first time, with a line saying where they live from now on — and then
  *  turn into pointers wearing the value. Set it here once; change it there. */
 function ActionRow({ row }: { row: SetupRow }) {
-  if (!row.done && (row.action === 'cruise' || row.action === 'limits')) return <SetOnceRow row={row} />
+  if (!row.done && row.action === 'cruise') return <SetOnceRow row={row} />
   return <PointerRow row={row} />
 }
 
@@ -328,7 +327,7 @@ function SetOnceRow({ row }: { row: SetupRow }) {
       <span className="dv-fv-text">
         <b>{row.label}</b>
         <div className="dv-ctl">
-          {row.action === 'cruise' ? <CruiseStep /> : <LimitsRow />}
+          <CruiseStep />
           <span className="dv-where">from now on · {row.hint}</span>
         </div>
       </span>
@@ -376,14 +375,12 @@ function PointerRow({ row }: { row: SetupRow }) {
         routeToSandies()
         break
       case 'cruise':
-        // the speed chip rides the trip card — which needs a subject
-        if (!useRouteStore.getState().destination) routeToSandies()
-        app().setSheetTab(null)
+        // lives at the top of Settings, under Boat
+        app().setSheetTab('layers')
         useDiscoverStore.getState().setGuide('cruise')
         break
-      case 'limits':
-        app().setSheetTab('places')
-        useDiscoverStore.getState().setGuide('limits')
+      case 'settings':
+        app().setSheetTab('layers')
         break
       case 'places':
         app().setSheetTab('places')
