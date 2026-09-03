@@ -285,8 +285,12 @@ export default function WeatherStrip() {
   // (TripCard.WindowChips): what you asked for wins over what the last plan
   // worked out — so a back time the planner filled in ("there 3 hours")
   // lights its tile the same as one you picked. Ghosted while exploring,
-  // like the chips.
-  const backSrcMs = picked ? (planEndMs ?? plan?.homeMs ?? null) : null
+  // like the chips — and drawn only when there is a TRIP to come back from:
+  // a time tap with nothing on the chart is a weather preview, not a window
+  // (§4.1: the chips carry the trip's window), so no return tile without a
+  // destination.
+  const backSrcMs =
+    picked && destination != null ? (planEndMs ?? plan?.homeMs ?? null) : null
   const backHourMs = backSrcMs == null ? null : floorHourMs(backSrcMs)
   const outHourMs =
     backHourMs == null ? null : floorHourMs(planTimeMs ?? plan?.departMs ?? Date.now())

@@ -134,7 +134,15 @@ export default function SavedAdmin() {
                   'Save trip'
                 )}
               </button>
-              <button className="linklike danger" onClick={() => setDestination(null)}>
+              <button
+                className="linklike danger"
+                onClick={() => {
+                  setDestination(null)
+                  // same resting state as the card's ✕: no subject, back to
+                  // exploring — else the picked window outlives its trip
+                  useAppStore.getState().setPlanPicked(false)
+                }}
+              >
                 Clear trip
               </button>
             </span>
