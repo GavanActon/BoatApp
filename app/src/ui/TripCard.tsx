@@ -675,6 +675,7 @@ function LiveLeg({
   onHide: () => void
 }) {
   const plan = useRouteStore((s) => s.plan)
+  const speedUnit = useAppStore((s) => s.speedUnit)
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -683,6 +684,8 @@ function LiveLeg({
   }, [])
 
   const leg = legReadout(plan)
+  // the water still to cover, in the boat's own distance unit
+  const toGo = leg ? `${runDistance(speedUnit, leg.remainingNm)} ${distanceUnitFor(speedUnit)}` : ''
   const ready = leg != null && leg.timeLeftMin != null
   const ashore = ready && leg.phase === 'ashore'
   const heading = !ready
@@ -706,6 +709,7 @@ function LiveLeg({
           <span className="leg-fold-time numeral">
             {durationLabel(leg.timeLeftMin!)}
             <small> left</small>
+            {!ashore && <small> · {toGo}</small>}
           </span>
         )}
         {folded && <RecPill />}
@@ -752,6 +756,12 @@ function LiveLeg({
                 )}
               </span>
             </span>
+            {!ashore && (
+              <span className="leg-arr">
+                <span className="leg-k">to go</span>
+                <span className="leg-v numeral">{toGo}</span>
+              </span>
+            )}
           </span>
 
           {leg.phase !== 'homeward' && leg.homeMs != null && (

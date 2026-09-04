@@ -34,6 +34,8 @@ export interface LegReadout {
   ashoreMin: number | null
   /** True when speed over ground was unusable and planned cruise stood in. */
   atCruise: boolean
+  /** Water still to cover on this leg, from the boat's own position. */
+  remainingNm: number
 }
 
 // don't cry wolf over a wave or two — only call the arrival moved once it has
@@ -79,7 +81,7 @@ export function legReadout(plan: TripPlan | null): LegReadout | null {
       ? null
       : Math.round((homeMs - arriveMs) / 60_000 - (rs.roundTrip ? returnLegMin : 0))
 
-  return { phase, timeLeftMin, arriveMs, driftMin, homeMs, ashoreMin, atCruise }
+  return { phase, timeLeftMin, arriveMs, driftMin, homeMs, ashoreMin, atCruise, remainingNm }
 }
 
 /**
