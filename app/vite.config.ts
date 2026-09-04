@@ -155,6 +155,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // the push handlers live in public/push-sw.js, beside the generated worker
+        importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // Chart data files are huge and managed by the in-app Offline Manager (OPFS),
         // never by the service worker precache.

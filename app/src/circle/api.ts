@@ -88,6 +88,24 @@ export async function removeBoat(c: Circle, deviceId: string, deviceKey: string)
   })
 }
 
+// ---------- push ----------
+
+export async function pushKey(): Promise<string> {
+  return ((await call('/push/key')) as { key: string }).key
+}
+
+export async function subscribePush(
+  deviceId: string,
+  deviceKey: string,
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+): Promise<void> {
+  await call('/push/subscribe', { method: 'PUT', body: JSON.stringify({ deviceId, deviceKey, subscription }) })
+}
+
+export async function unsubscribePush(deviceId: string, deviceKey: string): Promise<void> {
+  await call('/push/subscribe', { method: 'DELETE', body: JSON.stringify({ deviceId, deviceKey }) })
+}
+
 // ---------- invites ----------
 //
 // The invite is a code a person can read out or paste: six letters of

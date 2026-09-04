@@ -89,6 +89,10 @@ interface CircleState {
   fetchError: string | null
   /** When the Crew sheet was last open — the dock's dot is anything newer. */
   crewSeenAt: number
+  /** Wants the crew's moments as notifications. On by default — the
+   *  browser's permission is the other half, asked on joining. */
+  notify: boolean
+  setNotify: (v: boolean) => void
   setSkipper: (s: Skipper) => void
   addCircle: (c: Circle) => void
   removeCircle: (id: string) => void
@@ -127,6 +131,8 @@ export const useCircleStore = create<CircleState>()(
       fetchedAt: 0,
       fetchError: null,
       crewSeenAt: 0,
+      notify: true,
+      setNotify: (notify) => set({ notify }),
       setSkipper: (skipper) => set({ skipper }),
       addCircle: (c) =>
         set((s) => ({ circles: [...s.circles.filter((x) => x.id !== c.id), c] })),
@@ -162,6 +168,7 @@ export const useCircleStore = create<CircleState>()(
         circles: s.circles,
         sharing: s.sharing,
         crewSeenAt: s.crewSeenAt,
+        notify: s.notify,
       }),
     },
   ),

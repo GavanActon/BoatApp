@@ -3,6 +3,7 @@ import { useAppStore } from '../state/appStore'
 import { agoLabel, timeLabel } from '../time'
 import CircleSettings from './CircleSettings'
 import { boatAgeMs, describeBoat, showBoat } from './circleLayer'
+import { disablePush, enablePush, pushState, type PushState } from './push'
 import { friendBoats, friendMembers, useCircleStore, type Boat, type Member, type Plan } from './store'
 import { onCirclePoll } from './sync'
 
@@ -152,7 +153,43 @@ export default function CrewPanel() {
         </>
       )}
 
+      {circles.length > 0 && <NotifyRow />}
       <CircleSettings />
     </div>
+  )
+}
+
+/** The Notify switch: the browser's permission and the wish, as one. Where
+ *  push can't exist (a Safari tab) the row says what would make it. */
+function NotifyRow() {
+  const notify = useCircleStore((s) => s.notify)
+  const [state, setState] = useState<PushState>(pushState)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setState(pushState()), [notify])
+  const desc =
+    state === 'unsupported'
+      ? 'joined · planning · departed · arrived · home · needs the Home Screen app'
+      : state === 'denied'
+        ? 'blocked for this site in the phone’s settings'
+        : 'joined · planning · departed · arrived · home'
+  return (
+    <label className="row">
+      <div className="row-text">
+        <span className="row-title">Notify</span>
+        <span className="row-desc">{desc}</span>
+      </div>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={state === 'on'}
+        disabled={busy || state === 'unsupported' || state === 'denied'}
+        onChange={(e) => {
+          setBusy(true)
+          void (e.target.checked ? enablePush() : disablePush().then(pushState))
+            .then((s) => setState(s ?? pushState()))
+            .finally(() => setBusy(false))
+        }}
+      />
+    </label>
   )
 }

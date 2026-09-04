@@ -13,7 +13,13 @@
  *   PUT    /circle/:id/member  Bearer secret + body             → 204   (join · skipper card · plan)
  *   PUT    /circle/:id/boat    Bearer secret + body             → 204   (position + trip, under way)
  *   DELETE /circle/:id/boat    Bearer secret + { deviceId, deviceKey } → 204   (leave)
+ *   GET    /push/key           → { key }   the VAPID public key to subscribe with
+ *   PUT    /push/subscribe     { deviceId, deviceKey, subscription } → 204
+ *   DELETE /push/subscribe     { deviceId, deviceKey } → 204
  *   GET    /health
+ *
+ * The crew hears (Web Push, one per moment per day): joined · planning ·
+ * departed · arrived · heading home · home.
  *
  * Usage stats (app/src/stats) share the Worker and the database:
  *
@@ -28,9 +34,16 @@
  * the origin.
  */
 
+import { sendPush, vapidKeys } from './push'
+
 interface Env {
   DB: D1Database
   STATS_TOKEN?: string
+}
+
+/** What the runtime hands fetch() third: work that outlives the response. */
+interface Ctx {
+  waitUntil(p: Promise<unknown>): void
 }
 
 // ---------- the small alphabet a person can read back over the phone ----------
@@ -43,6 +56,9 @@ const BOAT_TTL_MS = 12 * 3600_000
 const CIRCLE_TTL_MS = 90 * 86400_000
 /** A plan whose out-time passed this long ago with no cast-off is gone. */
 const PLAN_LAPSE_MS = 2 * 3600_000
+/** The once-only ledger forgets after this; the crew's clocks run here. */
+const PUSH_LOG_TTL_MS = 30 * 86400_000
+const CREW_TZ = 'America/Toronto'
 /** The strip offers seven days; a plan further out than this is a typo. */
 const PLAN_AHEAD_MS = 14 * 86400_000
 const MAX_ROUTE_POINTS = 60
@@ -221,6 +237,53 @@ interface CircleRow {
   secret_hash: string
 }
 
+// ---------- telling the crew ----------
+
+/** "Sat 10:00 AM", "10:00 AM" today — in the crew's own clock. */
+function whenLabel(ms: number, now: number): string {
+  const day = (t: number) => new Date(t).toLocaleDateString('en-US', { timeZone: CREW_TZ, weekday: 'short', month: 'short', day: 'numeric' })
+  const time = new Date(ms).toLocaleTimeString('en-US', { timeZone: CREW_TZ, hour: 'numeric', minute: '2-digit' })
+  if (day(ms) === day(now)) return time
+  const wd = new Date(ms).toLocaleDateString('en-US', { timeZone: CREW_TZ, weekday: 'short' })
+  return `${wd} ${time}`
+}
+
+function dayKey(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: CREW_TZ })
+}
+
+/** One notification to everyone else in the circle who can hear — once per
+ *  (circle, device, kind, key), whatever the phone re-posts. Runs after the
+ *  response, via waitUntil. */
+async function tellCrew(env: Env, circleId: string, from: string, kind: string, key: string, title: string, body: string): Promise<void> {
+  const now = Date.now()
+  const ins = await env.DB.prepare(
+    'INSERT OR IGNORE INTO push_log (circle_id, device_id, kind, key, at) VALUES (?, ?, ?, ?, ?)',
+  )
+    .bind(circleId, from, kind, key, now)
+    .run()
+  if (!ins.meta.changes) return
+  const subs = await env.DB.prepare(
+    `SELECT s.device_id, s.endpoint, s.p256dh, s.auth FROM push_subs s
+     JOIN members m ON m.device_id = s.device_id
+     WHERE m.circle_id = ? AND s.device_id != ?`,
+  )
+    .bind(circleId, from)
+    .all<{ device_id: string; endpoint: string; p256dh: string; auth: string }>()
+  const payload = { title, body, tag: `${circleId}:${from}`, url: '/#crew' }
+  await Promise.all(
+    (subs.results ?? []).map(async (s) => {
+      const r = await sendPush(env, s, payload)
+      if (r === 'gone') await env.DB.prepare('DELETE FROM push_subs WHERE device_id = ?').bind(s.device_id).run()
+      else if (r === 'ok') await env.DB.prepare('UPDATE push_subs SET last_ok = ? WHERE device_id = ?').bind(now, s.device_id).run()
+    }),
+  )
+}
+
+function whoTitle(name: string, boat: string): string {
+  return boat ? `${name} · ${boat}` : name
+}
+
 /** The device key pinned to this device in this circle, from whichever
  *  table saw it first; null when the device is new here. */
 async function pinnedKey(env: Env, circleId: string, deviceId: string): Promise<string | null> {
@@ -282,8 +345,9 @@ async function getCircle(env: Env, circle: CircleRow): Promise<Response> {
 }
 
 /** Join, or say who you are, or state a plan: the member row. The plan
- *  is replaced by what the body carries — absent or null clears it. */
-async function putMember(req: Request, env: Env, circleId: string): Promise<Response> {
+ *  is replaced by what the body carries — absent or null clears it. The
+ *  crew hears about a first join, and a plan once per destination-day. */
+async function putMember(req: Request, env: Env, ctx: Ctx, circleId: string): Promise<Response> {
   const b = await readBody(req)
   if (!b) return err(400, 'body must be JSON')
   const dev = deviceOf(b)
@@ -295,6 +359,17 @@ async function putMember(req: Request, env: Env, circleId: string): Promise<Resp
   const name = text(b.name) || 'A boat'
   const boat = text(b.boat)
   const p = plan(b.plan, now)
+  const before = await env.DB.prepare('SELECT plan FROM members WHERE circle_id = ? AND device_id = ?')
+    .bind(circleId, dev.id)
+    .first<{ plan: string | null }>()
+  const title = whoTitle(name, boat)
+  if (!before) ctx.waitUntil(tellCrew(env, circleId, dev.id, 'joined', 'joined', title, 'joined the crew'))
+  if (p) {
+    const dest = p.dest.name ?? 'a pinned spot'
+    ctx.waitUntil(
+      tellCrew(env, circleId, dev.id, 'planning', `${dest}|${dayKey(p.outMs)}`, title, `planning ${dest} · ${whenLabel(p.outMs, now)}`),
+    )
+  }
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, joined, plan, updated)
@@ -307,7 +382,7 @@ async function putMember(req: Request, env: Env, circleId: string): Promise<Resp
   return new Response(null, { status: 204, headers: CORS })
 }
 
-async function putBoat(req: Request, env: Env, circleId: string): Promise<Response> {
+async function putBoat(req: Request, env: Env, ctx: Ctx, circleId: string): Promise<Response> {
   const b = await readBody(req)
   if (!b) return err(400, 'body must be JSON')
   const dev = deviceOf(b)
@@ -326,6 +401,29 @@ async function putBoat(req: Request, env: Env, circleId: string): Promise<Respon
   const fixTs = num(fix.ts, 0, 4e12)
   const t = trip(b.trip)
   const now = Date.now()
+
+  // the moments the crew hears about: the trip's state changing hands
+  const prevRow = await env.DB.prepare('SELECT trip FROM boats WHERE circle_id = ? AND device_id = ?')
+    .bind(circleId, dev.id)
+    .first<{ trip: string | null }>()
+  const prevState = prevRow?.trip ? ((JSON.parse(prevRow.trip) as TripIn).state ?? 'out') : 'home'
+  const state = t?.state ?? 'out'
+  if (state !== prevState) {
+    const title = whoTitle(name, boat)
+    const dest = t?.dest?.name ?? 'a pinned spot'
+    const day = dayKey(now)
+    if (state === 'coming') {
+      const eta = t?.etaMs != null ? ` · about ${whenLabel(t.etaMs, now)}` : ''
+      ctx.waitUntil(tellCrew(env, circleId, dev.id, 'departed', `${dest}|${day}`, title, `departed for ${dest}${eta}`))
+    } else if (state === 'there') {
+      ctx.waitUntil(tellCrew(env, circleId, dev.id, 'arrived', `${dest}|${day}`, title, `at ${dest}`))
+    } else if (state === 'heading-home') {
+      const home = t?.homeMs != null ? ` · about ${whenLabel(t.homeMs, now)}` : ''
+      ctx.waitUntil(tellCrew(env, circleId, dev.id, 'heading-home', day, title, `heading home${home}`))
+    } else if (state === 'home' && prevState !== 'out') {
+      ctx.waitUntil(tellCrew(env, circleId, dev.id, 'home', day, title, 'home'))
+    }
+  }
 
   await env.DB.batch([
     env.DB.prepare(
@@ -361,6 +459,48 @@ async function deleteBoat(req: Request, env: Env, circleId: string): Promise<Res
     env.DB.prepare('DELETE FROM boats WHERE circle_id = ? AND device_id = ?').bind(circleId, dev.id),
     env.DB.prepare('DELETE FROM members WHERE circle_id = ? AND device_id = ?').bind(circleId, dev.id),
   ])
+  return new Response(null, { status: 204, headers: CORS })
+}
+
+// ---------- push subscriptions ----------
+
+/** One subscription per device, pinned to its key the same way a boat is. */
+async function putSubscription(req: Request, env: Env): Promise<Response> {
+  const b = await readBody(req)
+  if (!b) return err(400, 'body must be JSON')
+  const dev = deviceOf(b)
+  if (!dev) return err(400, 'deviceId and deviceKey required')
+  const s = b.subscription && typeof b.subscription === 'object' ? (b.subscription as Record<string, unknown>) : null
+  const keys = s?.keys && typeof s.keys === 'object' ? (s.keys as Record<string, unknown>) : null
+  // https only — except a loopback endpoint, which is the verify harness's
+  // stand-in push service against `wrangler dev`
+  const endpoint =
+    typeof s?.endpoint === 'string' && /^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(s.endpoint) ? s.endpoint.slice(0, 1000) : null
+  const p256dh = typeof keys?.p256dh === 'string' ? keys.p256dh : null
+  const auth = typeof keys?.auth === 'string' ? keys.auth : null
+  if (!endpoint || !p256dh || !auth) return err(400, 'a push subscription has an endpoint and keys')
+  const keyHash = await sha256(dev.key)
+  const existing = await env.DB.prepare('SELECT device_key_hash FROM push_subs WHERE device_id = ?')
+    .bind(dev.id)
+    .first<{ device_key_hash: string }>()
+  if (existing && existing.device_key_hash !== keyHash) return err(403, 'this device belongs to another key')
+  await env.DB.prepare(
+    `INSERT INTO push_subs (device_id, device_key_hash, endpoint, p256dh, auth, created, last_ok)
+     VALUES (?, ?, ?, ?, ?, ?, NULL)
+     ON CONFLICT (device_id) DO UPDATE SET endpoint = excluded.endpoint, p256dh = excluded.p256dh, auth = excluded.auth`,
+  )
+    .bind(dev.id, keyHash, endpoint, p256dh, auth, Date.now())
+    .run()
+  return new Response(null, { status: 204, headers: CORS })
+}
+
+async function deleteSubscription(req: Request, env: Env): Promise<Response> {
+  const b = await readBody(req)
+  const dev = b ? deviceOf(b) : null
+  if (!dev) return err(400, 'deviceId and deviceKey required')
+  await env.DB.prepare('DELETE FROM push_subs WHERE device_id = ? AND device_key_hash = ?')
+    .bind(dev.id, await sha256(dev.key))
+    .run()
   return new Response(null, { status: 204, headers: CORS })
 }
 
@@ -529,6 +669,7 @@ async function purge(env: Env): Promise<void> {
   const now = Date.now()
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE at < ?').bind(now - EVENTS_TTL_MS),
+    env.DB.prepare('DELETE FROM push_log WHERE at < ?').bind(now - PUSH_LOG_TTL_MS),
     env.DB.prepare('DELETE FROM boats WHERE updated < ?').bind(now - BOAT_TTL_MS),
     env.DB.prepare('DELETE FROM boats WHERE circle_id IN (SELECT id FROM circles WHERE last_post < ?)').bind(
       now - CIRCLE_TTL_MS,
@@ -541,12 +682,15 @@ async function purge(env: Env): Promise<void> {
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: Ctx): Promise<Response> {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
     const url = new URL(req.url)
     const path = url.pathname.replace(/\/+$/, '') || '/'
     try {
       if (path === '/health') return json({ ok: true, now: Date.now() })
+      if (path === '/push/key' && req.method === 'GET') return json({ key: (await vapidKeys(env)).pub })
+      if (path === '/push/subscribe' && req.method === 'PUT') return await putSubscription(req, env)
+      if (path === '/push/subscribe' && req.method === 'DELETE') return await deleteSubscription(req, env)
       if (path === '/stats' && req.method === 'POST') return await postStats(req, env)
       if (path === '/stats/summary' && req.method === 'GET') {
         if (!env.STATS_TOKEN) return err(503, 'STATS_TOKEN is not set on the Worker')
@@ -565,8 +709,8 @@ export default {
           .first<CircleRow>()
         if (!circle || circle.secret_hash !== (await sha256(secret))) return err(403, 'not a member of this circle')
         if (!m[2] && req.method === 'GET') return await getCircle(env, circle)
-        if (m[2] === '/member' && req.method === 'PUT') return await putMember(req, env, id)
-        if (m[2] === '/boat' && req.method === 'PUT') return await putBoat(req, env, id)
+        if (m[2] === '/member' && req.method === 'PUT') return await putMember(req, env, ctx, id)
+        if (m[2] === '/boat' && req.method === 'PUT') return await putBoat(req, env, ctx, id)
         if (m[2] && req.method === 'DELETE') return await deleteBoat(req, env, id)
       }
       return err(404, 'no such route')

@@ -48,6 +48,37 @@ CREATE TABLE IF NOT EXISTS members (
 );
 CREATE INDEX IF NOT EXISTS circles_last_post ON circles (last_post);
 
+-- Push notifications. `config` holds the Worker's own VAPID key pair (made
+-- on first use — nothing to set by hand). One subscription per device; the
+-- crew hears about a device's moments through its circles. `push_log` is
+-- the once-only ledger: one "departed" per trip, one "planning" per plan
+-- per day, whatever the phone re-posts.
+CREATE TABLE IF NOT EXISTS config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS push_subs (
+  device_id TEXT PRIMARY KEY,
+  device_key_hash TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created INTEGER NOT NULL,
+  last_ok INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS push_log (
+  circle_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (circle_id, device_id, kind, key)
+);
+
+CREATE INDEX IF NOT EXISTS push_log_at ON push_log (at);
+
 -- Usage stats (app/src/stats): one row per event, posted in batches by the
 -- app. `install` is the app's own random id, `at` the phone's clock when
 -- it happened, `received` the server's when it arrived. Never a position.

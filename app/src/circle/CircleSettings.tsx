@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { createCircle, inviteText, joinCode } from './api'
 import { useCircleStore, type Circle } from './store'
+import { enablePush } from './push'
 import { joinCircle, leaveCircle } from './sync'
 import { haptic } from '../ui/haptics'
 
@@ -42,6 +43,8 @@ export default function CircleSettings() {
       addCircle(c)
       setNewName('')
       setNote(`Started · ${c.name} · code ${joinCode(c)}`)
+      // the tap that made a crew is the tap that may ask to hear from it
+      if (useCircleStore.getState().notify) void enablePush()
     } catch {
       setNote('No answer from the server')
     } finally {
@@ -58,6 +61,7 @@ export default function CircleSettings() {
       haptic('confirm')
       setCode('')
       setNote(`Joined · ${c.name}`)
+      if (useCircleStore.getState().notify) void enablePush()
     } catch (e) {
       setNote(e instanceof Error && /code/.test(e.message) ? 'Not a sharing code' : 'No crew with that code')
     } finally {

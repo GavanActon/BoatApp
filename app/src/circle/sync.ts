@@ -3,6 +3,7 @@ import { useGpsStore } from '../tracking/gpsStore'
 import { useRouteStore } from '../routing/routeStore'
 import { endTrip, startTrip } from '../routing/planner'
 import { fetchCircle, parseJoinCode, postBoat, postMember as putMember, removeBoat, type OwnRecord } from './api'
+import { syncPush } from './push'
 import { useCircleStore, type BoatTrip, type Circle, type Plan } from './store'
 
 /**
@@ -232,9 +233,22 @@ export function initCircle() {
   if (m) {
     history.replaceState(null, '', location.pathname + location.search)
     void joinCircle(`${m[1]}-${m[2]}`)
-      .then(() => useAppStore.getState().setSheetTab('places'))
+      .then(() => useAppStore.getState().setSheetTab('crew'))
       .catch(() => undefined)
   }
+  // a tapped notification lands on the Crew sheet: cold from its URL, warm
+  // by a word from the service worker
+  if (location.hash === '#crew') {
+    history.replaceState(null, '', location.pathname + location.search)
+    useAppStore.getState().setSheetTab('crew')
+  }
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    const d = e.data as { type?: string; tab?: string } | null
+    if (d?.type === 'open' && d.tab === 'crew') useAppStore.getState().setSheetTab('crew')
+  })
+  // the subscription rotates and a fresh install has none: keep the server current
+  void syncPush()
+  window.addEventListener('online', () => void syncPush())
 
   if (visibleOnline()) void pollCircles()
   setInterval(() => {
