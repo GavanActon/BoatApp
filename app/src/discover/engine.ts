@@ -1,3 +1,6 @@
+import { flairSummary } from '../circle/marks'
+import { pushState } from '../circle/push'
+import { friendBoats, friendMembers, useCircleStore } from '../circle/store'
 import { useAppStore } from '../state/appStore'
 import { allPlaces, usePlacesStore } from '../state/placesStore'
 import { isAfloat } from '../routing/router'
@@ -26,6 +29,8 @@ const ARRIVAL_ACCURACY_M = 200
 const ARRIVAL_TICK_MS = 20_000
 const PLAN_LATER_MS = 60 * 60_000
 const RAIN_CHECK_GRACE_MS = 3 * 3600_000
+/** A friend's position this old still counts as where they are. */
+const CREW_FRESH_MS = 15 * 60_000
 
 let inited = false
 /** When this session opened cold — no trip, no plan — Last Minute Club's clock. */
@@ -155,6 +160,22 @@ function subscribeAll() {
     if (document.visibilityState === 'visible') settleRainCheck()
   })
 
+  // the crew: who is in, what they wear, and — from their positions — the
+  // moments that need two boats
+  useCircleStore.subscribe((s, p) => {
+    if (s.boats !== p.boats) crewMoments()
+    if (
+      s.boats !== p.boats ||
+      s.members !== p.members ||
+      s.circles !== p.circles ||
+      s.skipper !== p.skipper ||
+      s.cardDone !== p.cardDone ||
+      s.notify !== p.notify
+    ) {
+      schedule()
+    }
+  })
+
   onLog(schedule)
   useDiscoverStore.subscribe(schedule)
 }
@@ -184,6 +205,51 @@ function buildCtx(): Ctx {
     rainChecks: disc.rainChecks,
     seasonReached: disc.seasonReached,
     log: logView(),
+    crew: crewCtx(),
+  }
+}
+
+function crewCtx(): Ctx['crew'] {
+  const c = useCircleStore.getState()
+  const disc = useDiscoverStore.getState()
+  return {
+    cardDone: c.cardDone,
+    flair: flairSummary(c.skipper.flair),
+    color: c.skipper.color != null,
+    crews: c.circles.length,
+    friends: friendMembers().length,
+    boats: c.members.length,
+    notify: pushState() === 'on',
+    meets: disc.meets,
+    hosted: disc.hosted,
+    lateFor: disc.lateFor,
+  }
+}
+
+/** The moments that take two boats, read off the crew's latest positions:
+ *  a friend within reach while both are on the water (Raft-Up), a friend
+ *  arriving where this boat already is (Holding Court). */
+function crewMoments() {
+  const now = Date.now()
+  const disc = useDiscoverStore.getState()
+  const fix = useGpsStore.getState().fix
+  const here = fix && fix.accuracy <= ARRIVAL_ACCURACY_M && isAfloat(fix.lon, fix.lat) ? fix : null
+  const t = disc.trip
+  for (const b of friendBoats()) {
+    if (b.lon == null || b.lat == null) continue
+    if (now - (b.fixTs ?? b.updated) > CREW_FRESH_MS) continue
+    if (here && haversineNm(here.lon, here.lat, b.lon, b.lat) < REACH_NM) disc.addMeet(b.name, now)
+    const d = b.trip?.dest
+    if (
+      t &&
+      t.arrivedAt != null &&
+      b.trip?.state === 'there' &&
+      d &&
+      haversineNm(d.lon, d.lat, t.destLon, t.destLat) < REACH_NM &&
+      (b.trip.sinceMs ?? b.updated) > t.arrivedAt
+    ) {
+      disc.addHosted(b.name, now)
+    }
   }
 }
 
@@ -305,6 +371,19 @@ function markArrived(at: number) {
   if (!t || t.arrivedAt != null) return
   const wave = gridConditionsAt(t.destLon, t.destLat, at)?.waveM ?? null
   useDiscoverStore.getState().patchTrip({ arrivedAt: at, forecastBand: seaBand(wave) })
+  // the crew already there — two or more, and you are the late one
+  const there = friendBoats().filter((b) => {
+    const d = b.trip?.dest
+    return (
+      b.trip?.state === 'there' &&
+      d != null &&
+      haversineNm(d.lon, d.lat, t.destLon, t.destLat) < REACH_NM &&
+      at - (b.fixTs ?? b.updated) < CREW_FRESH_MS * 2
+    )
+  })
+  if (there.length >= 2) {
+    useDiscoverStore.getState().setLateFor({ names: there.map((b) => b.name), where: t.destName ?? 'a pinned spot', at })
+  }
   if (t.destName) void addArrival(t.destName, t.destLon, t.destLat, at)
   reachSeasonNear(t.destLon, t.destLat, at)
   persistTrip()
@@ -388,6 +467,7 @@ function onFix(fix: Fix) {
     }
     if (useAppStore.getState().helm) noteHelmHome()
   }
+  crewMoments()
 
   // being somewhere counts from the WATER: the deck of a cottage beside a
   // watched spot is not a visit

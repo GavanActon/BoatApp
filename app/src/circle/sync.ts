@@ -1,3 +1,4 @@
+import { useDiscoverStore } from '../discover/store'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { useRouteStore } from '../routing/routeStore'
@@ -131,7 +132,9 @@ export async function postNow(override?: { trip: BoatTrip | null }): Promise<voi
   if (!rec) return
   posting = true
   try {
-    await Promise.all(s.circles.map((c) => postBoat(c, rec).catch(() => undefined)))
+    const sent = await Promise.all(s.circles.map((c) => postBoat(c, rec).then(() => true, () => false)))
+    // a trip the crew could see: On the Radar
+    if (sent.some(Boolean) && useRouteStore.getState().tripStartedAt != null) useDiscoverStore.getState().touch('shared')
   } finally {
     posting = false
   }
@@ -176,7 +179,10 @@ export function postMember(opts: { force?: boolean } = {}): void {
     const key = JSON.stringify([record.name, record.boat, record.mark, record.flair, record.color, record.plan, s.circles.map((c) => c.id)])
     if (!opts.force && key === memberSent) return
     memberSent = key
-    void Promise.all(s.circles.map((c) => putMember(c, record).catch(() => undefined)))
+    void Promise.all(s.circles.map((c) => putMember(c, record).then(() => true, () => false))).then((sent) => {
+      // a plan the crew could see: Save the Date
+      if (record.plan && sent.some(Boolean)) useDiscoverStore.getState().touch('planShared')
+    })
   }, MEMBER_DEBOUNCE_MS)
 }
 

@@ -3,6 +3,7 @@ import { createCircle, inviteText, joinCode } from './api'
 import { useCircleStore, type Circle } from './store'
 import { enablePush } from './push'
 import { joinCircle, leaveCircle } from './sync'
+import { useDiscoverStore } from '../discover/store'
 import { haptic } from '../ui/haptics'
 
 /**
@@ -79,6 +80,7 @@ export default function CircleSettings() {
     try {
       await navigator.share({ text: inviteText(c, skipper.name) })
       setInviteNote('Sent')
+      useDiscoverStore.getState().touch('invited')
     } catch {
       /* dismissed — the card is still there */
     }
@@ -92,6 +94,7 @@ export default function CircleSettings() {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text)
         setInviteNote('Copied')
+        useDiscoverStore.getState().touch('invited')
         return
       }
     } catch {
@@ -104,6 +107,7 @@ export default function CircleSettings() {
       try {
         if (document.execCommand('copy')) {
           setInviteNote('Copied')
+          useDiscoverStore.getState().touch('invited')
           return
         }
       } catch {

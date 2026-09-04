@@ -25,6 +25,9 @@ export type TouchKey =
   | 'placesRoute'
   | 'installed'
   | 'tripStart'
+  | 'invited'
+  | 'shared'
+  | 'planShared'
 
 export interface Earned {
   at: number
@@ -60,6 +63,31 @@ export interface TripCtx {
   earnedIds: string[]
 }
 
+/** A friend, and when: met on the water, or joined you where you were. */
+export interface CrewMoment {
+  name: string
+  at: number
+}
+
+/** The crew was already there when you arrived. */
+export interface LateFor {
+  names: string[]
+  where: string
+  at: number
+}
+
+const MOMENTS_MAX = 30
+
+function sameDay(a: number, b: number): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString()
+}
+
+/** One moment per friend per day, newest last, capped. */
+function addMoment(list: CrewMoment[], m: CrewMoment): CrewMoment[] | null {
+  if (list.some((x) => x.name === m.name && sameDay(x.at, m.at))) return null
+  return [...list, m].slice(-MOMENTS_MAX)
+}
+
 /** A finished trip whose sea-felt question went unanswered: asked once,
  *  after the fact, until answered or waved off. */
 export interface PendingFelt {
@@ -90,6 +118,12 @@ interface DiscoverState {
   seasonReached: Record<string, number>
   trip: TripCtx | null
   pendingFelt: PendingFelt | null
+  /** Friends met on the water, within arrival range of the boat. */
+  meets: CrewMoment[]
+  /** Friends who arrived where this boat already was. */
+  hosted: CrewMoment[]
+  /** The first time two or more of the crew were there ahead of you. */
+  lateFor: LateFor | null
   /** Where the sheet should open next time: the welcome card's Get set up
    *  lands on the levels, First voyage unfolded. Consumed on open. Transient. */
   entry: 'setup' | null
@@ -120,6 +154,9 @@ interface DiscoverState {
   setTrip: (t: TripCtx | null) => void
   patchTrip: (p: Partial<TripCtx>) => void
   setPendingFelt: (p: PendingFelt | null) => void
+  addMeet: (name: string, at: number) => void
+  addHosted: (name: string, at: number) => void
+  setLateFor: (l: LateFor) => void
   setEntry: (e: 'setup' | null) => void
   setNudge: (v: boolean) => void
   setTarget: (t: 'cruise' | 'units' | null) => void
@@ -139,6 +176,9 @@ export const useDiscoverStore = create<DiscoverState>()(
       seasonReached: {},
       trip: null,
       pendingFelt: null,
+      meets: [],
+      hosted: [],
+      lateFor: null,
       level: 0,
       entry: null,
       setEntry: (entry) => set({ entry }),
@@ -182,6 +222,18 @@ export const useDiscoverStore = create<DiscoverState>()(
       setTrip: (trip) => set({ trip }),
       patchTrip: (p) => set((s) => (s.trip ? { trip: { ...s.trip, ...p } } : {})),
       setPendingFelt: (pendingFelt) => set({ pendingFelt }),
+      addMeet: (name, at) =>
+        set((s) => {
+          const meets = addMoment(s.meets, { name, at })
+          return meets ? { meets } : {}
+        }),
+      addHosted: (name, at) =>
+        set((s) => {
+          const hosted = addMoment(s.hosted, { name, at })
+          return hosted ? { hosted } : {}
+        }),
+      // the first time stands
+      setLateFor: (lateFor) => set((s) => (s.lateFor ? {} : { lateFor })),
     }),
     {
       name: 'sandies-discover',
@@ -195,6 +247,9 @@ export const useDiscoverStore = create<DiscoverState>()(
         seasonReached: s.seasonReached,
         trip: s.trip,
         pendingFelt: s.pendingFelt,
+        meets: s.meets,
+        hosted: s.hosted,
+        lateFor: s.lateFor,
         level: s.level,
       }),
     },

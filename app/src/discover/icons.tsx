@@ -34,6 +34,19 @@ export type AchIcon =
   | 'helm'
   | 'rain'
   | 'ticket'
+  | 'card'
+  | 'crew'
+  | 'mate'
+  | 'flotilla'
+  | 'invite'
+  | 'flair'
+  | 'colour'
+  | 'bell'
+  | 'date'
+  | 'radar'
+  | 'raft'
+  | 'court'
+  | 'late'
 
 const PATHS: Record<AchIcon, string> = {
   talk: '<path d="M4 5h16v10H9l-5 4Z"/>',
@@ -69,6 +82,20 @@ const PATHS: Record<AchIcon, string> = {
   helm: '<path d="M8.2 4.5H15.8L20.5 19.5H3.5Z"/><path d="M12 8.5l2.2 6.1L12 13.3l-2.2 1.3Z" fill="currentColor"/>',
   rain: '<path d="M7 15a4 4 0 0 1 1-7.9A5 5 0 0 1 17.5 9 3.5 3.5 0 0 1 17 15Z"/><path d="M9 18l-1 2M13 18l-1 2M17 18l-1 2"/>',
   ticket: '<path d="M4 8a2 2 0 0 0 2-2h12a2 2 0 0 0 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 0-2 2H6a2 2 0 0 0-2-2v-3a2 2 0 0 0 0-4Z"/><path d="M12 6v14" stroke-dasharray="2 2"/>',
+  // the crew
+  card: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.5"/><path d="M14 10h4M14 14h4"/>',
+  crew: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 2.5-6 6-6s6 2.5 6 6"/><path d="M15 14.5c3 0 5.5 2 5.5 5.5"/>',
+  mate: '<circle cx="10" cy="8" r="3.5"/><path d="M3 20c0-4 3-7 7-7s7 3 7 7"/><path d="M16 5l2 2 3.5-3.5"/>',
+  flotilla: '<path d="M4 15l1-3h4l1 3M9 15l1-3h4l1 3M14 15l1-3h4l1 3"/><path d="M2 19c2 0 2 1 4 1s2-1 4-1 2 1 4 1 2-1 4-1 2 1 4 1"/><path d="M2 15h20"/>',
+  invite: '<path d="M3 6h18v12H3Z"/><path d="M3 7l9 6 9-6"/>',
+  flair: '<path d="M11 4l1.8 4.4 4.7.6-3.5 3.2.9 4.7L11 14.6l-3.9 2.3.9-4.7L4.5 9l4.7-.6Z"/><path d="M19 3l.7 1.6 1.6.7-1.6.7L19 7.6l-.7-1.6-1.6-.7 1.6-.7Z" fill="currentColor"/>',
+  colour: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  date: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.5" fill="currentColor"/>',
+  radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 12l5.5-5.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  raft: '<path d="M2 15h20"/><path d="M4 15l1-3h5l1 3M13 15l1-3h5l1 3"/><path d="M7.5 12V7M16.5 12V7"/><path d="M7.5 8h9"/>',
+  court: '<circle cx="12" cy="7" r="3"/><path d="M7 20c0-3 2-5 5-5s5 2 5 5"/><circle cx="4.5" cy="10" r="2"/><circle cx="19.5" cy="10" r="2"/><path d="M1.5 18c0-2 1.3-3.5 3-3.5M22.5 18c0-2-1.3-3.5-3-3.5"/>',
+  late: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l-3 2"/><path d="M18 2l3 3M6 2L3 5"/>',
 }
 
 export function AchGlyph({ icon, size = 18 }: { icon: AchIcon; size?: number }) {

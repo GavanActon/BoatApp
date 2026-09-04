@@ -502,6 +502,10 @@ function PointerRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: s
         disc.setReturnTo(true)
         app().setSheetTab('log')
         break
+      case 'crew':
+        disc.setReturnTo(true)
+        app().setSheetTab('crew')
+        break
       case 'helm':
         app().setSheetTab(null)
         enterHelmView()

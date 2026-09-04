@@ -5,7 +5,7 @@ import type { AchIcon } from './icons'
 import type { LogView } from './log'
 import { SEASON_PLACES, seasonOf } from './season'
 import { sunTimes } from './solar'
-import type { TouchKey } from './store'
+import type { CrewMoment, LateFor, TouchKey } from './store'
 
 /**
  * The achievements. Every one is a CHECK over observed state — nothing is
@@ -18,6 +18,10 @@ import type { TouchKey } from './store'
  *
  * The line: nothing for a rough band, nothing for consecutive days,
  * nothing that rewards drinking on the water.
+ *
+ * The crew's own: the card, the crew, the friends — and the moments the
+ * server can vouch for: met on the water, joined where you were, last to
+ * the party. Nothing for who was fastest there.
  */
 
 /** Everything a check may look at, assembled by the engine. */
@@ -34,6 +38,24 @@ export interface Ctx {
   rainChecks: number
   seasonReached: Record<string, number>
   log: LogView
+  crew: CrewCtx
+}
+
+/** The crew as the checks see it: the card, the crews, the friends, the moments. */
+export interface CrewCtx {
+  cardDone: boolean
+  /** The card wears flair / a picked colour. */
+  flair: string
+  color: boolean
+  crews: number
+  /** Distinct friends across every crew. */
+  friends: number
+  /** Everyone across the crews, this boat included. */
+  boats: number
+  notify: boolean
+  meets: CrewMoment[]
+  hosted: CrewMoment[]
+  lateFor: LateFor | null
 }
 
 export type Facts = [string, string][]
@@ -44,7 +66,7 @@ export interface AchievementDef {
   /** Two words on how it is earned — the locked row's hint. */
   hint: string
   icon: AchIcon
-  group: 'setup' | 'going'
+  group: 'setup' | 'going' | 'crew'
   /** Facts when earned, null while not. */
   check: (c: Ctx) => Facts | null
 }
@@ -454,6 +476,120 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: 'rain',
     group: 'going',
     check: (c) => (c.rainChecks >= 3 ? [['Stayed in', String(c.rainChecks)]] : null),
+  },
+  // ---------- the crew: the party ----------
+  {
+    id: 'calling-card',
+    name: 'Calling Card',
+    hint: 'name, boat, mark',
+    icon: 'card',
+    group: 'crew',
+    check: (c) => (c.crew.cardDone ? [['Card', dateShort(c.now)]] : null),
+  },
+  {
+    id: 'crewed-up',
+    name: 'Crewed Up',
+    hint: 'start or join a crew',
+    icon: 'crew',
+    group: 'crew',
+    check: (c) => (c.crew.crews > 0 ? [['Crews', String(c.crew.crews)]] : null),
+  },
+  {
+    id: 'first-mate',
+    name: 'First Mate',
+    hint: 'a friend in the crew',
+    icon: 'mate',
+    group: 'crew',
+    check: (c) => (c.crew.friends > 0 ? [['Friends', String(c.crew.friends)]] : null),
+  },
+  {
+    id: 'flotilla',
+    name: 'Flotilla',
+    hint: 'five boats in your crews',
+    icon: 'flotilla',
+    group: 'crew',
+    check: (c) => (c.crew.boats >= 5 ? [['Boats', String(c.crew.boats)]] : null),
+  },
+  {
+    id: 'recruiter',
+    name: 'Recruiter',
+    hint: 'send an invite',
+    icon: 'invite',
+    group: 'crew',
+    check: (c) => (c.touched.invited ? [['Invited', dateShort(c.now)]] : null),
+  },
+  {
+    id: 'show-off',
+    name: 'Show Off',
+    hint: 'add some flair',
+    icon: 'flair',
+    group: 'crew',
+    check: (c) => (c.crew.flair ? [['Flair', c.crew.flair]] : null),
+  },
+  {
+    id: 'true-colours',
+    name: 'True Colours',
+    hint: 'pick your colour',
+    icon: 'colour',
+    group: 'crew',
+    check: (c) => (c.crew.color ? [['Colour', 'picked']] : null),
+  },
+  {
+    id: 'in-the-loop',
+    name: 'In the Loop',
+    hint: 'turn on notify',
+    icon: 'bell',
+    group: 'crew',
+    check: (c) => (c.crew.notify ? [['Notify', 'on']] : null),
+  },
+  {
+    id: 'save-the-date',
+    name: 'Save the Date',
+    hint: 'plan, with a crew',
+    icon: 'date',
+    group: 'crew',
+    check: (c) => (c.touched.planShared ? [['Planned', dateShort(c.now)]] : null),
+  },
+  {
+    id: 'on-the-radar',
+    name: 'On the Radar',
+    hint: 'share a trip',
+    icon: 'radar',
+    group: 'crew',
+    check: (c) => (c.touched.shared ? [['Shared', dateShort(c.now)]] : null),
+  },
+  {
+    id: 'raft-up',
+    name: 'Raft-Up',
+    hint: 'meet a friend on the water',
+    icon: 'raft',
+    group: 'crew',
+    check: (c) => {
+      const m = c.crew.meets[0]
+      return m ? [['With', m.name], ['On', dateShort(m.at)]] : null
+    },
+  },
+  {
+    id: 'holding-court',
+    name: 'Holding Court',
+    hint: 'friends join you there',
+    icon: 'court',
+    group: 'crew',
+    check: (c) => {
+      const h = c.crew.hosted
+      if (!h.length) return null
+      const names = [...new Set(h.map((x) => x.name))].slice(0, 3).join(' · ')
+      return [['Joined by', names], ['First', dateShort(h[0].at)]]
+    },
+  },
+  {
+    id: 'fashionably-late',
+    name: 'Fashionably Late',
+    hint: 'last to the party',
+    icon: 'late',
+    group: 'crew',
+    check: (c) =>
+      c.crew.lateFor ? [['Already there', c.crew.lateFor.names.join(' · ')], ['At', c.crew.lateFor.where]] : null,
   },
   {
     id: 'season-ticket',

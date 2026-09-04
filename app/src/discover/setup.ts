@@ -1,3 +1,4 @@
+import { useCircleStore } from '../circle/store'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { usePlacesStore } from '../state/placesStore'
@@ -33,6 +34,7 @@ export type RowAction =
   | 'install'
   | 'helm'
   | 'tracks'
+  | 'crew'
 
 export interface SetupRow {
   id: string
@@ -53,13 +55,14 @@ export interface Chapter {
 }
 
 /** The ladder: one name per level, level = chunks finished. Freshwater words. */
-export const LEVELS = ['Dock Sitter', 'Deckhand', 'Bay Rat', 'Regular', 'Point Reader', 'Skipper', 'Commodore']
+export const LEVELS = ['Dock Sitter', 'Deckhand', 'Bay Rat', 'Regular', 'Point Reader', 'Skipper', 'Ringleader', 'Commodore']
 
 /** The rose's colour by level, in the app's own tokens: the dim text it
  *  sits in until the first level, the accent from then on, and the done
  *  colour at the top of the ladder. Index = level (LEVELS above). */
 export const LEVEL_COLORS = [
   'currentColor',
+  'var(--c-accent)',
   'var(--c-accent)',
   'var(--c-accent)',
   'var(--c-accent)',
@@ -74,6 +77,7 @@ export function chapters(): Chapter[] {
   const places = usePlacesStore.getState()
   const gps = useGpsStore.getState()
   const t = useDiscoverStore.getState().touched
+  const circle = useCircleStore.getState()
   const log = logView()
   const pins = places.saved.filter((p) => p.name !== places.homeName).length
   const cruise = `${Math.round(knToUnit(app.speedUnit, rs.cruiseKn))} ${speedUnitLabel(app.speedUnit)}`
@@ -124,7 +128,17 @@ export function chapters(): Chapter[] {
       rows: [
         { id: 'trip', label: 'Start a trip', hint: 'Trip card › Start', action: 'chart', done: !!t.tripStart },
         { id: 'helm', label: 'Helm view', hint: 'the helm FAB', action: 'helm', done: !!t.helm },
-        { id: 'track', label: 'Record a track', hint: 'Tracks', action: 'tracks', done: log.trackCount > 0, value: log.trackCount ? String(log.trackCount) : undefined },
+        { id: 'track', label: 'Record a track', hint: 'Log › Record', action: 'tracks', done: log.trackCount > 0, value: log.trackCount ? String(log.trackCount) : undefined },
+      ],
+    },
+    {
+      id: 'your-crew',
+      name: 'Your crew',
+      reward: 'Friends on the chart, and who is coming.',
+      rows: [
+        { id: 'card', label: 'Your skipper card', hint: 'Crew › the last row', action: 'crew', done: circle.cardDone, value: circle.skipper.mark || undefined },
+        { id: 'crew', label: 'Start or join a crew', hint: 'Crew › Start or Join', action: 'crew', done: circle.circles.length > 0, value: circle.circles.length ? String(circle.circles.length) : undefined },
+        { id: 'invite', label: 'Invite a friend', hint: 'Crew › Invite', action: 'crew', done: !!t.invited },
       ],
     },
     {
