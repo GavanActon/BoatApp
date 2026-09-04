@@ -10,6 +10,7 @@ import {
   NO_FLAIR,
   QUICK_PICKS,
   surprise,
+  SWATCHES,
   TINTS,
   type Effect,
   type Flair,
@@ -17,7 +18,7 @@ import {
   type Tint,
   flairSummary,
 } from './marks'
-import { boatColor, useCircleStore } from './store'
+import { autoColor, useCircleStore } from './store'
 
 /**
  * The skipper card: how the crew sees you — a mark (any emoji), your
@@ -41,17 +42,19 @@ function CardSheet({ then }: { then: (() => void) | null }) {
   const [boat, setBoat] = useState(skipper.boat)
   const [mark, setMark] = useState(skipper.mark)
   const [flair, setFlair] = useState<Flair | null>(skipper.flair)
+  const [picked, setPicked] = useState<string | null>(skipper.color)
   const [view, setView] = useState<'card' | 'flair'>('card')
-  const color = boatColor(deviceId)
+  const auto = autoColor(deviceId)
+  const color = picked ?? auto
 
   const close = () => useCircleStore.getState().setCardOpen(null)
   const save = () => {
     const s = useCircleStore.getState()
-    s.setSkipper({ name: name.trim(), boat: boat.trim(), mark, flair })
+    s.setSkipper({ name: name.trim(), boat: boat.trim(), mark, flair, color: picked })
     s.setCardDone(true)
     s.setCardOpen(null)
     haptic('confirm')
-    track('skipper-card', { mark: mark ? 1 : 0, flair: flair ? 1 : 0 })
+    track('skipper-card', { mark: mark ? 1 : 0, flair: flair ? 1 : 0, color: picked ? 1 : 0 })
     then?.()
   }
   const who = [name.trim(), boat.trim()].filter(Boolean).join(' · ')
@@ -157,8 +160,48 @@ function CardSheet({ then }: { then: (() => void) | null }) {
                   </button>
                 )}
               </div>
-              <div className="sk-note">
-                The keyboard's emoji is the whole menu. Your crew colour is automatic; the mark sits inside it.
+              <div className="sk-note">The keyboard's emoji is the whole menu.</div>
+
+              <div className="panel-section sk-section">
+                <span>Colour</span>
+                <span className="meta">behind the mark</span>
+              </div>
+              <div className="sk-swatches" role="listbox" aria-label="Colour">
+                <button
+                  className={`sk-swatch auto ${picked == null ? 'on' : ''}`}
+                  role="option"
+                  aria-selected={picked == null}
+                  aria-label="Automatic"
+                  style={{ background: auto }}
+                  onClick={() => {
+                    setPicked(null)
+                    haptic()
+                  }}
+                >
+                  <span>auto</span>
+                </button>
+                {SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    className={`sk-swatch ${picked === c ? 'on' : ''}`}
+                    role="option"
+                    aria-selected={picked === c}
+                    aria-label={c}
+                    style={{ background: c }}
+                    onClick={() => {
+                      setPicked(c)
+                      haptic()
+                    }}
+                  />
+                ))}
+                <label
+                  className={`sk-swatch any ${picked != null && !SWATCHES.includes(picked) ? 'on' : ''}`}
+                  aria-label="Any colour"
+                  style={picked != null && !SWATCHES.includes(picked) ? { background: picked } : undefined}
+                >
+                  <input type="color" value={picked ?? auto} onChange={(e) => setPicked(e.target.value)} />
+                  <span>any</span>
+                </label>
               </div>
 
               <button className="row sk-row" onClick={() => setView('flair')}>
@@ -290,7 +333,7 @@ function FlairView({
           ))}
         </div>
         <div className="sk-note">
-          Your crew colour stays the base, so the chart still reads at a glance. Wake shows under way.
+          Your colour stays the base, so the chart still reads at a glance. Wake shows under way.
         </div>
         <button className="btn-primary sk-btn quiet" onClick={onDone}>
           Done

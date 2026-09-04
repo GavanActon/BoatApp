@@ -24,6 +24,8 @@ export interface Skipper {
   mark: string
   /** Optional dressing on the mark; null is none. */
   flair: Flair | null
+  /** The disk's colour when picked; null is the automatic crew colour. */
+  color: string | null
 }
 
 export interface Circle {
@@ -51,6 +53,7 @@ export interface Boat {
   boat: string
   mark: string
   flair: Flair | null
+  color: string | null
   lon: number | null
   lat: number | null
   sogKn: number | null
@@ -75,6 +78,7 @@ export interface Member {
   boat: string
   mark: string
   flair: Flair | null
+  color: string | null
   joined: number
   plan: Plan | null
   updated: number
@@ -141,7 +145,7 @@ export const useCircleStore = create<CircleState>()(
     (set) => ({
       deviceId: hex(8),
       deviceKey: hex(16),
-      skipper: { name: '', boat: '', mark: '', flair: null },
+      skipper: { name: '', boat: '', mark: '', flair: null, color: null },
       circles: [],
       sharing: false,
       boats: [],
@@ -202,16 +206,30 @@ export const useCircleStore = create<CircleState>()(
   ),
 )
 
-/** Each boat its own colour, the same on every phone: by place in the
- *  crew (oldest member first — the order the server gives). None of these
- *  is the own-boat blue, the track green, the amber or the reserved red. */
+/** Each boat its own colour, the same on every phone: the one the skipper
+ *  picked on the card, else by place in the crew (oldest member first —
+ *  the order the server gives). None of these is the own-boat blue, the
+ *  track green, the amber or the reserved red. */
 const BOAT_COLORS = ['#c58bff', '#ff7ac6', '#ffd166', '#a3e635', '#5ec8ff', '#ff9e7a']
 
 export function boatColor(deviceId: string): string {
+  const s = useCircleStore.getState()
+  if (deviceId === s.deviceId && s.skipper.color) return s.skipper.color
+  const i = s.members.findIndex((m) => m.deviceId === deviceId)
+  if (i >= 0) return s.members[i].color ?? BOAT_COLORS[i % BOAT_COLORS.length]
+  const b = s.boats.find((x) => x.deviceId === deviceId)
+  if (b?.color) return b.color
+  // an older app's boat with no member row: a stable pick from its id
+  let h = 0
+  for (const c of deviceId) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return BOAT_COLORS[h % BOAT_COLORS.length]
+}
+
+/** The colour this boat wears with nothing picked: its place in the crew. */
+export function autoColor(deviceId: string): string {
   const { members } = useCircleStore.getState()
   const i = members.findIndex((m) => m.deviceId === deviceId)
   if (i >= 0) return BOAT_COLORS[i % BOAT_COLORS.length]
-  // an older app's boat with no member row: a stable pick from its id
   let h = 0
   for (const c of deviceId) h = (h * 31 + c.charCodeAt(0)) >>> 0
   return BOAT_COLORS[h % BOAT_COLORS.length]

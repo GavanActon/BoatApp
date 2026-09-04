@@ -64,6 +64,23 @@ const MORE = [
   '🛶', '🏄', '🤿', '🐬', '🦅', '🦉', '🐻', '🦫', '🐺', '🦊', '🍔', '🌶️', '🥂', '🧊', '🌞', '🌊',
 ]
 
+/** The disk's colour when a skipper picks one: the six crew colours and
+ *  six more that read on the chart. None of these is the own-boat blue,
+ *  the track green, the amber or the reserved red. */
+export const SWATCHES = [
+  '#c58bff', '#e879f9', '#ff7ac6', '#fb7185', '#ff9e7a', '#f97316',
+  '#ffd166', '#a3e635', '#2dd4bf', '#5ec8ff', '#eaf3fb', '#94a3b8',
+]
+
+/** A colour as the store or the server should keep it: #rrggbb, or null for automatic. */
+export function cleanColor(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(t)) return t
+  if (/^#[0-9a-f]{3}$/.test(t)) return '#' + t.slice(1).replace(/./g, (c) => c + c)
+  return null
+}
+
 /** Surprise me: any of the picks, or one from the longer list — never the one already worn. */
 export function surprise(not: string): string {
   const pool = [...QUICK_PICKS, ...MORE].filter((e) => e !== not)

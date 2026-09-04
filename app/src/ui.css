@@ -3122,6 +3122,27 @@
 .sk-chip.wake .mk-wrap { margin-left: 22px; }
 .sk-chip .sk-l { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 9.5px; letter-spacing: 0.02em; color: var(--c-text-dim); }
 .sk-emoji-in { font-size: 20px !important; padding: 5px 10px !important; }
+.sk-swatches { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; padding: 10px 0 4px; }
+.sk-swatch {
+  position: relative;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(8, 20, 34, 0.5);
+  box-shadow: 0 0 0 1px rgba(126, 178, 224, 0.14);
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #06253a;
+}
+.sk-swatch.on { box-shadow: 0 0 0 2px var(--c-accent), var(--shadow-accent); }
+.sk-swatch.any { background: conic-gradient(#ff7ac6, #ffd166, #a3e635, #5ec8ff, #c58bff, #ff7ac6); }
+.sk-swatch.any input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.sk-swatch.any span { pointer-events: none; }
 .sk-note { padding: 6px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--c-text-dim); }
 .sk-row { width: 100%; text-align: left; background: none; border-radius: 8px; color: inherit; font: inherit; }
 .sk-row:active { background: rgba(126, 178, 224, 0.08); transform: none; }

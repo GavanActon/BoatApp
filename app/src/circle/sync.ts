@@ -108,6 +108,7 @@ function ownRecord(trip: BoatTrip | null): OwnRecord | null {
     boat: s.skipper.boat.trim(),
     mark: s.skipper.mark,
     flair: s.skipper.flair,
+    color: s.skipper.color,
     fix: { lon: fix.lon, lat: fix.lat, sogKn: fix.sogKn, cog: fix.cog, ts: fix.ts },
     trip,
   }
@@ -169,9 +170,10 @@ export function postMember(opts: { force?: boolean } = {}): void {
       boat: s.skipper.boat.trim(),
       mark: s.skipper.mark,
       flair: s.skipper.flair,
+      color: s.skipper.color,
       plan: ownPlan(),
     }
-    const key = JSON.stringify([record.name, record.boat, record.mark, record.flair, record.plan, s.circles.map((c) => c.id)])
+    const key = JSON.stringify([record.name, record.boat, record.mark, record.flair, record.color, record.plan, s.circles.map((c) => c.id)])
     if (!opts.force && key === memberSent) return
     memberSent = key
     void Promise.all(s.circles.map((c) => putMember(c, record).catch(() => undefined)))
