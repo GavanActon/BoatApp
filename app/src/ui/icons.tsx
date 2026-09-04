@@ -273,6 +273,25 @@ export const IconHeadingUp = (p: IconProps) => (
   </svg>
 )
 
+/** The crew: two people, the second a step behind. */
+export const IconCrew = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3 19.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+    <circle cx="16.5" cy="9" r="2.6" opacity="0.6" />
+    <path d="M17.5 14.2c2.2.5 3.7 2.3 3.7 5.3" opacity="0.6" />
+  </svg>
+)
+
+/** The log: a notebook, lines on the page. */
+export const IconLog = (p: IconProps) => (
+  <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5.5 3.5h11A1.5 1.5 0 0 1 18 5v15.5H7A1.5 1.5 0 0 1 5.5 19Z" />
+    <path d="M5.5 17.5A1.5 1.5 0 0 1 7 16h11" opacity="0.6" />
+    <path d="M9 8h5.5M9 11.5h4" opacity="0.6" />
+  </svg>
+)
+
 export const IconSliders = (p: IconProps) => (
   <svg width={S(p)} height={S(p)} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
     <path d="M3 7h4M11 7h10" />

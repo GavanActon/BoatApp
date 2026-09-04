@@ -21,6 +21,11 @@ export interface PointForecast {
   /** Who answered: Open-Meteo normally, MET Norway when it was down. Absent
    *  on copies cached before this field existed (all Open-Meteo). */
   source?: 'open-meteo' | 'met.no'
+  /** When the WAVE series was fetched, where that is older than the rest:
+   *  a failed marine call leaves the last good waves under fresh wind
+   *  (see retime) rather than a blank sea. Absent when the waves are as
+   *  fresh as fetchedAt. */
+  wavesFetchedAt?: number
   hourly: {
     time: string[]
     windKn: number[]
@@ -60,6 +65,9 @@ export interface GridForecast {
   fetchedAt: number
   time: string[]
   cells: GridCell[]
+  /** As on PointForecast: set when the sea under this grid is an older
+   *  copy's, carried through a failed marine call. */
+  wavesFetchedAt?: number
 }
 
 /** One hour of a point forecast, unpacked for display. */
@@ -339,7 +347,34 @@ export function fetchTimeout(ms = FETCH_TIMEOUT_MS): AbortSignal | undefined {
   return typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined
 }
 
+/**
+ * After a failure a host is left alone for a while. A 429 says the minute's
+ * quota is spent — two minutes clears it; anything else (5xx, a dead
+ * stream, no cell) will not have healed by the next tick — ten. Without
+ * this the 60 s weather clock re-asked the 81-cell marine grid every
+ * minute of a rate limit, which is exactly what kept the limit tripped
+ * (2026-09-02, and again 2026-09-04). A held host fails instantly, so
+ * every caller drops straight to its cache — the rule that nothing waits
+ * on the network holds here too.
+ */
+const hostHold = new Map<string, { until: number; reason: string }>()
+
+function hostOf(url: string): string {
+  return url.split('?')[0]
+}
+
+/** Why the marine host is being left alone right now, or null. The Waves
+ *  data row says so — a wave-less days 3–7 must never be a silent blank. */
+export function marineHold(): { until: number; reason: string } | null {
+  const h = hostHold.get(MARINE_BASE)
+  return h && Date.now() < h.until ? h : null
+}
+
 async function getJson(url: string): Promise<unknown> {
+  const host = hostOf(url)
+  const held = hostHold.get(host)
+  // thrown before the try: a hold is not a new failure, don't count it
+  if (held && Date.now() < held.until) throw new Error(`${held.reason} · holding off`)
   const t0 = performance.now()
   try {
     const resp = await fetch(url, { signal: fetchTimeout() })
@@ -358,11 +393,17 @@ async function getJson(url: string): Promise<unknown> {
       throw new Error(`HTTP ${resp.status}${reason ? ` · ${reason}` : ''}`)
     }
     lastError = null
+    hostHold.delete(host)
     // one timing per half hour says how the provider is doing from the bay
     track('wx_fetch', { ms: Math.round(performance.now() - t0) }, { every: 30 * 60_000, key: 'wx_fetch' })
     return body
   } catch (e) {
     lastError = { at: Date.now(), reason: e instanceof Error ? e.message : String(e) }
+    const status = /^HTTP (\d+)/.exec(lastError.reason)?.[1]
+    hostHold.set(host, {
+      until: Date.now() + (status === '429' ? 2 : 10) * 60_000,
+      reason: lastError.reason,
+    })
     // a 429 answers every poll for an hour — count it once per ten minutes
     track('wx_fail', { reason: lastError.reason.slice(0, 60) }, { every: 10 * 60_000 })
     throw e
@@ -469,6 +510,65 @@ function pointKey(lon: number, lat: number): string {
   return `point:${lon.toFixed(2)},${lat.toFixed(2)}`
 }
 
+// ---------- carrying the last good sea under fresh wind ----------
+//
+// The two Open-Meteo hosts fail independently, and the marine one is the
+// one that rate-limits (81 cells a call). A failed marine call used to sink
+// the whole fetch: the wind that DID arrive was thrown away, MET Norway's
+// wave-less copy took its place and, cached under the same key, WIPED the
+// last good waves — days 3–7 went blank until the marine host came back
+// (2026-09-02, 2026-09-04). Now the waves are optional: the forecast is
+// built from whatever arrived, and where the sea is missing the cached
+// copy's sea is re-timed onto the new hourly axis. RDWPS overwrites the
+// first 48 h regardless; beyond it the global model's last word stands.
+
+/** Hour → index of an hourly axis. Both axes of one kind share a parse
+ *  convention (local for a point, UTC-without-Z for the grid), so
+ *  Date.parse lines them up whichever it is. */
+function hourMap(time: string[]): Map<number, number> {
+  const m = new Map<number, number>()
+  for (let i = 0; i < time.length; i++) m.set(Date.parse(time[i]), i)
+  return m
+}
+
+/** `prev` re-timed onto `time`: each hour takes the old series' value for
+ *  the same hour, null where the old copy did not reach. */
+function retime(
+  prevAt: Map<number, number>,
+  prev: (number | null)[] | undefined,
+  time: string[],
+): (number | null)[] {
+  const out = new Array<number | null>(time.length).fill(null)
+  if (!prev) return out
+  for (let i = 0; i < time.length; i++) {
+    const j = prevAt.get(Date.parse(time[i]))
+    if (j != null) out[i] = prev[j] ?? null
+  }
+  return out
+}
+
+/** Put the last good waves for this spot under a forecast that arrived
+ *  without any. In place; a no-op when nothing cached had a sea. */
+async function underlayCachedWaves(key: string, f: PointForecast): Promise<void> {
+  const prev = await cacheGet<PointForecast>(key)
+  if (!prev) return
+  const ph = prev.payload.hourly
+  const at = hourMap(ph.time)
+  const waveM = retime(at, ph.waveM, f.hourly.time)
+  if (!waveM.some((v) => v != null)) return
+  f.hourly.waveM = waveM
+  f.hourly.wavePeriodS = retime(at, ph.wavePeriodS, f.hourly.time)
+  f.hourly.waveDir = retime(at, ph.waveDir, f.hourly.time)
+  f.wavesFetchedAt = prev.payload.wavesFetchedAt ?? prev.fetchedAt
+}
+
+/** When the waves under the strip's forecast were fetched, if that is not
+ *  when the rest was — null when they are its own. */
+let lastWavesFetchedAt: number | null = null
+export function pointWavesCarriedFrom(): number | null {
+  return lastWavesFetchedAt
+}
+
 /**
  * Upgrade a point forecast's series in place with ECCC's own copies of the
  * models: RDWPS 1 km sea and HRDPS 2.5 km wind, for the ~48 h each run
@@ -521,6 +621,7 @@ export async function fetchPointForecast(
         // an overlay may have landed since this was written — dress again
         await dressPointForecast(cached.payload)
         lastSource = cached.payload.source ?? 'open-meteo'
+        lastWavesFetchedAt = cached.payload.wavesFetchedAt ?? null
         return { forecast: cached.payload, stale: false }
       }
     }
@@ -532,12 +633,14 @@ export async function fetchPointForecast(
       `${MARINE_BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
       `&hourly=wave_height,wave_period,wave_direction&forecast_days=7&timezone=auto`
 
-    const [wind, marine] = (await Promise.all([getJson(windUrl), getJson(marineUrl)])) as [
-      Record<string, { time: string[]; [k: string]: unknown }>,
-      Record<string, { time: string[]; [k: string]: unknown }>,
-    ]
-    const wh = wind.hourly as unknown as ModelHourly
-    const mh = marine.hourly as unknown as Record<string, (number | null)[]> & { time: string[] }
+    // independently: the wind is the forecast, the sea is optional
+    const [windR, marineR] = await Promise.allSettled([getJson(windUrl), getJson(marineUrl)])
+    if (windR.status === 'rejected') throw windR.reason
+    const wh = (windR.value as { hourly: ModelHourly }).hourly
+    const mh =
+      marineR.status === 'fulfilled'
+        ? ((marineR.value as { hourly: unknown }).hourly as Record<string, (number | null)[]>)
+        : null
 
     const blended = blendWind(wh)
     const forecast: PointForecast = {
@@ -553,16 +656,19 @@ export async function fetchPointForecast(
         tempC: bm(wh, 'temperature_2m') as number[],
         weatherCode: bm(wh, 'weather_code') as number[],
         precipProbPct: bm(wh, 'precipitation_probability'),
-        waveM: mh.wave_height ?? [],
-        wavePeriodS: mh.wave_period ?? [],
-        waveDir: mh.wave_direction ?? [],
+        waveM: mh?.wave_height ?? [],
+        wavePeriodS: mh?.wave_period ?? [],
+        waveDir: mh?.wave_direction ?? [],
       },
     }
+    // no sea this time: the last good one, rather than none
+    if (!mh) await underlayCachedWaves(key, forecast)
     // upgrade the wave series to RDWPS 1 km where its run covers — the strip
     // and the map must never quote two different seas for the same hour
     await dressPointForecast(forecast)
     await cachePut(key, forecast)
     lastSource = 'open-meteo'
+    lastWavesFetchedAt = forecast.wavesFetchedAt ?? null
     return { forecast, stale: false }
   } catch (e) {
     // Second source: MET Norway answers the same question (temperature,
@@ -571,9 +677,13 @@ export async function fetchPointForecast(
     // cached under the same key, so it IS the copy next time.
     try {
       const alt = await fetchMetNoPoint(lon, lat)
+      // met.no has no sea: keep the last good one under it, so caching
+      // this copy over the old one wipes nothing
+      await underlayCachedWaves(key, alt)
       await dressPointForecast(alt)
       await cachePut(key, alt)
       lastSource = 'met.no'
+      lastWavesFetchedAt = alt.wavesFetchedAt ?? null
       track('wx_source', { src: 'met.no' }, { every: 10 * 60_000 })
       return { forecast: alt, stale: false }
     } catch {
@@ -586,6 +696,7 @@ export async function fetchPointForecast(
       // RDWPS sea on it beats the old copy as cached
       await dressPointForecast(cached.payload, { sky: true })
       lastSource = 'cache'
+      lastWavesFetchedAt = cached.payload.wavesFetchedAt ?? null
       track('wx_source', { src: 'cache' }, { every: 10 * 60_000 })
       return { forecast: cached.payload, stale: true }
     }
@@ -636,42 +747,61 @@ export async function fetchGridForecast(): Promise<{ grid: GridForecast; stale: 
       `${MARINE_BASE}?latitude=${latStr}&longitude=${lonStr}` +
       `&hourly=wave_height,wave_period,wave_direction,sea_surface_temperature&forecast_days=7&timezone=UTC`
 
-    const [windRaw, marineRaw] = await Promise.all([getJson(windUrl), getJson(marineUrl)])
+    // independently, as for a point: the wind is the grid, the sea is optional
+    const [windR, marineR] = await Promise.allSettled([getJson(windUrl), getJson(marineUrl)])
+    if (windR.status === 'rejected') throw windR.reason
+    const windRaw = windR.value
     const windArr = (Array.isArray(windRaw) ? windRaw : [windRaw]) as Array<{
       latitude: number
       longitude: number
       hourly: ModelHourly
     }>
-    const marineArr = (Array.isArray(marineRaw) ? marineRaw : [marineRaw]) as Array<{
-      hourly?: {
-        wave_height: (number | null)[]
-        wave_period: (number | null)[]
-        wave_direction: (number | null)[]
-        sea_surface_temperature?: (number | null)[]
+    const time = windArr[0]?.hourly.time ?? []
+    type SeaHourly = {
+      wave_height: (number | null)[]
+      wave_period: (number | null)[]
+      wave_direction: (number | null)[]
+      sea_surface_temperature?: (number | null)[]
+    }
+    let marineArr: Array<{ hourly?: SeaHourly }> = []
+    // no sea this time: the cached grid's, re-timed — same lattice, so
+    // cell i is cell i
+    let carry: { at: Map<number, number>; prev: GridForecast } | null = null
+    if (marineR.status === 'fulfilled') {
+      const raw = marineR.value
+      marineArr = (Array.isArray(raw) ? raw : [raw]) as Array<{ hourly?: SeaHourly }>
+    } else {
+      const prev = await cacheGet<GridForecast>(GRID_KEY)
+      if (prev && prev.payload.cells.length === windArr.length) {
+        carry = { at: hourMap(prev.payload.time), prev: prev.payload }
       }
-    }>
+    }
 
     const cells: GridCell[] = windArr.map((w, i) => {
       const blended = blendWind(w.hourly)
+      const sea = marineArr[i]?.hourly
+      const old = carry?.prev.cells[i]
       return {
         lon: lons[i],
         lat: lats[i],
         windKn: blended.windKn,
         gustKn: blended.gustKn,
         windDir: blended.windDir,
-        waveM: marineArr[i]?.hourly?.wave_height ?? [],
-        wavePeriodS: marineArr[i]?.hourly?.wave_period ?? [],
+        waveM: sea?.wave_height ?? (carry ? retime(carry.at, old?.waveM, time) : []),
+        wavePeriodS: sea?.wave_period ?? (carry ? retime(carry.at, old?.wavePeriodS, time) : []),
         precipProbPct: bm(w.hourly, 'precipitation_probability'),
         weatherCode: bm(w.hourly, 'weather_code'),
-        waveDir: marineArr[i]?.hourly?.wave_direction ?? [],
-        waterTempC: marineArr[i]?.hourly?.sea_surface_temperature ?? [],
+        waveDir: sea?.wave_direction ?? (carry ? retime(carry.at, old?.waveDir, time) : []),
+        waterTempC:
+          sea?.sea_surface_temperature ?? (carry ? retime(carry.at, old?.waterTempC, time) : []),
       }
     })
 
     const grid: GridForecast = {
       fetchedAt: Date.now(),
-      time: windArr[0]?.hourly.time ?? [],
+      time,
       cells,
+      ...(carry && { wavesFetchedAt: carry.prev.wavesFetchedAt ?? carry.prev.fetchedAt }),
     }
     await cachePut(GRID_KEY, grid)
     return { grid, stale: false }

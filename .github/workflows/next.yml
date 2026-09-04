@@ -69,10 +69,9 @@ jobs:
           apiToken: ${{ secrets.next }}
           accountId: ebcafd8e3dbdaad405e17dfb174c0f0f
           # the project exists from the trial days with `discover` as its
-          # production branch; this points production at dev (idempotent)
+          # production branch; this points production at dev (idempotent).
+          # The action runs preCommands ONE LINE AT A TIME — no continuations.
           preCommands: |
             npx wrangler pages project create sandies-next --production-branch=dev || true
-            curl -sf -X PATCH "https://api.cloudflare.com/client/v4/accounts/ebcafd8e3dbdaad405e17dfb174c0f0f/pages/projects/sandies-next" \
-              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
-              --data '{"production_branch":"dev"}' > /dev/null && echo "production branch: dev"
+            curl -s -X PATCH "https://api.cloudflare.com/client/v4/accounts/ebcafd8e3dbdaad405e17dfb174c0f0f/pages/projects/sandies-next" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data '{"production_branch":"dev"}' | head -c 400; echo
           command: pages deploy app/dist --project-name=sandies-next --branch=dev --commit-dirty=true

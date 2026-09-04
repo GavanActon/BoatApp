@@ -117,7 +117,7 @@ export default function CircleSettings() {
 
   return (
     <>
-      <div className="panel-section">Trip sharing</div>
+      <div className="panel-section">Crews</div>
 
       <div className="row">
         <div className="row-text">
@@ -222,7 +222,7 @@ export default function CircleSettings() {
         </button>
       </div>
       {note && <div className="circle-note">{note}</div>}
-      <div className="circle-note dim">shared per trip · position · where to · when · nothing kept</div>
+      <div className="circle-note dim">the crew sees · your plan · your trip, cast-off to home · nothing between</div>
     </>
   )
 }

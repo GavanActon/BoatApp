@@ -11,7 +11,7 @@ import {
 import { knToUnit, SPEED_UNITS, speedUnitLabel, unitToKn } from '../../units'
 import { IconMinus, IconPlus } from '../icons'
 import SeaRamp from '../SeaRamp'
-import CircleSettings from '../../circle/CircleSettings'
+import OfflinePanel from './OfflinePanel'
 
 /** One tuning slider row — the motion layers are dialled in on the water,
  *  not in code, so every parameter that shapes the look gets one of these. */
@@ -243,9 +243,10 @@ export default function LayersPanel() {
         />
       </label>
 
-      {/* the circle: who's out, and whether you are — with the boat, above
-          the folded groups */}
-      <CircleSettings />
+      {/* the chart download: a once-a-season chore, so it lives with the
+          knobs rather than on the dock */}
+      <div className="panel-section">Charts offline</div>
+      <OfflinePanel />
 
       <div className="panel-section">More</div>
 

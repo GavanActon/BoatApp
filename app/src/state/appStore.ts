@@ -3,7 +3,9 @@ import { persist } from 'zustand/middleware'
 import type { SpeedUnit } from '../units'
 
 // 'discover' is the trial's sheet (src/discover) — opened from its glyph, not a tab
-export type SheetTab = 'places' | 'layers' | 'weather' | 'tracks' | 'offline' | 'discover'
+// 'layers' is Settings (the name on the door changed; the id did not);
+// 'log' is the trips (the old Tracks door); Offline lives inside Settings
+export type SheetTab = 'places' | 'crew' | 'log' | 'weather' | 'layers' | 'discover'
 export type DepthUnit = 'm' | 'ft'
 
 interface LayerVisibility {

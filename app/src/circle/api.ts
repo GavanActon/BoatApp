@@ -1,5 +1,5 @@
 import { fetchTimeout } from '../weather/openMeteo'
-import type { Boat, BoatTrip, Circle } from './store'
+import type { Boat, BoatTrip, Circle, Member, Plan } from './store'
 
 /**
  * The circle API client. One Worker at api.sandies.app (see /worker); the
@@ -38,14 +38,33 @@ export async function createCircle(name: string, deviceId: string, deviceKey: st
   return { id: r.id, secret: r.secret, name: r.name }
 }
 
-/** The circle's name and every boat out in it (the server already drops
- *  boats silent for 12 h). */
-export async function fetchCircle(c: Circle): Promise<{ name: string; boats: Boat[] }> {
+/** The circle's name, everyone in it, and every boat out in it (the server
+ *  already drops boats silent for 12 h and plans two hours past their
+ *  out-time). */
+export async function fetchCircle(c: Circle): Promise<{ name: string; boats: Boat[]; members: Member[] }> {
   const r = (await call(`/circle/${c.id}`, { secret: c.secret })) as {
     name: string
     boats: Omit<Boat, 'circleId'>[]
+    members?: Omit<Member, 'circleId'>[]
   }
-  return { name: r.name, boats: r.boats.map((b) => ({ ...b, circleId: c.id })) }
+  return {
+    name: r.name,
+    boats: r.boats.map((b) => ({ ...b, circleId: c.id })),
+    members: (r.members ?? []).map((m) => ({ ...m, circleId: c.id })),
+  }
+}
+
+export interface MemberRecord {
+  deviceId: string
+  deviceKey: string
+  name: string
+  boat: string
+  plan: Plan | null
+}
+
+/** Join, restate the skipper card, or post (or clear) a plan. */
+export async function postMember(c: Circle, record: MemberRecord): Promise<void> {
+  await call(`/circle/${c.id}/member`, { method: 'PUT', secret: c.secret, body: JSON.stringify(record) })
 }
 
 export interface OwnRecord {

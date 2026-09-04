@@ -7,7 +7,13 @@ import { useAppStore } from '../../state/appStore'
 import { homeCenter } from '../../state/placesStore'
 import { agoLabel, dayLabel, isToday, startOfDayMs, timeLabel } from '../../time'
 import { useGpsStore } from '../../tracking/gpsStore'
-import { lastPointSource, openMeteoLastError, type PointForecast } from '../../weather/openMeteo'
+import {
+  lastPointSource,
+  marineHold,
+  openMeteoLastError,
+  pointWavesCarriedFrom,
+  type PointForecast,
+} from '../../weather/openMeteo'
 import { waveOverlayStatus } from '../../weather/rdwps'
 import { windOverlayStatus } from '../../weather/hrdps'
 import { onWeatherGrid, pointForecastCached, refreshWeatherGrid, weatherGridInfo } from '../../weather/weatherLayer'
@@ -197,6 +203,11 @@ function DataStatus() {
         ? 'RDWPS run too old — using global model'
         : 'RDWPS unavailable — using global model'
   const waveWarn = waves.state !== 'active' || waves.runAgeMs > 11 * 3600_000
+  // the global model's sea (days 3–7, and the whole week when RDWPS is
+  // out) is an older copy's when its host failed — say so, with the
+  // reason while the host is being left alone
+  const carried = pointWavesCarriedFrom() ?? grid?.wavesCarriedFrom ?? null
+  const hold = marineHold()
 
   const windDesc =
     wind.state === 'active'
@@ -254,6 +265,12 @@ function DataStatus() {
           <span className="row-title">Waves</span>
           <span className="row-desc">{waveDesc}</span>
           <span className="row-desc">{`new run ~${timeLabel(nextWaveRunMs())}`}</span>
+          {carried != null && (
+            <span className="row-desc">
+              {`global model: last good copy, ${agoLabel(Date.now() - carried)}`}
+              {hold && ` · ${hold.reason}`}
+            </span>
+          )}
         </div>
         <em className={waveWarn ? 'age-badge stale' : 'age-badge'}>
           {waves.state === 'active'

@@ -29,6 +29,23 @@ CREATE TABLE IF NOT EXISTS boats (
 );
 
 CREATE INDEX IF NOT EXISTS boats_updated ON boats (updated);
+
+-- The crew: one row per member per circle from the moment they join —
+-- name, boat, when they joined, and the plan they have posted (a
+-- destination and a time, never a position). Position and trip live in
+-- `boats`, which expires after 12 h of silence; this row does not, until
+-- the member leaves or the circle lapses.
+CREATE TABLE IF NOT EXISTS members (
+  circle_id TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  device_key_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  boat TEXT NOT NULL,
+  joined INTEGER NOT NULL,
+  plan TEXT,
+  updated INTEGER NOT NULL,
+  PRIMARY KEY (circle_id, device_id)
+);
 CREATE INDEX IF NOT EXISTS circles_last_post ON circles (last_post);
 
 -- Usage stats (app/src/stats): one row per event, posted in batches by the

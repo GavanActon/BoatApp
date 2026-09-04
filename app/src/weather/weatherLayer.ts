@@ -593,9 +593,18 @@ export function weatherGridInfo(): {
   waves: { model: string; run: string } | null
   /** Non-null while HRDPS wind from ECCC GeoMet is overlaid on the grid. */
   wind: { model: string; run: string } | null
+  /** When the global-model sea under this grid was fetched, where that is
+   *  an older copy's carried through a failed marine call — else null. */
+  wavesCarriedFrom: number | null
 } | null {
   return grid
-    ? { fetchedAt: grid.fetchedAt, stale: gridStale, waves: waveOverlayInfo(), wind: windOverlayInfo() }
+    ? {
+        fetchedAt: grid.fetchedAt,
+        stale: gridStale,
+        waves: waveOverlayInfo(),
+        wind: windOverlayInfo(),
+        wavesCarriedFrom: grid.wavesFetchedAt ?? null,
+      }
     : null
 }
 

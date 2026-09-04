@@ -2,8 +2,8 @@ import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { useRouteStore } from '../routing/routeStore'
 import { endTrip, startTrip } from '../routing/planner'
-import { fetchCircle, parseJoinCode, postBoat, removeBoat, type OwnRecord } from './api'
-import { useCircleStore, type BoatTrip, type Circle } from './store'
+import { fetchCircle, parseJoinCode, postBoat, postMember as putMember, removeBoat, type OwnRecord } from './api'
+import { useCircleStore, type BoatTrip, type Circle, type Plan } from './store'
 
 /**
  * The circle's two clocks.
@@ -25,10 +25,18 @@ import { useCircleStore, type BoatTrip, type Circle } from './store'
  * it resets to the default when a new trip is planned and when a trip
  * ends. Nothing posts before cast-off or after the end, whatever the
  * switch says, so a boat on the trailer is never on the chart.
+ *
+ * The member record is the third clock, and it needs no fix: who this
+ * boat is (on joining and whenever the skipper card changes) and the PLAN
+ * — destination and time, the moment a time is picked (§0.4: a spot tap
+ * explores, a time tap plans). The plan is restated on every change,
+ * cleared at cast-off (the live record takes over) and when the trip is
+ * cleared, and lapses on the server two hours past its out-time.
  */
 
 const POLL_MS = 60_000
 const POST_MS = 2 * 60_000
+const MEMBER_DEBOUNCE_MS = 1500
 const LISTENERS = new Set<() => void>()
 
 /** Run `cb` after every successful poll. */
@@ -52,7 +60,7 @@ export function pollCircles(): Promise<void> {
     for (const c of s.circles) {
       try {
         const r = await fetchCircle(c)
-        useCircleStore.getState().setBoats(c.id, r.boats)
+        useCircleStore.getState().setCircle(c.id, r.boats, r.members)
       } catch (e) {
         failed = e instanceof Error ? e.message : String(e)
       }
@@ -125,6 +133,46 @@ export async function postNow(override?: { trip: BoatTrip | null }): Promise<voi
   }
 }
 
+/** The plan as the crew should hear it: a destination with a picked
+ *  out-time, not yet under way, while this trip is shared. */
+function ownPlan(): Plan | null {
+  const rs = useRouteStore.getState()
+  const app = useAppStore.getState()
+  if (!useCircleStore.getState().sharing) return null
+  if (!rs.destination || rs.tripStartedAt != null || app.planTimeMs == null) return null
+  return {
+    dest: { name: rs.destination.name, lon: rs.destination.lon, lat: rs.destination.lat },
+    outMs: app.planTimeMs,
+    backMs: app.planEndMs,
+  }
+}
+
+let memberTimer: ReturnType<typeof setTimeout> | null = null
+let memberSent = ''
+
+/** Tell every circle who this boat is and what it plans — coalesced, and
+ *  only when something about that changed since the last post. Needs no
+ *  fix: a plan is where and when, not a position. */
+export function postMember(opts: { force?: boolean } = {}): void {
+  if (memberTimer) clearTimeout(memberTimer)
+  memberTimer = setTimeout(() => {
+    memberTimer = null
+    const s = useCircleStore.getState()
+    if (!s.circles.length) return
+    const record = {
+      deviceId: s.deviceId,
+      deviceKey: s.deviceKey,
+      name: s.skipper.name.trim() || 'A boat',
+      boat: s.skipper.boat.trim(),
+      plan: ownPlan(),
+    }
+    const key = JSON.stringify([record.name, record.boat, record.plan, s.circles.map((c) => c.id)])
+    if (!opts.force && key === memberSent) return
+    memberSent = key
+    void Promise.all(s.circles.map((c) => putMember(c, record).catch(() => undefined)))
+  }, MEMBER_DEBOUNCE_MS)
+}
+
 /** Stop showing this trip: a last "home" record, then sharing goes off.
  *  Called by the trip's end and by the card's "stop". */
 export async function stopSharing(): Promise<void> {
@@ -150,8 +198,10 @@ export async function joinCircle(codeOrLink: string): Promise<Circle> {
   const r = await fetchCircle(probe)
   const c = { ...probe, name: r.name }
   useCircleStore.getState().addCircle(c)
-  useCircleStore.getState().setBoats(c.id, r.boats)
+  useCircleStore.getState().setCircle(c.id, r.boats, r.members)
   for (const cb of LISTENERS) cb()
+  // joining IS the first word: the crew hears who arrived at once
+  postMember({ force: true })
   return c
 }
 
@@ -165,9 +215,12 @@ export function initCircle() {
     // the verify harness drives two "phones" through the same doors the app uses
     ;(window as unknown as Record<string, unknown>).__circle = {
       store: useCircleStore,
+      app: useAppStore,
       postNow,
+      postMember,
       pollCircles,
       stopSharing,
+      leaveCircle,
       startTrip,
       endTrip,
     }
@@ -230,5 +283,17 @@ export function initCircle() {
         s.setSharing(defaultSharing())
       }
     }
+    // a new crew, a renamed skipper, the switch: the member record follows
+    if (s.circles !== prev.circles || s.skipper !== prev.skipper || s.sharing !== prev.sharing) postMember()
   })
+  // the plan: destination + time pick, gone at cast-off or with the ✕
+  useRouteStore.subscribe((s, prev) => {
+    if (s.destination !== prev.destination || s.tripStartedAt !== prev.tripStartedAt) postMember()
+  })
+  useAppStore.subscribe((s, prev) => {
+    if (s.planTimeMs !== prev.planTimeMs || s.planEndMs !== prev.planEndMs) postMember()
+  })
+  // and on every launch, so a member row exists for anyone who joined
+  // before there was one
+  postMember()
 }

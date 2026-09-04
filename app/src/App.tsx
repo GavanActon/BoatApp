@@ -16,6 +16,7 @@ import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
 import { initCircle } from './circle/sync'
 import { initCircleLayer } from './circle/circleLayer'
+import { crewChanged, useCircleStore } from './circle/store'
 import { initStats } from './stats/hooks'
 import { useRouteStore } from './routing/routeStore'
 import { initMeasureLayer } from './measure/measureLayer'
@@ -33,15 +34,14 @@ import {
   IconLocate,
   IconRuler,
   IconSliders,
-  IconTrack,
   IconWind,
-  IconDownload,
-  IconDownloadDone,
   IconPlaces,
+  IconCrew,
+  IconLog,
 } from './ui/icons'
 const LayersPanel = lazy(() => import('./ui/panels/LayersPanel'))
 const PlacesPanel = lazy(() => import('./ui/panels/PlacesPanel'))
-const OfflinePanel = lazy(() => import('./ui/panels/OfflinePanel'))
+const CrewPanel = lazy(() => import('./circle/CrewPanel'))
 const TracksPanel = lazy(() => import('./ui/panels/TracksPanel'))
 const WeatherPanel = lazy(() => import('./ui/panels/WeatherPanel'))
 import TripCard from './ui/TripCard'
@@ -61,15 +61,17 @@ const GOOD_FIX_ACCURACY_M = 150
 const FOLLOW_DECIDE_TIMEOUT_MS = 10000
 
 // No Trip tab: the dock IS the trip surface, and it is always present (§2.5)
+// Five doors: where · who · what happened · conditions · the knobs. Tracks
+// became the Log; Offline lives inside Settings (a once-a-season chore)
 const TABS: { id: SheetTab; name: string; icon: typeof IconLayers }[] = [
   // Places first: WHICH PLACE is the question the app opens on (§0.2) — this
   // tab superseded the dock's old "Here" bar
   { id: 'places', name: 'Places', icon: IconPlaces },
+  { id: 'crew', name: 'Crew', icon: IconCrew },
+  { id: 'log', name: 'Log', icon: IconLog },
+  { id: 'weather', name: 'Weather', icon: IconWind },
   // still id 'layers' everywhere in code — only the name on the door changed
   { id: 'layers', name: 'Settings', icon: IconSliders },
-  { id: 'weather', name: 'Weather', icon: IconWind },
-  { id: 'tracks', name: 'Tracks', icon: IconTrack },
-  { id: 'offline', name: 'Offline', icon: IconDownload },
 ]
 
 /** Stands in for a dismissed trip card — tapping it
@@ -341,7 +343,7 @@ function FabStack() {
 export default function App() {
   const sheetTab = useAppStore((s) => s.sheetTab)
   const setSheetTab = useAppStore((s) => s.setSheetTab)
-  const offlineReady = useAppStore((s) => s.offlineReady)
+  const crewNews = useCircleStore(crewChanged)
   const setOnline = useAppStore((s) => s.setOnline)
   const measuring = useMeasureStore((s) => s.active)
   const destination = useRouteStore((s) => s.destination)
@@ -452,21 +454,20 @@ export default function App() {
         {!routing && (
           <div className="tabdock glass">
             {TABS.map((t) => {
-              // once the region's charts are all aboard, the Offline tab says
-              // so at a glance: the download arrow becomes a check and the
-              // label reads "On board" — nobody should wonder at the dock
-              // whether they remembered to download
-              const ready = t.id === 'offline' && offlineReady
-              const Icon = ready ? IconDownloadDone : t.icon
+              const Icon = t.icon
+              // a dot on Crew when someone joined, planned or moved since the
+              // sheet was last open — the "I didn't know" fix, before push
+              const dot = t.id === 'crew' && crewNews
               return (
                 <button
                   key={t.id}
-                  className={`tab ${sheetTab === t.id ? 'tab-on' : ''}${ready ? ' tab-ready' : ''}`}
+                  className={`tab ${sheetTab === t.id ? 'tab-on' : ''}`}
                   onClick={() => setSheetTab(sheetTab === t.id ? null : t.id)}
-                  aria-label={ready ? 'Offline charts downloaded' : t.name}
+                  aria-label={dot ? `${t.name} — something new` : t.name}
                 >
+                  {dot && <i className="tab-dot" aria-hidden="true" />}
                   <Icon size={20} />
-                  <span>{ready ? 'On board' : t.name}</span>
+                  <span>{t.name}</span>
                 </button>
               )
             })}
@@ -482,10 +483,10 @@ export default function App() {
         <BottomSheet title={activeTab.name} openPct={useDiscoverStore.getState().target ? 88 : undefined}>
           <Suspense fallback={null}>
             {sheetTab === 'places' && <PlacesPanel />}
-            {sheetTab === 'layers' && <LayersPanel />}
+            {sheetTab === 'crew' && <CrewPanel />}
+            {sheetTab === 'log' && <TracksPanel />}
             {sheetTab === 'weather' && <WeatherPanel />}
-            {sheetTab === 'tracks' && <TracksPanel />}
-            {sheetTab === 'offline' && <OfflinePanel />}
+            {sheetTab === 'layers' && <LayersPanel />}
           </Suspense>
         </BottomSheet>
       )}

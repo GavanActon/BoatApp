@@ -9,9 +9,10 @@
  * circle after 90 d. There is no trail and no history to leak.
  *
  *   POST   /circle             { name, deviceId, deviceKey }   → { id, secret, name }
- *   GET    /circle/:id         Bearer secret                    → { id, name, boats: [...] }
- *   PUT    /circle/:id/boat    Bearer secret + body             → 204
- *   DELETE /circle/:id/boat    Bearer secret + { deviceId, deviceKey } → 204
+ *   GET    /circle/:id         Bearer secret                    → { id, name, boats: [...], members: [...] }
+ *   PUT    /circle/:id/member  Bearer secret + body             → 204   (join · skipper card · plan)
+ *   PUT    /circle/:id/boat    Bearer secret + body             → 204   (position + trip, under way)
+ *   DELETE /circle/:id/boat    Bearer secret + { deviceId, deviceKey } → 204   (leave)
  *   GET    /health
  *
  * Usage stats (app/src/stats) share the Worker and the database:
@@ -40,6 +41,10 @@ const SECRET_LEN = 12
 
 const BOAT_TTL_MS = 12 * 3600_000
 const CIRCLE_TTL_MS = 90 * 86400_000
+/** A plan whose out-time passed this long ago with no cast-off is gone. */
+const PLAN_LAPSE_MS = 2 * 3600_000
+/** The strip offers seven days; a plan further out than this is a typo. */
+const PLAN_AHEAD_MS = 14 * 86400_000
 const MAX_ROUTE_POINTS = 60
 const MAX_TEXT = 40
 
@@ -146,6 +151,38 @@ function trip(v: unknown): TripIn | null {
   }
 }
 
+interface PlanIn {
+  dest: { name: string | null; lon: number; lat: number }
+  outMs: number
+  backMs: number | null
+}
+
+/** A plan as the phone states it: where, when out, when back. No route,
+ *  no position. Null when there is none or it doesn't parse. */
+function plan(v: unknown, now: number): PlanIn | null {
+  if (!v || typeof v !== 'object') return null
+  const p = v as Record<string, unknown>
+  if (!p.dest || typeof p.dest !== 'object') return null
+  const d = p.dest as Record<string, unknown>
+  const lon = num(d.lon, -180, 180)
+  const lat = num(d.lat, -90, 90)
+  const outMs = num(p.outMs, now - PLAN_LAPSE_MS, now + PLAN_AHEAD_MS)
+  if (lon == null || lat == null || outMs == null) return null
+  const backMs = num(p.backMs, outMs, outMs + 7 * 86400_000)
+  return { dest: { name: text(d.name) || null, lon, lat }, outMs, backMs }
+}
+
+/** A stored plan, or null once its out-time is well past. */
+function livePlan(json: string | null, now: number): PlanIn | null {
+  if (!json) return null
+  try {
+    const p = JSON.parse(json) as PlanIn
+    return p.outMs > now - PLAN_LAPSE_MS ? p : null
+  } catch {
+    return null
+  }
+}
+
 async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   try {
     const b = (await req.json()) as unknown
@@ -184,8 +221,35 @@ interface CircleRow {
   secret_hash: string
 }
 
+/** The device key pinned to this device in this circle, from whichever
+ *  table saw it first; null when the device is new here. */
+async function pinnedKey(env: Env, circleId: string, deviceId: string): Promise<string | null> {
+  const m = await env.DB.prepare('SELECT device_key_hash FROM members WHERE circle_id = ? AND device_id = ?')
+    .bind(circleId, deviceId)
+    .first<{ device_key_hash: string }>()
+  if (m) return m.device_key_hash
+  const b = await env.DB.prepare('SELECT device_key_hash FROM boats WHERE circle_id = ? AND device_id = ?')
+    .bind(circleId, deviceId)
+    .first<{ device_key_hash: string }>()
+  return b?.device_key_hash ?? null
+}
+
 async function getCircle(env: Env, circle: CircleRow): Promise<Response> {
-  const since = Date.now() - BOAT_TTL_MS
+  const now = Date.now()
+  const since = now - BOAT_TTL_MS
+  const memberRows = await env.DB.prepare(
+    'SELECT device_id, name, boat, joined, plan, updated FROM members WHERE circle_id = ? ORDER BY joined',
+  )
+    .bind(circle.id)
+    .all<{ device_id: string; name: string; boat: string; joined: number; plan: string | null; updated: number }>()
+  const members = (memberRows.results ?? []).map((r) => ({
+    deviceId: r.device_id,
+    name: r.name,
+    boat: r.boat,
+    joined: r.joined,
+    plan: livePlan(r.plan, now),
+    updated: r.updated,
+  }))
   const rows = await env.DB.prepare(
     'SELECT device_id, name, boat, lon, lat, sog_kn, cog, fix_ts, trip, updated FROM boats WHERE circle_id = ? AND updated > ? ORDER BY updated DESC',
   )
@@ -214,7 +278,33 @@ async function getCircle(env: Env, circle: CircleRow): Promise<Response> {
     trip: r.trip ? (JSON.parse(r.trip) as TripIn) : null,
     updated: r.updated,
   }))
-  return json({ id: circle.id, name: circle.name, boats, now: Date.now() })
+  return json({ id: circle.id, name: circle.name, boats, members, now })
+}
+
+/** Join, or say who you are, or state a plan: the member row. The plan
+ *  is replaced by what the body carries — absent or null clears it. */
+async function putMember(req: Request, env: Env, circleId: string): Promise<Response> {
+  const b = await readBody(req)
+  if (!b) return err(400, 'body must be JSON')
+  const dev = deviceOf(b)
+  if (!dev) return err(400, 'deviceId and deviceKey required')
+  const keyHash = await sha256(dev.key)
+  const pinned = await pinnedKey(env, circleId, dev.id)
+  if (pinned && pinned !== keyHash) return err(403, 'this boat belongs to another device')
+  const now = Date.now()
+  const name = text(b.name) || 'A boat'
+  const boat = text(b.boat)
+  const p = plan(b.plan, now)
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, joined, plan, updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (circle_id, device_id) DO UPDATE SET
+         name = excluded.name, boat = excluded.boat, plan = excluded.plan, updated = excluded.updated`,
+    ).bind(circleId, dev.id, keyHash, name, boat, now, p ? JSON.stringify(p) : null, now),
+    env.DB.prepare('UPDATE circles SET last_post = ? WHERE id = ?').bind(now, circleId),
+  ])
+  return new Response(null, { status: 204, headers: CORS })
 }
 
 async function putBoat(req: Request, env: Env, circleId: string): Promise<Response> {
@@ -223,10 +313,8 @@ async function putBoat(req: Request, env: Env, circleId: string): Promise<Respon
   const dev = deviceOf(b)
   if (!dev) return err(400, 'deviceId and deviceKey required')
   const keyHash = await sha256(dev.key)
-  const existing = await env.DB.prepare('SELECT device_key_hash FROM boats WHERE circle_id = ? AND device_id = ?')
-    .bind(circleId, dev.id)
-    .first<{ device_key_hash: string }>()
-  if (existing && existing.device_key_hash !== keyHash) return err(403, 'this boat belongs to another device')
+  const pinned = await pinnedKey(env, circleId, dev.id)
+  if (pinned && pinned !== keyHash) return err(403, 'this boat belongs to another device')
 
   const name = text(b.name) || 'A boat'
   const boat = text(b.boat)
@@ -248,6 +336,14 @@ async function putBoat(req: Request, env: Env, circleId: string): Promise<Respon
          sog_kn = excluded.sog_kn, cog = excluded.cog, fix_ts = excluded.fix_ts,
          trip = excluded.trip, updated = excluded.updated`,
     ).bind(circleId, dev.id, keyHash, name, boat, lon, lat, sogKn, cog, fixTs, t ? JSON.stringify(t) : null, now),
+    // a boat that posts is a member, whatever app version it runs; the
+    // plan is left as it stands (cast-off clears it through /member)
+    env.DB.prepare(
+      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, joined, plan, updated)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+       ON CONFLICT (circle_id, device_id) DO UPDATE SET
+         name = excluded.name, boat = excluded.boat, updated = excluded.updated`,
+    ).bind(circleId, dev.id, keyHash, name, boat, now, now),
     env.DB.prepare('UPDATE circles SET last_post = ? WHERE id = ?').bind(now, circleId),
   ])
   return new Response(null, { status: 204, headers: CORS })
@@ -258,15 +354,13 @@ async function deleteBoat(req: Request, env: Env, circleId: string): Promise<Res
   const dev = b ? deviceOf(b) : null
   if (!dev) return err(400, 'deviceId and deviceKey required')
   const keyHash = await sha256(dev.key)
-  const res = await env.DB.prepare('DELETE FROM boats WHERE circle_id = ? AND device_id = ? AND device_key_hash = ?')
-    .bind(circleId, dev.id, keyHash)
-    .run()
-  if (!res.meta.changes) {
-    const any = await env.DB.prepare('SELECT 1 FROM boats WHERE circle_id = ? AND device_id = ?')
-      .bind(circleId, dev.id)
-      .first()
-    if (any) return err(403, 'this boat belongs to another device')
-  }
+  const pinned = await pinnedKey(env, circleId, dev.id)
+  if (pinned && pinned !== keyHash) return err(403, 'this boat belongs to another device')
+  // leaving takes the member row and the position with it
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM boats WHERE circle_id = ? AND device_id = ?').bind(circleId, dev.id),
+    env.DB.prepare('DELETE FROM members WHERE circle_id = ? AND device_id = ?').bind(circleId, dev.id),
+  ])
   return new Response(null, { status: 204, headers: CORS })
 }
 
@@ -439,6 +533,9 @@ async function purge(env: Env): Promise<void> {
     env.DB.prepare('DELETE FROM boats WHERE circle_id IN (SELECT id FROM circles WHERE last_post < ?)').bind(
       now - CIRCLE_TTL_MS,
     ),
+    env.DB.prepare('DELETE FROM members WHERE circle_id IN (SELECT id FROM circles WHERE last_post < ?)').bind(
+      now - CIRCLE_TTL_MS,
+    ),
     env.DB.prepare('DELETE FROM circles WHERE last_post < ?').bind(now - CIRCLE_TTL_MS),
   ])
 }
@@ -458,7 +555,7 @@ export default {
         return await statsSummary(env, days)
       }
       if (path === '/circle' && req.method === 'POST') return await createCircle(req, env)
-      const m = /^\/circle\/([A-Za-z0-9]{6})(\/boat)?$/.exec(path)
+      const m = /^\/circle\/([A-Za-z0-9]{6})(\/boat|\/member)?$/.exec(path)
       if (m) {
         const id = m[1].toUpperCase()
         const secret = bearer(req)
@@ -468,7 +565,8 @@ export default {
           .first<CircleRow>()
         if (!circle || circle.secret_hash !== (await sha256(secret))) return err(403, 'not a member of this circle')
         if (!m[2] && req.method === 'GET') return await getCircle(env, circle)
-        if (m[2] && req.method === 'PUT') return await putBoat(req, env, id)
+        if (m[2] === '/member' && req.method === 'PUT') return await putMember(req, env, id)
+        if (m[2] === '/boat' && req.method === 'PUT') return await putBoat(req, env, id)
         if (m[2] && req.method === 'DELETE') return await deleteBoat(req, env, id)
       }
       return err(404, 'no such route')

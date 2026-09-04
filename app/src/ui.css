@@ -2828,6 +2828,20 @@
 .circle-note.dim { opacity: 0.6; }
 .circle-optin { border-top: 1px solid rgba(233, 242, 250, 0.1); }
 
+/* the Crew sheet: the roster in three groups, then the crews themselves.
+   Rows sit in the sheet's own 16px gutter, so they carry the panel's 4px */
+.crew .bo-row { padding: 9px 4px; border-bottom: 1px solid rgba(126, 178, 224, 0.08); }
+.crew .bo-row:last-child { border-bottom: none; }
+.crew .bo-name { font-size: 15px; }
+.crew .bo-what { font-size: 14.5px; }
+.crew .bo-what b { color: var(--c-text); font-weight: 600; }
+.crew .bo-row.ashore .bo-name { color: var(--c-text-dim); }
+.crew .panel-section { display: flex; justify-content: space-between; align-items: baseline; }
+.crew .panel-section .meta { text-transform: none; letter-spacing: 0; font-weight: 500; }
+/* the dock's word that something in the crew is new since the last look */
+.tab-dot { position: absolute; top: 5px; right: calc(50% - 16px); width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent); box-shadow: 0 0 0 2px rgba(12, 23, 36, 0.96); }
+.tab { position: relative; }
+
 .boats-out { padding: 6px 0 4px; border-bottom: 1px solid rgba(233, 242, 250, 0.1); margin-bottom: 6px; }
 .bo-head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 16px 4px; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
 .bo-meta { text-transform: none; letter-spacing: 0; opacity: 0.8; }

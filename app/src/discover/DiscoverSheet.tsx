@@ -494,12 +494,13 @@ function PointerRow({ row, chapterId, inLevels }: { row: SetupRow; chapterId?: s
         app().setSheetTab('places')
         break
       case 'offline':
+        // the download lives in Settings now, under Charts offline
         disc.setReturnTo(true)
-        app().setSheetTab('offline')
+        app().setSheetTab('layers')
         break
       case 'tracks':
         disc.setReturnTo(true)
-        app().setSheetTab('tracks')
+        app().setSheetTab('log')
         break
       case 'helm':
         app().setSheetTab(null)
