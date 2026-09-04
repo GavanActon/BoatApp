@@ -10,7 +10,7 @@
  *
  *   POST   /circle             { name, deviceId, deviceKey }   → { id, secret, name }
  *   GET    /circle/:id         Bearer secret                    → { id, name, boats: [...], members: [...] }
- *   PUT    /circle/:id/member  Bearer secret + body             → 204   (join · skipper card · plan)
+ *   PUT    /circle/:id/member  Bearer secret + body             → 204   (join · skipper card: name, boat, mark, flair · plan)
  *   PUT    /circle/:id/boat    Bearer secret + body             → 204   (position + trip, under way)
  *   DELETE /circle/:id/boat    Bearer secret + { deviceId, deviceKey } → 204   (leave)
  *   GET    /push/key           → { key }   the VAPID public key to subscribe with
@@ -119,6 +119,65 @@ function text(v: unknown, max = MAX_TEXT): string {
 
 function num(v: unknown, lo: number, hi: number): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : null
+}
+
+// ---------- the mark: an emoji, and its optional flair ----------
+
+const GLOWS = new Set(['none', 'crew', 'white', 'gold', 'ice', 'pink'])
+const TINTS = new Set(['solid', 'fade', 'frost', 'metal', 'ink', 'glass'])
+const EFFECTS = new Set(['none', 'sparkle', 'pulse', 'halo', 'wake', 'bubbles'])
+
+/** One emoji (a grapheme, joiners and all), or ''. */
+function mark(v: unknown): string {
+  if (typeof v !== 'string') return ''
+  const t = v.trim()
+  if (!t || t.length > 16) return ''
+  if (!/^\p{Extended_Pictographic}/u.test(t)) return ''
+  const first = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)[Symbol.iterator]().next()
+  return first.done ? '' : first.value.segment
+}
+
+/** Flair as JSON for the row, or null when there is none. */
+function flair(v: unknown): string | null {
+  if (!v || typeof v !== 'object') return null
+  const f = v as Record<string, unknown>
+  const out = {
+    glow: typeof f.glow === 'string' && GLOWS.has(f.glow) ? f.glow : 'none',
+    neon: f.neon === true,
+    tint: typeof f.tint === 'string' && TINTS.has(f.tint) ? f.tint : 'solid',
+    effect: typeof f.effect === 'string' && EFFECTS.has(f.effect) ? f.effect : 'none',
+  }
+  if (out.glow === 'none' && out.tint === 'solid' && out.effect === 'none') return null
+  return JSON.stringify(out)
+}
+
+function parseFlair(json: string | null): unknown {
+  if (!json) return null
+  try {
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+let columnsReady: Promise<void> | null = null
+
+/** `mark` and `flair` came after the first databases. schema.sql carries
+ *  them for a fresh one; an existing table gets them here, once per
+ *  isolate. ALTER TABLE ADD COLUMN is not idempotent, so look first. */
+function ensureColumns(env: Env): Promise<void> {
+  columnsReady ??= (async () => {
+    for (const table of ['boats', 'members']) {
+      const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>()
+      const have = new Set((info.results ?? []).map((c) => c.name))
+      if (!have.has('mark')) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN mark TEXT NOT NULL DEFAULT ''`).run()
+      if (!have.has('flair')) await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN flair TEXT`).run()
+    }
+  })().catch((e: unknown) => {
+    columnsReady = null
+    throw e
+  })
+  return columnsReady
 }
 
 const STATES = new Set(['out', 'coming', 'there', 'heading-home', 'home'])
@@ -298,29 +357,34 @@ async function pinnedKey(env: Env, circleId: string, deviceId: string): Promise<
 }
 
 async function getCircle(env: Env, circle: CircleRow): Promise<Response> {
+  await ensureColumns(env)
   const now = Date.now()
   const since = now - BOAT_TTL_MS
   const memberRows = await env.DB.prepare(
-    'SELECT device_id, name, boat, joined, plan, updated FROM members WHERE circle_id = ? ORDER BY joined',
+    'SELECT device_id, name, boat, mark, flair, joined, plan, updated FROM members WHERE circle_id = ? ORDER BY joined',
   )
     .bind(circle.id)
-    .all<{ device_id: string; name: string; boat: string; joined: number; plan: string | null; updated: number }>()
+    .all<{ device_id: string; name: string; boat: string; mark: string; flair: string | null; joined: number; plan: string | null; updated: number }>()
   const members = (memberRows.results ?? []).map((r) => ({
     deviceId: r.device_id,
     name: r.name,
     boat: r.boat,
+    mark: r.mark,
+    flair: parseFlair(r.flair),
     joined: r.joined,
     plan: livePlan(r.plan, now),
     updated: r.updated,
   }))
   const rows = await env.DB.prepare(
-    'SELECT device_id, name, boat, lon, lat, sog_kn, cog, fix_ts, trip, updated FROM boats WHERE circle_id = ? AND updated > ? ORDER BY updated DESC',
+    'SELECT device_id, name, boat, mark, flair, lon, lat, sog_kn, cog, fix_ts, trip, updated FROM boats WHERE circle_id = ? AND updated > ? ORDER BY updated DESC',
   )
     .bind(circle.id, since)
     .all<{
       device_id: string
       name: string
       boat: string
+      mark: string
+      flair: string | null
       lon: number | null
       lat: number | null
       sog_kn: number | null
@@ -333,6 +397,8 @@ async function getCircle(env: Env, circle: CircleRow): Promise<Response> {
     deviceId: r.device_id,
     name: r.name,
     boat: r.boat,
+    mark: r.mark,
+    flair: parseFlair(r.flair),
     lon: r.lon,
     lat: r.lat,
     sogKn: r.sog_kn,
@@ -355,9 +421,12 @@ async function putMember(req: Request, env: Env, ctx: Ctx, circleId: string): Pr
   const keyHash = await sha256(dev.key)
   const pinned = await pinnedKey(env, circleId, dev.id)
   if (pinned && pinned !== keyHash) return err(403, 'this boat belongs to another device')
+  await ensureColumns(env)
   const now = Date.now()
   const name = text(b.name) || 'A boat'
   const boat = text(b.boat)
+  const mk = mark(b.mark)
+  const fl = flair(b.flair)
   const p = plan(b.plan, now)
   const before = await env.DB.prepare('SELECT plan FROM members WHERE circle_id = ? AND device_id = ?')
     .bind(circleId, dev.id)
@@ -372,11 +441,12 @@ async function putMember(req: Request, env: Env, ctx: Ctx, circleId: string): Pr
   }
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, joined, plan, updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, mark, flair, joined, plan, updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (circle_id, device_id) DO UPDATE SET
-         name = excluded.name, boat = excluded.boat, plan = excluded.plan, updated = excluded.updated`,
-    ).bind(circleId, dev.id, keyHash, name, boat, now, p ? JSON.stringify(p) : null, now),
+         name = excluded.name, boat = excluded.boat, mark = excluded.mark, flair = excluded.flair,
+         plan = excluded.plan, updated = excluded.updated`,
+    ).bind(circleId, dev.id, keyHash, name, boat, mk, fl, now, p ? JSON.stringify(p) : null, now),
     env.DB.prepare('UPDATE circles SET last_post = ? WHERE id = ?').bind(now, circleId),
   ])
   return new Response(null, { status: 204, headers: CORS })
@@ -391,8 +461,11 @@ async function putBoat(req: Request, env: Env, ctx: Ctx, circleId: string): Prom
   const pinned = await pinnedKey(env, circleId, dev.id)
   if (pinned && pinned !== keyHash) return err(403, 'this boat belongs to another device')
 
+  await ensureColumns(env)
   const name = text(b.name) || 'A boat'
   const boat = text(b.boat)
+  const mk = mark(b.mark)
+  const fl = flair(b.flair)
   const fix = b.fix && typeof b.fix === 'object' ? (b.fix as Record<string, unknown>) : {}
   const lon = num(fix.lon, -180, 180)
   const lat = num(fix.lat, -90, 90)
@@ -427,21 +500,22 @@ async function putBoat(req: Request, env: Env, ctx: Ctx, circleId: string): Prom
 
   await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO boats (circle_id, device_id, device_key_hash, name, boat, lon, lat, sog_kn, cog, fix_ts, trip, updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO boats (circle_id, device_id, device_key_hash, name, boat, mark, flair, lon, lat, sog_kn, cog, fix_ts, trip, updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (circle_id, device_id) DO UPDATE SET
-         name = excluded.name, boat = excluded.boat, lon = excluded.lon, lat = excluded.lat,
+         name = excluded.name, boat = excluded.boat, mark = excluded.mark, flair = excluded.flair,
+         lon = excluded.lon, lat = excluded.lat,
          sog_kn = excluded.sog_kn, cog = excluded.cog, fix_ts = excluded.fix_ts,
          trip = excluded.trip, updated = excluded.updated`,
-    ).bind(circleId, dev.id, keyHash, name, boat, lon, lat, sogKn, cog, fixTs, t ? JSON.stringify(t) : null, now),
+    ).bind(circleId, dev.id, keyHash, name, boat, mk, fl, lon, lat, sogKn, cog, fixTs, t ? JSON.stringify(t) : null, now),
     // a boat that posts is a member, whatever app version it runs; the
     // plan is left as it stands (cast-off clears it through /member)
     env.DB.prepare(
-      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, joined, plan, updated)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+      `INSERT INTO members (circle_id, device_id, device_key_hash, name, boat, mark, flair, joined, plan, updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
        ON CONFLICT (circle_id, device_id) DO UPDATE SET
-         name = excluded.name, boat = excluded.boat, updated = excluded.updated`,
-    ).bind(circleId, dev.id, keyHash, name, boat, now, now),
+         name = excluded.name, boat = excluded.boat, mark = excluded.mark, flair = excluded.flair, updated = excluded.updated`,
+    ).bind(circleId, dev.id, keyHash, name, boat, mk, fl, now, now),
     env.DB.prepare('UPDATE circles SET last_post = ? WHERE id = ?').bind(now, circleId),
   ])
   return new Response(null, { status: 204, headers: CORS })

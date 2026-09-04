@@ -3,7 +3,9 @@ import { useAppStore } from '../state/appStore'
 import { agoLabel, timeLabel } from '../time'
 import CircleSettings from './CircleSettings'
 import { boatAgeMs, describeBoat, showBoat } from './circleLayer'
+import Mark from './Mark'
 import { disablePush, enablePush, pushState, type PushState } from './push'
+import { flairSummary, type Flair } from './marks'
 import { boatColor, friendBoats, friendMembers, useCircleStore, type Boat, type Member, type Plan } from './store'
 import { onCirclePoll } from './sync'
 
@@ -11,7 +13,7 @@ import { onCirclePoll } from './sync'
  * The Crew sheet: everyone in the crews, in three groups — out now (a
  * position, cast-off to home), planning (where and when, no position),
  * ashore (home, or just joined) — then the crews themselves: the code,
- * the skipper card, the doors. Replaces Boats out (top of Places) and
+ * the doors — and last, your own skipper card. Replaces Boats out (top of Places) and
  * Settings › Trip sharing. Facts in fragments, no verdicts (§1.5).
  */
 
@@ -46,13 +48,18 @@ function describePlan(p: Plan, now: number): string {
   return parts.join(' · ')
 }
 
-/** "Name · Boat" behind the boat's own colour — the same dot the chart wears. */
-function who(m: { deviceId: string; name: string; boat: string }) {
+/** "Name · Boat" */
+function who(m: { name: string; boat: string }) {
+  return m.boat ? `${m.name} · ${m.boat}` : m.name
+}
+
+/** The boat's mark in its own colour — the same glyph the chart wears —
+ *  down the row's left. A wake only under way. */
+function markCell(m: { deviceId: string; mark: string; flair: Flair | null }, wake = false) {
   return (
-    <>
-      <i className="crew-dot" style={{ background: boatColor(m.deviceId) }} aria-hidden="true" />
-      {m.boat ? `${m.name} · ${m.boat}` : m.name}
-    </>
+    <span className="bo-ic">
+      <Mark size={26} mark={m.mark} color={boatColor(m.deviceId)} flair={m.flair} wake={wake} />
+    </span>
   )
 }
 
@@ -114,6 +121,7 @@ export default function CrewPanel() {
                 }}
                 aria-label={`${b.name}: ${describeBoat(b)}, position ${agoLabel(boatAgeMs(b, now))}`}
               >
+                {markCell(b, b.sogKn != null && b.sogKn >= 1)}
                 <span className="bo-name">{who(b)}</span>
                 <span className="bo-what">{describeBoat(b)}</span>
                 <span className="bo-age numeral">{agoLabel(boatAgeMs(b, now))}</span>
@@ -128,6 +136,7 @@ export default function CrewPanel() {
               </div>
               {planning.map((m) => (
                 <div key={m.deviceId} className="bo-row">
+                  {markCell(m)}
                   <span className="bo-name">{who(m)}</span>
                   <span className="bo-what">{describePlan(m.plan!, now)}</span>
                   <span className="bo-age numeral">{agoLabel(now - m.updated)}</span>
@@ -149,6 +158,7 @@ export default function CrewPanel() {
                     : `joined ${dayLabel(m.joined, now)}`
                 return (
                   <div key={m.deviceId} className="bo-row ashore">
+                    {markCell(m)}
                     <span className="bo-name">{who(m)}</span>
                     <span className="bo-what">{what}</span>
                   </div>
@@ -161,7 +171,29 @@ export default function CrewPanel() {
 
       {circles.length > 0 && <NotifyRow />}
       <CircleSettings />
+      <OwnCardRow />
     </div>
+  )
+}
+
+/** The last row: your own card, the way the crew sees it, and the way to
+ *  it — under the crews, never above them. */
+function OwnCardRow() {
+  const skipper = useCircleStore((s) => s.skipper)
+  const deviceId = useCircleStore((s) => s.deviceId)
+  const cardDone = useCircleStore((s) => s.cardDone)
+  const setCardOpen = useCircleStore((s) => s.setCardOpen)
+  const title = who(skipper) || 'Your skipper card'
+  const desc = cardDone ? ['your skipper card', flairSummary(skipper.flair)].filter(Boolean).join(' · ') : 'a mark · your name · your boat'
+  return (
+    <button className="row sk-row" onClick={() => setCardOpen({ then: null })} aria-label="Edit your skipper card">
+      <Mark size={30} mark={skipper.mark} color={boatColor(deviceId)} flair={skipper.flair} />
+      <div className="row-text">
+        <span className="row-title">{title}</span>
+        <span className="row-desc">{desc}</span>
+      </div>
+      <span className="linklike">{cardDone ? 'Edit' : 'Set up'}</span>
+    </button>
   )
 }
 

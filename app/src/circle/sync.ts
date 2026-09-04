@@ -106,6 +106,8 @@ function ownRecord(trip: BoatTrip | null): OwnRecord | null {
     deviceKey: s.deviceKey,
     name: s.skipper.name.trim() || 'A boat',
     boat: s.skipper.boat.trim(),
+    mark: s.skipper.mark,
+    flair: s.skipper.flair,
     fix: { lon: fix.lon, lat: fix.lat, sogKn: fix.sogKn, cog: fix.cog, ts: fix.ts },
     trip,
   }
@@ -165,9 +167,11 @@ export function postMember(opts: { force?: boolean } = {}): void {
       deviceKey: s.deviceKey,
       name: s.skipper.name.trim() || 'A boat',
       boat: s.skipper.boat.trim(),
+      mark: s.skipper.mark,
+      flair: s.skipper.flair,
       plan: ownPlan(),
     }
-    const key = JSON.stringify([record.name, record.boat, record.plan, s.circles.map((c) => c.id)])
+    const key = JSON.stringify([record.name, record.boat, record.mark, record.flair, record.plan, s.circles.map((c) => c.id)])
     if (!opts.force && key === memberSent) return
     memberSent = key
     void Promise.all(s.circles.map((c) => putMember(c, record).catch(() => undefined)))
@@ -299,7 +303,7 @@ export function initCircle() {
         s.setSharing(defaultSharing())
       }
     }
-    // a new crew, a renamed skipper, the switch: the member record follows
+    // a new crew, a renamed skipper, a new mark, the switch: the member record follows
     if (s.circles !== prev.circles || s.skipper !== prev.skipper || s.sharing !== prev.sharing) postMember()
   })
   // the plan: destination + time pick, gone at cast-off or with the ✕

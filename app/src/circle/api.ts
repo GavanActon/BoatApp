@@ -1,4 +1,5 @@
 import { fetchTimeout } from '../weather/openMeteo'
+import { cleanFlair, cleanMark, type Flair } from './marks'
 import type { Boat, BoatTrip, Circle, Member, Plan } from './store'
 
 /**
@@ -47,10 +48,11 @@ export async function fetchCircle(c: Circle): Promise<{ name: string; boats: Boa
     boats: Omit<Boat, 'circleId'>[]
     members?: Omit<Member, 'circleId'>[]
   }
+  // a record from before there were marks has neither field
   return {
     name: r.name,
-    boats: r.boats.map((b) => ({ ...b, circleId: c.id })),
-    members: (r.members ?? []).map((m) => ({ ...m, circleId: c.id })),
+    boats: r.boats.map((b) => ({ ...b, circleId: c.id, mark: cleanMark(b.mark), flair: cleanFlair(b.flair) })),
+    members: (r.members ?? []).map((m) => ({ ...m, circleId: c.id, mark: cleanMark(m.mark), flair: cleanFlair(m.flair) })),
   }
 }
 
@@ -59,6 +61,8 @@ export interface MemberRecord {
   deviceKey: string
   name: string
   boat: string
+  mark: string
+  flair: Flair | null
   plan: Plan | null
 }
 
@@ -72,6 +76,8 @@ export interface OwnRecord {
   deviceKey: string
   name: string
   boat: string
+  mark: string
+  flair: Flair | null
   fix: { lon: number; lat: number; sogKn: number | null; cog: number | null; ts: number }
   trip: BoatTrip | null
 }

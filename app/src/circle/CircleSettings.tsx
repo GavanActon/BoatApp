@@ -6,10 +6,11 @@ import { joinCircle, leaveCircle } from './sync'
 import { haptic } from '../ui/haptics'
 
 /**
- * The Trip sharing section of Settings (a circle in the code, a crew to
- * the person): the skipper card (how this boat is named to friends), the
- * crews this phone is in, and the two doors — start one, or join one by
- * code. Invite opens a card under the circle with the
+ * The crews (a circle in the code, a crew to the person): the crews this
+ * phone is in, and the two doors — start one, or join one by code. The
+ * first time either door is tapped the skipper card comes up first (how
+ * this boat is known to friends) and the tap waits on it; after that the
+ * card is edited from the last row of Crew. Invite opens a card under the circle with the
  * code large and the text ready to copy, and offers the share sheet where
  * there is one — so the tap always shows something, including over plain
  * http on the dev server, where share and clipboard don't exist. On
@@ -18,7 +19,6 @@ import { haptic } from '../ui/haptics'
  */
 export default function CircleSettings() {
   const skipper = useCircleStore((s) => s.skipper)
-  const setSkipper = useCircleStore((s) => s.setSkipper)
   const circles = useCircleStore((s) => s.circles)
   const deviceId = useCircleStore((s) => s.deviceId)
   const deviceKey = useCircleStore((s) => s.deviceKey)
@@ -113,6 +113,13 @@ export default function CircleSettings() {
     setInviteNote(`Read out the code · ${joinCode(c)}`)
   }
 
+  /** The door's tap, after the card — once. */
+  const withCard = (go: () => Promise<void>) => {
+    const s = useCircleStore.getState()
+    if (s.cardDone) return void go()
+    s.setCardOpen({ then: () => void go() })
+  }
+
   const leave = async (c: Circle) => {
     setNote(null)
     await leaveCircle(c)
@@ -122,31 +129,6 @@ export default function CircleSettings() {
   return (
     <>
       <div className="panel-section">Crews</div>
-
-      <div className="row">
-        <div className="row-text">
-          <span className="row-title">Skipper card</span>
-          <span className="row-desc">name · boat · as friends see you</span>
-        </div>
-      </div>
-      <div className="row circle-fields">
-        <input
-          type="text"
-          value={skipper.name}
-          placeholder="Your name"
-          maxLength={40}
-          aria-label="Your name"
-          onChange={(e) => setSkipper({ ...skipper, name: e.target.value })}
-        />
-        <input
-          type="text"
-          value={skipper.boat}
-          placeholder="Boat"
-          maxLength={40}
-          aria-label="Boat name"
-          onChange={(e) => setSkipper({ ...skipper, boat: e.target.value })}
-        />
-      </div>
 
       {circles.map((c) => (
         <div key={c.id}>
@@ -203,9 +185,9 @@ export default function CircleSettings() {
           maxLength={40}
           aria-label="New crew name"
           onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void start()}
+          onKeyDown={(e) => e.key === 'Enter' && withCard(start)}
         />
-        <button className="linklike" disabled={!newName.trim() || busy} onClick={() => void start()}>
+        <button className="linklike" disabled={!newName.trim() || busy} onClick={() => withCard(start)}>
           Start
         </button>
       </div>
@@ -219,9 +201,9 @@ export default function CircleSettings() {
           spellCheck={false}
           aria-label="Sharing code"
           onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && void join()}
+          onKeyDown={(e) => e.key === 'Enter' && withCard(join)}
         />
-        <button className="linklike" disabled={!code.trim() || busy} onClick={() => void join()}>
+        <button className="linklike" disabled={!code.trim() || busy} onClick={() => withCard(join)}>
           Join
         </button>
       </div>

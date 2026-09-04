@@ -4,12 +4,15 @@ import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { agoLabel, timeLabel } from '../time'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../units'
+import { CHART_MARK_PX, MARK_IMAGE_RATIO, markHtml, markImage, markKey, wakeImage, type Flair } from './marks'
 import { boatColor, friendBoats, useCircleStore, type Boat } from './store'
 import { onCirclePoll } from './sync'
 
 /**
  * Friends on the chart. Each boat in the circle that is out is a small
- * glyph in ITS OWN colour (boatColor: by place in the crew, the same on
+ * glyph in ITS OWN colour, wearing its mark — the emoji from the skipper
+ * card, drawn to an image, since MapLibre's text has no colour emoji —
+ * (boatColor: by place in the crew, the same on
  * every phone) with its name and the age of its position beside it — the
  * same honesty rule as every weather surface: a position under 15 min is
  * solid, older is hollow and says how old, and after two hours it leaves
@@ -54,10 +57,13 @@ function addLayers(map: MlMap) {
     },
     before,
   )
+  // a boat with no mark is the plain dot; one with a mark (or flair) is an
+  // image drawn for it — MapLibre's text has no colour emoji
   map.addLayer({
     id: 'circle-boat',
     type: 'circle',
     source: 'circle-boats',
+    filter: ['!', ['has', 'icon']],
     paint: {
       'circle-radius': 7,
       'circle-color': ['get', 'color'],
@@ -89,6 +95,33 @@ function addLayers(map: MlMap) {
       'text-halo-width': 1.3,
     },
   })
+  // the wake, swung behind the boat by its course; then the mark itself
+  map.addLayer({
+    id: 'circle-boat-wake',
+    type: 'symbol',
+    source: 'circle-boats',
+    filter: ['has', 'wake'],
+    layout: {
+      'icon-image': WAKE_IMAGE,
+      'icon-anchor': 'right',
+      'icon-offset': [-CHART_MARK_PX / 2 + 1, 0],
+      'icon-rotate': ['get', 'wake'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  })
+  map.addLayer({
+    id: 'circle-boat-mark',
+    type: 'symbol',
+    source: 'circle-boats',
+    filter: ['has', 'icon'],
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  })
   map.addLayer({
     id: 'circle-boat-name',
     type: 'symbol',
@@ -97,7 +130,8 @@ function addLayers(map: MlMap) {
       'text-field': ['get', 'label'],
       'text-font': ['Noto Sans Regular'],
       'text-size': 10.5,
-      'text-offset': [0, 1.1],
+      // the mark is a bigger disk than the dot; the name sits under either
+      'text-offset': ['case', ['has', 'icon'], ['literal', [0, 1.55]], ['literal', [0, 1.1]]],
       'text-anchor': 'top',
       'text-allow-overlap': true,
       'text-ignore-placement': true,
@@ -157,10 +191,36 @@ export function describeBoat(b: Boat): string {
   return 'home'
 }
 
+const WAKE_IMAGE = 'mk-wake'
+
+interface MarkSpec {
+  mark: string
+  color: string
+  flair: Flair | null
+  stale: boolean
+}
+
+/** The images the current features need, by key — drawn on demand. */
+const wanted = new Map<string, MarkSpec>()
+
+/** Give the map every image the features name that it doesn't have yet. */
+function ensureImages(map: MlMap) {
+  for (const [key, spec] of wanted) {
+    if (map.hasImage(key)) continue
+    const img = markImage(spec.mark, spec.color, spec.flair, spec.stale)
+    if (img) map.addImage(key, img, { pixelRatio: MARK_IMAGE_RATIO })
+  }
+  if (!map.hasImage(WAKE_IMAGE)) {
+    const img = wakeImage()
+    if (img) map.addImage(WAKE_IMAGE, img, { pixelRatio: MARK_IMAGE_RATIO })
+  }
+}
+
 function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection } {
   const now = Date.now()
   const boats: Feature[] = []
   const routes: Feature[] = []
+  wanted.clear()
   for (const b of friendBoats()) {
     if (b.lon == null || b.lat == null) continue
     const age = boatAgeMs(b, now)
@@ -168,15 +228,26 @@ function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection 
     if (b.trip?.state === 'home') continue
     const stale = age > STALE_MS
     const color = boatColor(b.deviceId)
+    const props: Record<string, unknown> = {
+      deviceId: b.deviceId,
+      label: `${b.name} · ${agoLabel(age)}`,
+      stale,
+      color,
+    }
+    if (b.mark || b.flair) {
+      const key = markKey(b.mark, color, b.flair, stale)
+      wanted.set(key, { mark: b.mark, color, flair: b.flair, stale })
+      props.icon = key
+      // the wake trails a boat under way, opposite its course: the image
+      // points east, so a course of 90° is no turn at all
+      if (b.flair?.effect === 'wake' && !stale && b.cog != null && b.sogKn != null && b.sogKn >= 1) {
+        props.wake = b.cog - 90
+      }
+    }
     boats.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
-      properties: {
-        deviceId: b.deviceId,
-        label: `${b.name} · ${agoLabel(age)}`,
-        stale,
-        color,
-      },
+      properties: props,
     })
     const t = b.trip
     if (t?.route && (t.state === 'coming' || t.state === 'heading-home')) {
@@ -196,6 +267,7 @@ function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection 
 function render(map: MlMap) {
   if (layersOn !== map) return
   const { boats, routes } = buildFeatures()
+  ensureImages(map)
   ;(map.getSource('circle-boats') as GeoJSONSource | undefined)?.setData(boats)
   ;(map.getSource('circle-routes') as GeoJSONSource | undefined)?.setData(routes)
 }
@@ -209,7 +281,7 @@ export function circleBoatAt(map: MlMap, point: { x: number; y: number }): Boat 
       [point.x - HIT_PAD, point.y - HIT_PAD],
       [point.x + HIT_PAD, point.y + HIT_PAD],
     ],
-    { layers: ['circle-boat', 'circle-boat-name'] },
+    { layers: ['circle-boat', 'circle-boat-mark', 'circle-boat-name'] },
   )
   let best: Boat | null = null
   let bestD = Infinity
@@ -234,9 +306,10 @@ function esc(s: string): string {
 
 function cardHtml(b: Boat): string {
   const who = b.boat ? `${b.name} · ${b.boat}` : b.name
+  const wake = b.sogKn != null && b.sogKn >= 1
   return (
     `<div class="boat-card">` +
-    `<div class="boat-card-who"><i class="crew-dot" style="background:${boatColor(b.deviceId)}"></i>${esc(who)}</div>` +
+    `<div class="boat-card-who">${markHtml(24, b.mark, boatColor(b.deviceId), b.flair, { wake })}<span>${esc(who)}</span></div>` +
     `<div class="boat-card-what">${esc(describeBoat(b))}</div>` +
     `<div class="boat-card-age">position ${esc(agoLabel(boatAgeMs(b)))}</div>` +
     `</div>`
@@ -269,6 +342,10 @@ export function initCircleLayer() {
   onEachMap((map) => {
     addLayers(map)
     render(map)
+    // a style swap forgets its images; the features still name them
+    map.on('styleimagemissing', (e: { id: string }) => {
+      if (e.id === WAKE_IMAGE || wanted.has(e.id)) ensureImages(map)
+    })
     map.on('click', (e) => {
       const b = circleBoatAt(map, e.point)
       if (b) showBoat(b)

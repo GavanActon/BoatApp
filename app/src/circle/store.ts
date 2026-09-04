@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { Flair } from './marks'
 
 /**
  * Circles — the crew. A circle is a small invited group of boats that can
@@ -19,6 +20,10 @@ import { persist } from 'zustand/middleware'
 export interface Skipper {
   name: string
   boat: string
+  /** The emoji this boat is known by — '' for the plain dot. */
+  mark: string
+  /** Optional dressing on the mark; null is none. */
+  flair: Flair | null
 }
 
 export interface Circle {
@@ -44,6 +49,8 @@ export interface Boat {
   deviceId: string
   name: string
   boat: string
+  mark: string
+  flair: Flair | null
   lon: number | null
   lat: number | null
   sogKn: number | null
@@ -66,6 +73,8 @@ export interface Member {
   deviceId: string
   name: string
   boat: string
+  mark: string
+  flair: Flair | null
   joined: number
   plan: Plan | null
   updated: number
@@ -92,6 +101,15 @@ interface CircleState {
   /** Wants the crew's moments as notifications. On by default — the
    *  browser's permission is the other half, asked on joining. */
   notify: boolean
+  /** The skipper card has been through its one setup — the sheet that
+   *  comes up the first time Start or Join is tapped. Edited later from
+   *  the last row of Crew. */
+  cardDone: boolean
+  /** The card sheet is open; `then` is the tap that was waiting on it
+   *  (Start, Join), run after That's me. */
+  cardOpen: { then: (() => void) | null } | null
+  setCardDone: (v: boolean) => void
+  setCardOpen: (v: { then: (() => void) | null } | null) => void
   setNotify: (v: boolean) => void
   setSkipper: (s: Skipper) => void
   addCircle: (c: Circle) => void
@@ -123,7 +141,7 @@ export const useCircleStore = create<CircleState>()(
     (set) => ({
       deviceId: hex(8),
       deviceKey: hex(16),
-      skipper: { name: '', boat: '' },
+      skipper: { name: '', boat: '', mark: '', flair: null },
       circles: [],
       sharing: false,
       boats: [],
@@ -132,6 +150,10 @@ export const useCircleStore = create<CircleState>()(
       fetchError: null,
       crewSeenAt: 0,
       notify: true,
+      cardDone: false,
+      cardOpen: null,
+      setCardDone: (cardDone) => set({ cardDone }),
+      setCardOpen: (cardOpen) => set({ cardOpen }),
       setNotify: (notify) => set({ notify }),
       setSkipper: (skipper) => set({ skipper }),
       addCircle: (c) =>
@@ -169,7 +191,13 @@ export const useCircleStore = create<CircleState>()(
         sharing: s.sharing,
         crewSeenAt: s.crewSeenAt,
         notify: s.notify,
+        cardDone: s.cardDone,
       }),
+      // a card saved before there was a mark
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<CircleState>
+        return { ...current, ...p, skipper: { ...current.skipper, ...(p.skipper ?? {}) } }
+      },
     },
   ),
 )

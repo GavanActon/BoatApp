@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS boats (
   device_key_hash TEXT NOT NULL,
   name TEXT NOT NULL,
   boat TEXT NOT NULL,
+  mark TEXT NOT NULL DEFAULT '',
+  flair TEXT,
   lon REAL,
   lat REAL,
   sog_kn REAL,
@@ -31,8 +33,10 @@ CREATE TABLE IF NOT EXISTS boats (
 CREATE INDEX IF NOT EXISTS boats_updated ON boats (updated);
 
 -- The crew: one row per member per circle from the moment they join —
--- name, boat, when they joined, and the plan they have posted (a
--- destination and a time, never a position). Position and trip live in
+-- name, boat, the mark (an emoji) and its flair, when they joined, and the
+-- plan they have posted (a destination and a time, never a position).
+-- `mark` and `flair` arrived after the first databases: the Worker adds
+-- them to an existing table on first use (ensureColumns). Position and trip live in
 -- `boats`, which expires after 12 h of silence; this row does not, until
 -- the member leaves or the circle lapses.
 CREATE TABLE IF NOT EXISTS members (
@@ -41,6 +45,8 @@ CREATE TABLE IF NOT EXISTS members (
   device_key_hash TEXT NOT NULL,
   name TEXT NOT NULL,
   boat TEXT NOT NULL,
+  mark TEXT NOT NULL DEFAULT '',
+  flair TEXT,
   joined INTEGER NOT NULL,
   plan TEXT,
   updated INTEGER NOT NULL,

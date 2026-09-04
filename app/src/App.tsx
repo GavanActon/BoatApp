@@ -42,6 +42,7 @@ import {
 const LayersPanel = lazy(() => import('./ui/panels/LayersPanel'))
 const PlacesPanel = lazy(() => import('./ui/panels/PlacesPanel'))
 const CrewPanel = lazy(() => import('./circle/CrewPanel'))
+import SkipperCard from './circle/SkipperCard'
 const LogPanel = lazy(() => import('./ui/panels/LogPanel'))
 const WeatherPanel = lazy(() => import('./ui/panels/WeatherPanel'))
 import TripCard from './ui/TripCard'
@@ -493,6 +494,7 @@ export default function App() {
       {sheetTab === 'discover' && <DiscoverSheet />}
 
       <UnlockToast />
+      <SkipperCard />
       <Suspense fallback={null}><WelcomeCards /></Suspense>
       <Suspense fallback={null}><NumbersGuide /></Suspense>
     </div>

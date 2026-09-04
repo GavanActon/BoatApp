@@ -3004,6 +3004,7 @@
   .maplibregl-popup {
     animation: none;
   }
+}
 
 /* ---------- report a problem ---------- */
 
@@ -3027,3 +3028,132 @@
   font-size: 15px;
   font-weight: 600;
 }
+
+/* ---------- the mark: an emoji in the crew colour, and its flair ---------- */
+
+.mk-wrap { display: inline-flex; flex: 0 0 auto; }
+.mk {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  line-height: 1;
+  vertical-align: middle;
+}
+.mk-e { position: relative; }
+@keyframes mk-pulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2); opacity: 0; } }
+.mk-pulse { position: absolute; inset: 0; border-radius: 50%; border: 2px solid currentColor; animation: mk-pulse 1.8s ease-out infinite; }
+@keyframes mk-twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.5); } 50% { opacity: 1; transform: scale(1); } }
+.mk-spark { position: absolute; color: #fff; animation: mk-twinkle 1.6s ease-in-out infinite; }
+@keyframes mk-rise { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 0.9; } 100% { transform: translateY(-24px); opacity: 0; } }
+.mk-bub { position: absolute; border-radius: 50%; background: rgba(234, 243, 251, 0.85); animation: mk-rise 2.4s ease-out infinite; }
+.mk-wake {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(234, 243, 251, 0), rgba(234, 243, 251, 0.75));
+}
+.mk-halo { position: absolute; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0.8; }
+@media (prefers-reduced-motion: reduce) {
+  .mk-pulse, .mk-spark, .mk-bub { animation: none; }
+}
+
+/* the Crew rows wear the mark down their left, spanning both lines */
+.crew .bo-row {
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'ic name age' 'ic what what';
+  column-gap: 10px;
+  align-items: center;
+}
+.crew .bo-ic { grid-area: ic; display: flex; }
+.crew .ashore .bo-ic { opacity: 0.55; }
+.boat-card-who { display: flex; align-items: center; gap: 8px; }
+
+/* the skipper card: a sheet over everything, once at the door, then from
+   the last row of Crew */
+.skipper {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(6, 12, 19, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.skipper-sheet {
+  width: calc(100% - 16px);
+  max-width: 480px;
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px 10px 0 0;
+  border-bottom: none;
+  animation: rise-in 0.2s cubic-bezier(0.3, 1, 0.4, 1);
+}
+.skipper-sheet .sheet-titlerow { padding-top: 14px; }
+.skipper-sheet .sheet-body > .row-desc { padding: 0 2px; }
+.sk-preview { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 0 10px; }
+.sk-who { font-size: 15px; font-weight: 600; }
+.sk-section { margin-top: 14px; display: flex; justify-content: space-between; align-items: baseline; }
+.sk-section .meta { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.sk-pick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 10px 0 4px; }
+.sk-chip {
+  position: relative;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--c-text);
+  padding: 0;
+  overflow: visible;
+}
+.sk-chip.on { border: 2px solid var(--c-accent); box-shadow: var(--shadow-accent); }
+.sk-chip.fl { height: 58px; }
+.sk-chip.fl .mk-wrap { margin-bottom: 10px; }
+.sk-chip.wake .mk-wrap { margin-left: 22px; }
+.sk-chip .sk-l { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 9.5px; letter-spacing: 0.02em; color: var(--c-text-dim); }
+.sk-plus {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #06253a;
+  background: #ffd166;
+}
+.sk-plus-note { color: #ffd166; }
+.sk-emoji-in { font-size: 20px !important; padding: 5px 10px !important; }
+.sk-note { padding: 6px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--c-text-dim); }
+.sk-row { width: 100%; text-align: left; background: none; border-radius: 0; color: inherit; font: inherit; }
+.sk-row .row-text { flex: 1 1 0; }
+.sk-btn { width: 100%; margin-top: 18px; flex: none; }
+.sk-btn.quiet { background: var(--c-accent-dim); color: var(--c-accent); box-shadow: none; }
+.sk-water {
+  height: 150px;
+  margin-top: 14px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background:
+    radial-gradient(130px 80px at 80% 84%, #163f5c 0%, rgba(22, 63, 92, 0) 100%),
+    radial-gradient(100px 70px at 10% 18%, #144060 0%, rgba(20, 64, 96, 0) 100%),
+    linear-gradient(160deg, #0f3350, #08263e);
+}
+.sk-water-text { display: flex; flex-direction: column; gap: 4px; }
+.sk-seg { display: flex; border-radius: 8px; border: 1px solid var(--c-border-strong); overflow: hidden; font-size: 13px; font-weight: 600; }
+.sk-seg button { padding: 6px 12px; color: var(--c-text-dim); background: none; border: none; border-radius: 0; }
+.sk-seg button.on { background: var(--c-accent-dim); color: var(--c-text); }
