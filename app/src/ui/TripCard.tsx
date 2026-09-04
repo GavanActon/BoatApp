@@ -771,8 +771,8 @@ function LiveLeg({
   )
 }
 
-/** Per-trip opt-in (the plan's rule: nothing shares without a tap at
- *  cast-off). Only exists once this phone is in a circle. */
+/** Per-trip switch, on by default for anyone in a circle — the tap is to
+ *  keep THIS trip private. Only exists once this phone is in a circle. */
 function ShareOptIn() {
   const circles = useCircleStore((s) => s.circles)
   const sharing = useCircleStore((s) => s.sharing)

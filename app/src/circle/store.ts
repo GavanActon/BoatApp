@@ -55,8 +55,10 @@ interface CircleState {
   deviceKey: string
   skipper: Skipper
   circles: Circle[]
-  /** This trip is being shown to the circles. Persisted so a reload under
-   *  way keeps sharing; cleared when the trip ends. */
+  /** This trip is being shown to the circles. On by default once there is
+   *  a circle (sync.ts keeps it at that default between trips); the trip
+   *  card's switch turns one trip off. Persisted so a reload under way
+   *  keeps sharing. */
   sharing: boolean
   /** Friends' latest records, all circles merged, newest first. */
   boats: Boat[]

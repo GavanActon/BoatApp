@@ -16,9 +16,15 @@ import { useCircleStore, type BoatTrip, type Circle } from './store'
  * Writing: while THIS trip is being shared, the boat's record goes to every
  * circle every two minutes, and immediately on the moments that matter —
  * cast-off, the arrival latch, the ride-home flip, the end of the trip
- * (a final "home", then sharing switches itself off). Offline, the post
- * simply fails and the next tick tries again; the server keeps only the
- * latest record, so there is nothing to queue.
+ * (a final "home"). Offline, the post simply fails and the next tick tries
+ * again; the server keeps only the latest record, so there is nothing to
+ * queue.
+ *
+ * Sharing is ON by default for anyone in a circle — that is what joining
+ * one is for. The trip card's switch is the way to keep one trip private;
+ * it resets to the default when a new trip is planned and when a trip
+ * ends. Nothing posts before cast-off or after the end, whatever the
+ * switch says, so a boat on the trailer is never on the chart.
  */
 
 const POLL_MS = 60_000
@@ -98,10 +104,17 @@ function ownRecord(trip: BoatTrip | null): OwnRecord | null {
 
 let posting = false
 
-/** Post this boat to every circle now, if sharing and there is a fix. */
+/** The switch's resting position: on when there is anyone to show. */
+function defaultSharing(): boolean {
+  return useCircleStore.getState().circles.length > 0
+}
+
+/** Post this boat to every circle now, if sharing, under way and there is
+ *  a fix. The trip's end passes its own final record. */
 export async function postNow(override?: { trip: BoatTrip | null }): Promise<void> {
   const s = useCircleStore.getState()
   if (!s.sharing || !s.circles.length || posting) return
+  if (!override && useRouteStore.getState().tripStartedAt == null) return
   const rec = ownRecord(override ? override.trip : ownTrip())
   if (!rec) return
   posting = true
@@ -189,11 +202,18 @@ export function initCircle() {
   })
 
   // the moments that matter post at once; the end of the trip posts "home"
-  // and turns sharing off, so nobody is tracked back on the trailer
+  // (nothing posts after it), then the switch returns to its default for
+  // the next trip. A newly planned trip resets it too — a private trip is
+  // a decision about that trip, not a setting.
   useRouteStore.subscribe((s, prev) => {
     if (s.tripStartedAt !== prev.tripStartedAt) {
       if (s.tripStartedAt != null) void postNow()
-      else void stopSharing()
+      else void stopSharing().finally(() => useCircleStore.getState().setSharing(defaultSharing()))
+      return
+    }
+    if (s.tripStartedAt == null) {
+      const planned = s.destination && s.destination.name !== prev.destination?.name
+      if (planned) useCircleStore.getState().setSharing(defaultSharing())
       return
     }
     if (s.reachedDestAt !== prev.reachedDestAt || s.plan?.destName !== prev.plan?.destName) {
@@ -202,6 +222,13 @@ export function initCircle() {
   })
   useCircleStore.subscribe((s, prev) => {
     if (s.sharing && !prev.sharing) void postNow()
-    if (s.circles.length !== prev.circles.length) void pollCircles()
+    if (s.circles.length !== prev.circles.length) {
+      void pollCircles()
+      // the first circle turns the switch on (unless a trip is already under
+      // way — that one stays as it was tapped); the last one leaving turns it off
+      if (!s.circles.length || (!prev.circles.length && useRouteStore.getState().tripStartedAt == null)) {
+        s.setSharing(defaultSharing())
+      }
+    }
   })
 }
