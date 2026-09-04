@@ -72,6 +72,8 @@ interface WavePt {
 }
 
 const TIME_SCALE = 4 // real phase speed is a crawl at chart zoom
+/** Gain on the Strength slider: 80% today = 100% before the wind default dropped */
+const SEA_GAIN = 1.25
 const FULL_AMP_M = 1.5 // this height = full-strength rendering
 const MIN_WATER_M = 0.3
 
@@ -367,7 +369,11 @@ function runSwell(
       // wavelength — and because phase is spatial, the whole front does
       const off = (0.5 - frac) * p.wlPx
       const fade = Math.cos((Math.PI * off) / p.wlPx) ** 2
-      const a = fade * p.amp * tune.seaOpacity
+      // SEA_GAIN lifts the whole strength range so the 80% default reads
+      // the way 100% used to — the crests have to hold their own now the
+      // wind threads run quieter. Alpha strings clamp at 1, so the top of
+      // the slider can't overflow.
+      const a = fade * p.amp * tune.seaOpacity * SEA_GAIN
       if (a < 0.02) continue
       const cx = p.x + p.ux * off
       const cy = p.y + p.uy * off

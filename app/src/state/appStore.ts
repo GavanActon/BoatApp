@@ -308,7 +308,7 @@ export const useAppStore = create<AppState>()(
       setSatOpacity: (v) => set({ satOpacity: v }),
       satVivid: true,
       setSatVivid: (v) => set({ satVivid: v }),
-      windFlowOpacity: 0.8,
+      windFlowOpacity: 0.4, // quiet enough that the wave overlay reads through it
       setWindFlowOpacity: (v) => set({ windFlowOpacity: v }),
       flowTuning: FLOW_TUNING_DEFAULTS,
       setFlowTuning: (t) => set((s) => ({ flowTuning: { ...s.flowTuning, ...t } })),
@@ -400,7 +400,7 @@ export const useAppStore = create<AppState>()(
       name: 'sandies-prefs',
       // v1 made metric the default. Prefs saved before it carry the old
       // knots/feet, so drop the unit keys once and let the defaults land.
-      version: 3,
+      version: 4,
       migrate: (persisted, from) => {
         const p = { ...(persisted as Partial<AppState>) }
         // versionless storage arrives as `undefined`, and `undefined < 1` is
@@ -424,6 +424,10 @@ export const useAppStore = create<AppState>()(
         // v3 made vivid satellite the default; the stored quiet-era value
         // gets lifted once (switching after this sticks)
         if (was < 3) delete p.satVivid
+        // v4 dropped the default wind-flow strength to 40% so the waves show
+        // through; the stored 80% gets lifted once (moving the slider after
+        // this sticks)
+        if (was < 4) delete p.windFlowOpacity
         // deliberately hands back a PARTIAL — merge below lays it over the
         // current state, so the dropped keys land on the new metric defaults.
         // migrate's signature can't say "partial", hence the cast.
