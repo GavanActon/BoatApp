@@ -26,8 +26,7 @@ import { boatColor, useCircleStore } from './store'
  * the tap that was waiting. Edited later from the last row of Crew.
  *
  * Flair — glow, tint, effect on the mark — is a side room off the card
- * for whoever wants to dig in, never a step. Some of it wears a + for
- * what could be Sandies Plus one day; all of it is free for now.
+ * for whoever wants to dig in, never a step.
  */
 export default function SkipperCard() {
   const open = useCircleStore((s) => s.cardOpen)
@@ -181,14 +180,6 @@ function CardSheet({ then }: { then: (() => void) | null }) {
   )
 }
 
-function Plus() {
-  return (
-    <span className="sk-plus" title="Could be Sandies Plus one day — free for now">
-      +
-    </span>
-  )
-}
-
 function FlairView({
   mark,
   color,
@@ -276,7 +267,6 @@ function FlairView({
               onClick={() => tint(t.id)}
             >
               {mini({ ...NO_FLAIR, tint: t.id })}
-              {t.plus && <Plus />}
               <span className="sk-l">{t.label}</span>
             </button>
           ))}
@@ -295,14 +285,12 @@ function FlairView({
               onClick={() => effect(e.id)}
             >
               {mini({ ...NO_FLAIR, effect: e.id }, 28)}
-              {e.plus && <Plus />}
               <span className="sk-l">{e.label}</span>
             </button>
           ))}
         </div>
         <div className="sk-note">
-          Your crew colour stays the base, so the chart still reads at a glance. Wake shows under way.{' '}
-          <b className="sk-plus-note">+</b> is Sandies Plus, one day. Everything is free for now.
+          Your crew colour stays the base, so the chart still reads at a glance. Wake shows under way.
         </div>
         <button className="btn-primary sk-btn quiet" onClick={onDone}>
           Done

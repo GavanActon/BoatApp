@@ -3121,19 +3121,6 @@
 .sk-chip.fl .mk-wrap { margin-bottom: 10px; }
 .sk-chip.wake .mk-wrap { margin-left: 22px; }
 .sk-chip .sk-l { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 9.5px; letter-spacing: 0.02em; color: var(--c-text-dim); }
-.sk-plus {
-  position: absolute;
-  top: 3px;
-  right: 4px;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 13px;
-  padding: 0 4px;
-  border-radius: 4px;
-  color: #06253a;
-  background: #ffd166;
-}
-.sk-plus-note { color: #ffd166; }
 .sk-emoji-in { font-size: 20px !important; padding: 5px 10px !important; }
 .sk-note { padding: 6px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--c-text-dim); }
 .sk-row { width: 100%; text-align: left; background: none; border-radius: 0; color: inherit; font: inherit; }

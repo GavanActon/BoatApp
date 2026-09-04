@@ -26,7 +26,6 @@ export interface Flair {
 
 export const NO_FLAIR: Flair = { glow: 'none', neon: false, tint: 'solid', effect: 'none' }
 
-/** `plus` marks what could become Sandies Plus one day. Free for now. */
 export const GLOWS: { id: Glow; label: string; color: string | null }[] = [
   { id: 'none', label: 'None', color: null },
   { id: 'crew', label: 'Crew', color: null },
@@ -35,21 +34,21 @@ export const GLOWS: { id: Glow; label: string; color: string | null }[] = [
   { id: 'ice', label: 'Ice', color: '#5ec8ff' },
   { id: 'pink', label: 'Pink', color: '#ff7ac6' },
 ]
-export const TINTS: { id: Tint; label: string; plus?: boolean }[] = [
+export const TINTS: { id: Tint; label: string }[] = [
   { id: 'solid', label: 'Solid' },
   { id: 'fade', label: 'Fade' },
   { id: 'frost', label: 'Frost' },
-  { id: 'metal', label: 'Metal', plus: true },
+  { id: 'metal', label: 'Metal' },
   { id: 'ink', label: 'Ink' },
-  { id: 'glass', label: 'Glass', plus: true },
+  { id: 'glass', label: 'Glass' },
 ]
-export const EFFECTS: { id: Effect; label: string; plus?: boolean }[] = [
+export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'none', label: 'None' },
-  { id: 'sparkle', label: 'Sparkle', plus: true },
+  { id: 'sparkle', label: 'Sparkle' },
   { id: 'pulse', label: 'Pulse' },
   { id: 'halo', label: 'Halo' },
   { id: 'wake', label: 'Wake' },
-  { id: 'bubbles', label: 'Bubbles', plus: true },
+  { id: 'bubbles', label: 'Bubbles' },
 ]
 
 export const QUICK_PICKS = [
