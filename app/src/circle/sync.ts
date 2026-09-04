@@ -245,6 +245,8 @@ export function initCircle() {
   navigator.serviceWorker?.addEventListener('message', (e) => {
     const d = e.data as { type?: string; tab?: string } | null
     if (d?.type === 'open' && d.tab === 'crew') useAppStore.getState().setSheetTab('crew')
+    // a push landed while the app is open: the chart need not wait its minute
+    if (d?.type === 'crew-news') void pollCircles()
   })
   // the subscription rotates and a fresh install has none: keep the server current
   void syncPush()

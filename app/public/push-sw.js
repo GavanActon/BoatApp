@@ -11,14 +11,21 @@ self.addEventListener('push', (event) => {
   }
   const title = d.title || 'Sandies'
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: d.body || '',
-      tag: d.tag || undefined,
-      renotify: !!d.tag,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      data: { url: d.url || '/#crew' },
-    }),
+    Promise.all([
+      self.registration.showNotification(title, {
+        body: d.body || '',
+        tag: d.tag || undefined,
+        renotify: !!d.tag,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        data: { url: d.url || '/#crew' },
+      }),
+      // an open app hears the moment too, and asks the server at once
+      // rather than waiting for its minute
+      self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clients) => clients.forEach((c) => c.postMessage({ type: 'crew-news' }))),
+    ]),
   )
 })
 
