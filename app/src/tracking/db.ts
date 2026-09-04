@@ -94,6 +94,31 @@ export interface Outing {
   scaleM?: number | null
 }
 
+/** A tap under way: the boat was HERE, now, in this much water. The note
+ *  is the skipper's (fish, a rock, a nice drift). */
+export interface Mark {
+  id?: number
+  trackId: number
+  ts: number
+  lon: number
+  lat: number
+  depthM: number | null
+  note: string
+}
+
+/** A track kept on purpose — a trolling run, a safe cut through the
+ *  shoals — saved from the log into Places, drawn on the chart on demand,
+ *  and runnable like a spot. Its points are its own: deleting the log
+ *  entry it came from leaves it be. */
+export interface Line {
+  id?: number
+  name: string
+  coords: [number, number][]
+  distanceNm: number
+  createdAt: number
+  fromTrackId: number | null
+}
+
 const db = new Dexie('sandies') as Dexie & {
   tracks: EntityTable<Track, 'id'>
   points: EntityTable<TrackPoint, 'id'>
@@ -102,6 +127,8 @@ const db = new Dexie('sandies') as Dexie & {
   starts: EntityTable<SavedStart, 'id'>
   arrivals: EntityTable<Arrival, 'id'>
   outings: EntityTable<Outing, 'id'>
+  marks: EntityTable<Mark, 'id'>
+  lines: EntityTable<Line, 'id'>
 }
 
 db.version(1).stores({
@@ -121,6 +148,11 @@ db.version(3).stores({
 db.version(4).stores({
   arrivals: '++id, name, at',
   outings: '++id, startedAt',
+})
+
+db.version(5).stores({
+  marks: '++id, trackId, ts',
+  lines: '++id, createdAt',
 })
 
 export { db }

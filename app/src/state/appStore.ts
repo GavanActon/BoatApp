@@ -116,7 +116,10 @@ interface AppState {
   // numbers on the chart instead of moving crests. Persisted: a plotter
   // mounted at the helm shouldn't forget the mode over a refresh.
   lowPower: boolean
+  /** Every trip records a track for the log (cast-off to home). */
+  recordTrips: boolean
   setLowPower: (v: boolean) => void
+  setRecordTrips: (v: boolean) => void
   // Usage stats: what gets used and how the app performs, counted under a
   // random id (src/stats). On by default; the switch is in Settings and a
   // no is persisted.
@@ -259,6 +262,7 @@ type PersistedPrefs = Pick<
   | 'windFlowOpacity'
   | 'flowTuning'
   | 'lowPower'
+  | 'recordTrips'
   | 'usageStats'
   | 'onboarded'
   | 'setupDone'
@@ -317,6 +321,8 @@ export const useAppStore = create<AppState>()(
       setHelm: (v) => set({ helm: v }),
       lowPower: false,
       setLowPower: (v) => set({ lowPower: v }),
+      recordTrips: true,
+      setRecordTrips: (v) => set({ recordTrips: v }),
       usageStats: true,
       setUsageStats: (v) => set({ usageStats: v }),
 
@@ -433,6 +439,7 @@ export const useAppStore = create<AppState>()(
         windFlowOpacity: s.windFlowOpacity,
         flowTuning: s.flowTuning,
         lowPower: s.lowPower,
+        recordTrips: s.recordTrips,
         usageStats: s.usageStats,
         onboarded: s.onboarded,
         setupDone: s.setupDone,

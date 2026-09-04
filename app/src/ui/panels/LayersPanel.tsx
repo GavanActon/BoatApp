@@ -132,6 +132,8 @@ export default function LayersPanel() {
   const setWindUnit = useAppStore((s) => s.setWindUnit)
   const lowPower = useAppStore((s) => s.lowPower)
   const setLowPower = useAppStore((s) => s.setLowPower)
+  const recordTrips = useAppStore((s) => s.recordTrips)
+  const setRecordTrips = useAppStore((s) => s.setRecordTrips)
   const usageStats = useAppStore((s) => s.usageStats)
   const setUsageStats = useAppStore((s) => s.setUsageStats)
   const satOpacity = useAppStore((s) => s.satOpacity)
@@ -240,6 +242,20 @@ export default function LayersPanel() {
           className="switch"
           checked={lowPower}
           onChange={(e) => setLowPower(e.target.checked)}
+        />
+      </label>
+
+      <div className="panel-section">Log</div>
+      <label className="row">
+        <div className="row-text">
+          <span className="row-title">Record trips</span>
+          <span className="row-desc">every trip, cast-off to home · GPX from the log</span>
+        </div>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={recordTrips}
+          onChange={(e) => setRecordTrips(e.target.checked)}
         />
       </label>
 

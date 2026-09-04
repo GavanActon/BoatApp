@@ -42,7 +42,7 @@ import {
 const LayersPanel = lazy(() => import('./ui/panels/LayersPanel'))
 const PlacesPanel = lazy(() => import('./ui/panels/PlacesPanel'))
 const CrewPanel = lazy(() => import('./circle/CrewPanel'))
-const TracksPanel = lazy(() => import('./ui/panels/TracksPanel'))
+const LogPanel = lazy(() => import('./ui/panels/LogPanel'))
 const WeatherPanel = lazy(() => import('./ui/panels/WeatherPanel'))
 import TripCard from './ui/TripCard'
 import WeatherStrip from './ui/WeatherStrip'
@@ -484,7 +484,7 @@ export default function App() {
           <Suspense fallback={null}>
             {sheetTab === 'places' && <PlacesPanel />}
             {sheetTab === 'crew' && <CrewPanel />}
-            {sheetTab === 'log' && <TracksPanel />}
+            {sheetTab === 'log' && <LogPanel />}
             {sheetTab === 'weather' && <WeatherPanel />}
             {sheetTab === 'layers' && <LayersPanel />}
           </Suspense>

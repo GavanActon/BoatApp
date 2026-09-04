@@ -247,7 +247,8 @@ export function startTrip() {
   capturePromise() // before the window is cleared — it IS the promise
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
-  if (!useGpsStore.getState().recording) void startRecording()
+  // every trip records for the log, unless Settings › Log says not to
+  if (useAppStore.getState().recordTrips && !useGpsStore.getState().recording) void startRecording()
   void replan()
 }
 

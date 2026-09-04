@@ -5,8 +5,10 @@ import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { stopRecording } from '../tracking/gpsService'
+import { addMark, initMarks } from '../tracking/marks'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, type SpeedUnit } from '../units'
 import { haptic } from './haptics'
+import { IconPin } from './icons'
 
 /** How long the first tap's "End trip · tap again" stands. */
 const ARM_MS = 4000
@@ -113,7 +115,33 @@ export default function InstrumentBar({ embedded = false }: { embedded?: boolean
         <span className="inst-value numeral">{hasGps ? formatDepth(depth, depthUnit) : '—'}</span>
         <span className="inst-unit">{depthUnit}</span>
       </div>
+      {recording && <MarkButton />}
       <RecPill />
     </div>
+  )
+}
+
+/** One tap: a mark at the boat, with the time and the depth — the pin
+ *  rings on the chart at once, and the log entry keeps it. */
+function MarkButton() {
+  const [flash, setFlash] = useState(false)
+  useEffect(() => {
+    initMarks()
+  }, [])
+  return (
+    <button
+      className={`mark-btn${flash ? ' mark-hit' : ''}`}
+      aria-label="Mark this spot"
+      onClick={() => {
+        void addMark().then((m) => {
+          if (!m) return
+          haptic('confirm')
+          setFlash(true)
+          setTimeout(() => setFlash(false), 600)
+        })
+      }}
+    >
+      <IconPin size={20} />
+    </button>
   )
 }

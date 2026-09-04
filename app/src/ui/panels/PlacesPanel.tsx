@@ -7,13 +7,15 @@ import { useAppStore } from '../../state/appStore'
 import { allPlaces, homeBase, homeCenter, usePlacesStore } from '../../state/placesStore'
 import { isAfloat } from '../../routing/router'
 import { haversineNm } from '../../routing/waterRouter'
-import { db, type SavedStart } from '../../tracking/db'
+import { dateShort } from '../../time'
+import { db, type Line, type SavedStart } from '../../tracking/db'
 import { useGpsStore } from '../../tracking/gpsStore'
+import { deleteLine, isLineShown, listLines, onLines, toggleLine } from '../../tracking/lines'
 import { seaColor } from '../../weather/seaState'
 import { byCalmest, spotConditionsAt } from '../../weather/spotConditions'
 import { ensureWeatherGrid } from '../../weather/weatherLayer'
 import { distanceUnitFor, runDistance, speedUnitLabel, windSpeed } from '../../units'
-import { IconClose, IconLocate, IconPin, IconPlus, IconRoute, IconSky, IconStar, IconWindArrow } from '../icons'
+import { IconClose, IconLocate, IconPin, IconPlus, IconRoute, IconSky, IconStar, IconTrack, IconTrash, IconWindArrow } from '../icons'
 import SavedAdmin from '../SavedAdmin'
 
 /**
@@ -539,9 +541,76 @@ export default function PlacesPanel() {
       {!armedSlot && (
         <>
           <div className="place-hint">tap the chart to add a place</div>
+          <LinesList editMode={editMode} routeTo={routeTo} />
           <SavedAdmin />
         </>
       )}
     </div>
+  )
+}
+
+/** Lines: tracks kept from the log. Tap draws one on the chart and frames
+ *  it (tap again takes it off); the route button plots a run to its start,
+ *  so a trolling run is one tap to get to and then follow. */
+function LinesList({ editMode, routeTo }: { editMode: boolean; routeTo: (d: { name: string; lon: number; lat: number }) => void }) {
+  const [lines, setLines] = useState<Line[]>([])
+  const [, setTick] = useState(0)
+  const speedUnit = useAppStore((s) => s.speedUnit)
+  useEffect(() => {
+    const load = () => void listLines().then(setLines)
+    load()
+    return onLines(() => {
+      load()
+      setTick((n) => n + 1)
+    })
+  }, [])
+  if (!lines.length) return null
+  return (
+    <>
+      <div className="panel-section lines-head">
+        <span>Lines</span>
+        <span className="meta">from the log</span>
+      </div>
+      <div className="place-list">
+        {lines.map((l) => {
+          const on = l.id != null && isLineShown(l.id)
+          const start = l.coords[0]
+          return (
+            <div key={l.id} className={`place-row${on ? ' place-current' : ''}`}>
+              <button className="place-go" onClick={() => void toggleLine(l)} aria-pressed={on} aria-label={`${l.name}, ${on ? 'on the chart' : 'show on the chart'}`}>
+                <span className="pg-top">
+                  <span className="nm">{l.name}</span>
+                  <span className="pg-sky pg-line" aria-hidden="true">
+                    <IconTrack size={14} />
+                  </span>
+                </span>
+                <span className="pg-info numeral">
+                  <b>{runDistance(speedUnit, l.distanceNm)}</b> {distanceUnitFor(speedUnit)} · saved {dateShort(l.createdAt)}
+                </span>
+              </button>
+              {editMode ? (
+                <button
+                  className="icon-btn danger place-route"
+                  onClick={() => {
+                    if (confirm(`Delete the line "${l.name}"?`)) void deleteLine(l.id!)
+                  }}
+                  aria-label={`Delete ${l.name}`}
+                >
+                  <IconTrash size={18} />
+                </button>
+              ) : (
+                <button
+                  className="icon-btn place-route"
+                  onClick={() => start && routeTo({ name: l.name, lon: start[0], lat: start[1] })}
+                  aria-label={`Route to the start of ${l.name}`}
+                >
+                  <IconRoute size={20} />
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </>
   )
 }

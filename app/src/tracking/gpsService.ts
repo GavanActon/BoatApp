@@ -536,3 +536,8 @@ export async function stopRecording() {
 export function isRecording(): boolean {
   return activeTrackId != null
 }
+
+/** The track being recorded right now, for a mark to belong to. */
+export function activeTrack(): number | null {
+  return activeTrackId
+}
