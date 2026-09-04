@@ -52,10 +52,20 @@ function visibleOnline(): boolean {
 }
 
 let polling: Promise<void> | null = null
+let pollingSince = 0
+/** A request older than this is abandoned, not waited on. iOS freezes a
+ *  suspended page's timers along with everything else, so a fetch caught
+ *  mid-flight by the lock screen can outlive its own timeout and never
+ *  settle — and a dedupe that waited on it would never poll again until
+ *  the app was reloaded. That is what "his position stopped updating"
+ *  looked like. */
+const IN_FLIGHT_MAX_MS = 20_000
 
-/** Fetch every circle now (deduped while one is in flight). */
+/** Fetch every circle now (deduped while one is in flight and fresh). */
 export function pollCircles(): Promise<void> {
-  polling ??= (async () => {
+  if (polling && Date.now() - pollingSince < IN_FLIGHT_MAX_MS) return polling
+  pollingSince = Date.now()
+  const run = (async () => {
     const s = useCircleStore.getState()
     if (!s.circles.length) return
     let failed: string | null = null
@@ -69,10 +79,12 @@ export function pollCircles(): Promise<void> {
     }
     if (failed) useCircleStore.getState().setFetchError(failed)
     for (const cb of LISTENERS) cb()
-  })().finally(() => {
-    polling = null
+  })()
+  polling = run
+  void run.finally(() => {
+    if (polling === run) polling = null
   })
-  return polling
+  return run
 }
 
 /** This boat's trip, as the circle should see it — or null when just out. */
@@ -115,7 +127,7 @@ function ownRecord(trip: BoatTrip | null): OwnRecord | null {
   }
 }
 
-let posting = false
+let postingSince = 0
 
 /** The switch's resting position: on when there is anyone to show. */
 function defaultSharing(): boolean {
@@ -126,17 +138,20 @@ function defaultSharing(): boolean {
  *  a fix. The trip's end passes its own final record. */
 export async function postNow(override?: { trip: BoatTrip | null }): Promise<void> {
   const s = useCircleStore.getState()
-  if (!s.sharing || !s.circles.length || posting) return
+  if (!s.sharing || !s.circles.length) return
+  // the same rule as the poll: a post stuck since before a suspend does
+  // not stop the next one
+  if (postingSince && Date.now() - postingSince < IN_FLIGHT_MAX_MS) return
   if (!override && useRouteStore.getState().tripStartedAt == null) return
   const rec = ownRecord(override ? override.trip : ownTrip())
   if (!rec) return
-  posting = true
+  postingSince = Date.now()
   try {
     const sent = await Promise.all(s.circles.map((c) => postBoat(c, rec).then(() => true, () => false)))
     // a trip the crew could see: On the Radar
     if (sent.some(Boolean) && useRouteStore.getState().tripStartedAt != null) useDiscoverStore.getState().touch('shared')
   } finally {
-    posting = false
+    postingSince = 0
   }
 }
 
@@ -280,6 +295,14 @@ export function initCircle() {
   window.addEventListener('online', () => {
     void pollCircles()
     void postNow()
+  })
+  // back from the page cache, or a resume iOS reports this way rather than
+  // as a visibility change: the same two moves
+  window.addEventListener('pageshow', () => {
+    if (visibleOnline()) {
+      void pollCircles()
+      void postNow()
+    }
   })
 
   // the moments that matter post at once; the end of the trip posts "home"

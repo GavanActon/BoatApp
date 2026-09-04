@@ -2,6 +2,7 @@ import maplibregl from 'maplibre-gl'
 import { withMap, getMap } from '../map/mapController'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
+import { track } from '../stats/core'
 import { db } from './db'
 import { judge, newGate, type GateState } from './fixGate'
 import { distanceNm, useGpsStore, type Fix } from './gpsStore'
@@ -72,8 +73,10 @@ function ensureMarker(): maplibregl.Marker {
 async function acquireWakeLock() {
   try {
     wakeLock = await navigator.wakeLock?.request('screen')
-  } catch {
-    /* not critical */
+  } catch (e) {
+    // Low Power Mode refuses it, and then the screen locks and the app is
+    // suspended mid-trip; counted, so "the app won't stay open" has a number
+    track('wakelock_denied', { why: e instanceof Error ? e.name : 'unknown' }, { every: 600_000 })
   }
 }
 
