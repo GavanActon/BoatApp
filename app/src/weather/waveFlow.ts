@@ -1,6 +1,6 @@
 import type { Map as MlMap } from 'maplibre-gl'
 import { depthAt } from '../map/depthGrid'
-import { withMap } from '../map/mapController'
+import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { seaColor } from './seaState'
 import { ensureWeatherGrid, gridConditionsAt, onWeatherGrid, onWeatherHour } from './weatherLayer'
@@ -565,7 +565,9 @@ export function initSeaFlow() {
   // StrictMode double-runs effects in dev; two sets of listeners would fight
   if (seaWired) return
   seaWired = true
-  withMap((map) => {
+  // every map, as the wind does: a rebuilt chart gets its sea, and the sea
+  // of a map that goes away goes with it
+  onEachMap((map) => {
     syncSea(map)
     // a finished PAN extends the living field in place — the crests you
     // dragged along must not blink out and respawn. Only a reshaped camera
@@ -575,7 +577,19 @@ export function initSeaFlow() {
       else syncSea(map)
     })
     map.on('resize', () => syncSea(map))
-    document.addEventListener('visibilitychange', () => syncSea(map))
+    map.once('remove', () => {
+      seaStop?.()
+      seaStop = null
+      seaExtend = null
+      seaCam = null
+    })
+  })
+  withMap(() => {
+    const cur = () => {
+      const m = getMap()
+      if (m) syncSea(m)
+    }
+    document.addEventListener('visibilitychange', cur)
     useAppStore.subscribe((s, prev) => {
       if (
         s.layers.seaFlow !== prev.layers.seaFlow ||
@@ -586,12 +600,12 @@ export function initSeaFlow() {
         s.flowTuning.seaSpacing !== prev.flowTuning.seaSpacing ||
         s.flowTuning.seaLength !== prev.flowTuning.seaLength
       ) {
-        syncSea(map)
+        cur()
       }
     })
-    onWeatherGrid(() => syncSea(map))
+    onWeatherGrid(cur)
     // the field is one hour's sea; when the hour steps, so does the field
-    onWeatherHour(() => syncSea(map))
+    onWeatherHour(cur)
   })
 }
 

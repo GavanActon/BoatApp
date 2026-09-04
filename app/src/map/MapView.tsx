@@ -88,7 +88,20 @@ function scaleUnitFor(speed: SpeedUnit): 'nautical' | 'metric' | 'imperial' {
 function webglAvailable(): boolean {
   try {
     const c = document.createElement('canvas')
-    return !!(c.getContext('webgl2') ?? c.getContext('webgl'))
+    const gl = c.getContext('webgl2') ?? c.getContext('webgl')
+    if (!gl) return false
+    // what the phone brought: the log wants it once, on the first map
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+    devlog('gl', 'available', {
+      webgl2: gl instanceof WebGL2RenderingContext,
+      renderer: dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)).slice(0, 60) : 'masked',
+      maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    })
+    // a probe context left alive counts against the browser's small limit
+    // of live contexts — Safari drops the OLDEST when it is exceeded, which
+    // could be the chart's. Give it back at once.
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    return true
   } catch {
     return false
   }

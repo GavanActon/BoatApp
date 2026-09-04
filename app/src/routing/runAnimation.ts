@@ -333,6 +333,14 @@ let wired = false
 export function initRunAnimation(map: MlMap) {
   theMap = map
   syncRunAnimation(map)
+  // a map that goes away (a rebuild after a lost context) takes its loop with it
+  map.once('remove', () => {
+    if (raf != null) {
+      cancelAnimationFrame(raf)
+      raf = null
+    }
+    if (theMap === map) theMap = null
+  })
   if (wired) return
   wired = true
   if (import.meta.env.DEV) {
@@ -349,11 +357,15 @@ export function initRunAnimation(map: MlMap) {
       w.__windTint = m.setWindFlowTint
     })
   }
-  document.addEventListener('visibilitychange', () => syncRunAnimation(map))
+  // once, for whichever map is current
+  const cur = () => {
+    if (theMap) syncRunAnimation(theMap)
+  }
+  document.addEventListener('visibilitychange', cur)
   useRouteStore.subscribe((s, prev) => {
-    if (s.route !== prev.route || s.plan !== prev.plan) syncRunAnimation(map)
+    if (s.route !== prev.route || s.plan !== prev.plan) cur()
   })
   useAppStore.subscribe((s, prev) => {
-    if (s.lowPower !== prev.lowPower) syncRunAnimation(map)
+    if (s.lowPower !== prev.lowPower) cur()
   })
 }

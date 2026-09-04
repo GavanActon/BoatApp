@@ -1,5 +1,5 @@
 import type { Map as MlMap } from 'maplibre-gl'
-import { withMap } from '../map/mapController'
+import { getMap, onEachMap, withMap } from '../map/mapController'
 import { crestPassFrame, crestSettle, suspendRunAnimation } from '../routing/runAnimation'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
@@ -386,7 +386,11 @@ export function initWindFlow() {
   // StrictMode double-runs effects in dev; two sets of listeners would fight
   if (wired) return
   wired = true
-  withMap((map) => {
+  // the map can be replaced — a rebuild after a lost WebGL context, an HMR
+  // update — so the camera hooks bind to EVERY map, and the engine on a map
+  // that goes away goes with it (its canvas would otherwise stay in the
+  // container, drawing over the new chart from a map that no longer exists)
+  onEachMap((map) => {
     syncAmbient(map)
     // engines ride camera translation live (geographic anchoring). A
     // finished PAN resamples the running engine in place — canvas, trails
@@ -397,7 +401,18 @@ export function initWindFlow() {
       syncAmbient(map)
     })
     map.on('resize', () => syncAmbient(map))
-    document.addEventListener('visibilitychange', () => syncAmbient(map))
+    map.once('remove', () => {
+      ambient?.stop()
+      ambient = null
+    })
+  })
+  // the switches, once: they act on whichever map is current
+  withMap(() => {
+    const cur = () => {
+      const m = getMap()
+      if (m) syncAmbient(m)
+    }
+    document.addEventListener('visibilitychange', cur)
     useAppStore.subscribe((s, prev) => {
       if (
         s.layers.windFlow !== prev.layers.windFlow ||
@@ -408,12 +423,12 @@ export function initWindFlow() {
         s.flowTuning.windDensity !== prev.flowTuning.windDensity ||
         s.flowTuning.windSpeed !== prev.flowTuning.windSpeed
       ) {
-        syncAmbient(map)
+        cur()
       }
     })
-    onWeatherGrid(() => syncAmbient(map))
+    onWeatherGrid(cur)
     // the field is one hour's wind; when the hour steps, so does the field
-    onWeatherHour(() => syncAmbient(map))
+    onWeatherHour(cur)
   })
 }
 
