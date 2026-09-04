@@ -113,7 +113,7 @@ export function chapters(): Chapter[] {
       name: 'Planning',
       reward: "The day's windows, out and back.",
       rows: [
-        { id: 'hour', label: 'Tap an hour', hint: 'the strip up top', action: 'strip', done: !!t.planTime },
+        { id: 'hour', label: 'Pick an hour', hint: 'the strip up top · the day plans around it', action: 'strip', done: !!t.planTime },
         { id: 'backBy', label: 'Set back-by', hint: 'Trip card › Back', action: 'strip', done: !!t.backBy },
       ],
     },

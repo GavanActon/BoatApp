@@ -16,6 +16,7 @@ export type AchIcon =
   | 'map'
   | 'note'
   | 'north'
+  | 'hour'
   | 'back'
   | 'via'
   | 'light'
@@ -49,6 +50,8 @@ const PATHS: Record<AchIcon, string> = {
   map: '<path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20Z"/>',
   note: '<path d="M5 4h14v16H5Z"/><path d="M8 9h8M8 13h5"/>',
   north: '<path d="M12 3v18"/><path d="M7 8l5-5 5 5"/>',
+  // an hour cell off the strip, picked
+  hour: '<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9h16"/><path d="M9 14l2 2 4-4"/>',
   back: '<path d="M20 12H6"/><path d="M11 7l-5 5 5 5"/>',
   via: '<path d="M4 18c4 0 4-12 8-12s4 12 8 12"/>',
   light: '<path d="M9 21h6l-1-12h-4Z"/><path d="M8 9h8M12 3v3"/><path d="M5 6l2 2M19 6l-2 2"/>',

@@ -166,10 +166,11 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     check: (c) => (c.noteCount > 0 ? [['Notes', String(c.noteCount)]] : null),
   },
   {
+    // the id stays: it is the key earned entries are stored under
     id: 'points-north',
-    name: 'Points North',
-    hint: 'tap an hour',
-    icon: 'north',
+    name: 'Weather Window',
+    hint: 'pick an hour on the strip',
+    icon: 'hour',
     group: 'setup',
     check: (c) => (c.touched.planTime ? [['Planned', dateShort(c.now)]] : null),
   },
