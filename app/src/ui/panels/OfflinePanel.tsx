@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { BUILD, buildReport, REPORT_EMAIL, reportMailto } from '../../diagnostics'
 import { isInstalled } from '../../discover/install'
 import { BUNDLES, DATA_BASE } from '../../config'
 import {
@@ -34,7 +33,6 @@ export default function OfflinePanel() {
   const [dl, setDl] = useState<DlState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [quota, setQuota] = useState<{ usage: number; quota: number } | null>(null)
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     void storageEstimate().then(setQuota)
@@ -64,26 +62,6 @@ export default function OfflinePanel() {
       setDl(null)
       setError('Download failed — check your connection and try again.')
       setStored(listStored())
-    }
-  }
-
-  // Report a problem: the mail app opens with the diagnostics filled in.
-  // Assigning location (not window.open) is what works from an installed
-  // iOS PWA — a popup would be blocked or open a blank Safari tab.
-  async function emailReport() {
-    track('report', { how: 'email' })
-    location.assign(reportMailto(await buildReport()))
-  }
-
-  // For the phone with no mail app set up: the same text, to paste anywhere.
-  async function copyReport() {
-    track('report', { how: 'copy' })
-    try {
-      await navigator.clipboard.writeText(await buildReport())
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setError('Could not copy — try the email button instead.')
     }
   }
 
@@ -174,28 +152,6 @@ export default function OfflinePanel() {
           Home Screen — the steps are in Discover.
         </div>
       )}
-
-      <div className="panel-section">Something wrong?</div>
-      <div className="row">
-        <div className="row-text">
-          <div className="row-title">Report a problem</div>
-          <div className="row-desc">
-            Opens an email to {REPORT_EMAIL} with the build, your position and the age of every
-            forecast already filled in. Just say what happened.
-          </div>
-        </div>
-      </div>
-      <div className="report-actions">
-        <button className="btn-primary" onClick={() => void emailReport()}>
-          Email a report
-        </button>
-        <button className="btn-secondary" onClick={() => void copyReport()}>
-          {copied ? 'Copied' : 'Copy details'}
-        </button>
-      </div>
-      <div className="panel-note row-desc">
-        Build {BUILD.sha} · {BUILD.at.slice(0, 10)}
-      </div>
     </div>
   )
 }

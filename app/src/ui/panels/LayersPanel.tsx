@@ -12,6 +12,7 @@ import { knToUnit, SPEED_UNITS, speedUnitLabel, unitToKn } from '../../units'
 import { IconMinus, IconPlus } from '../icons'
 import SeaRamp from '../SeaRamp'
 import OfflinePanel from './OfflinePanel'
+import ReportProblem from './ReportProblem'
 
 /** One tuning slider row — the motion layers are dialled in on the water,
  *  not in code, so every parameter that shapes the look gets one of these. */
@@ -550,6 +551,9 @@ export default function LayersPanel() {
           onChange={(e) => setUsageStats(e.target.checked)}
         />
       </label>
+
+      {/* the very last thing: the way to say something went wrong */}
+      <ReportProblem />
       </div>
     </div>
   )
