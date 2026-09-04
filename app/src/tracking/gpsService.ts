@@ -70,13 +70,39 @@ function ensureMarker(): maplibregl.Marker {
   return marker
 }
 
+/** Refused (Low Power Mode) or let go: ask again this often while the
+ *  chart is up, so switching the mode off mid-trip is enough. */
+const WAKE_RETRY_MS = 30_000
+let wakeRetryId: number | null = null
+
 async function acquireWakeLock() {
+  const gps = useGpsStore.getState()
+  if (!('wakeLock' in navigator)) {
+    gps.setWake('unsupported')
+    return
+  }
+  if (wakeLock && !wakeLock.released) return
+  if (document.visibilityState !== 'visible') return
   try {
-    wakeLock = await navigator.wakeLock?.request('screen')
+    wakeLock = await navigator.wakeLock.request('screen')
+    gps.setWake('on')
+    // iOS lets go of it on its own when the app leaves the front; the
+    // visibility handler asks again on the way back
+    wakeLock.addEventListener('release', () => {
+      if (useGpsStore.getState().wake === 'on') useGpsStore.getState().setWake('off')
+    })
   } catch (e) {
     // Low Power Mode refuses it, and then the screen locks and the app is
-    // suspended mid-trip; counted, so "the app won't stay open" has a number
+    // suspended mid-trip — "the app closes on its own"; said in Settings,
+    // counted here, and asked for again in a while
+    gps.setWake('refused')
     track('wakelock_denied', { why: e instanceof Error ? e.name : 'unknown' }, { every: 600_000 })
+  }
+  if (wakeRetryId == null) {
+    wakeRetryId = window.setInterval(() => {
+      const w = useGpsStore.getState().wake
+      if ((w === 'refused' || w === 'off') && watchId != null && document.visibilityState === 'visible') void acquireWakeLock()
+    }, WAKE_RETRY_MS)
   }
 }
 
@@ -277,6 +303,11 @@ export function stopGps() {
   markerAdded = false
   wakeLock?.release().catch(() => {})
   wakeLock = null
+  if (wakeRetryId != null) {
+    clearInterval(wakeRetryId)
+    wakeRetryId = null
+  }
+  if (useGpsStore.getState().wake !== 'unsupported') useGpsStore.getState().setWake('off')
   useGpsStore.getState().setStatus('off')
   useGpsStore.getState().setFix(null)
 }

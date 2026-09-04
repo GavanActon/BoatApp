@@ -14,6 +14,10 @@ export interface Fix {
 // granting permission changes that
 export type GpsStatus = 'off' | 'acquiring' | 'on' | 'denied' | 'error' | 'insecure'
 
+/** Whether the screen is being kept on. 'refused' is what Low Power Mode
+ *  does; 'unsupported' is an iOS before 16.4. */
+export type WakeState = 'off' | 'on' | 'refused' | 'unsupported'
+
 interface GpsState {
   status: GpsStatus
   fix: Fix | null
@@ -35,6 +39,8 @@ interface GpsState {
   /** Fixes the gate refused this session — for the diagnostics report. */
   dropped: { coarse: number; stale: number; jump: number }
   setDropped: (d: { coarse: number; stale: number; jump: number }) => void
+  wake: WakeState
+  setWake: (w: WakeState) => void
   setStatus: (s: GpsStatus, lastError?: string | null) => void
   setFix: (f: Fix | null) => void
   setRecording: (on: boolean, since?: number | null) => void
@@ -51,6 +57,8 @@ export const useGpsStore = create<GpsState>((set) => ({
   avgSogKn: null,
   dropped: { coarse: 0, stale: 0, jump: 0 },
   setDropped: (dropped) => set({ dropped: { ...dropped } }),
+  wake: 'off',
+  setWake: (wake) => set({ wake }),
   setStatus: (status, lastError) => set(lastError === undefined ? { status } : { status, lastError }),
   setFix: (fix) => set({ fix, avgSogKn: pushSog(fix) }),
   setRecording: (recording, since = null) =>

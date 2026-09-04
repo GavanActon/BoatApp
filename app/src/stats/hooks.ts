@@ -101,12 +101,15 @@ export function initStats(): void {
   // ---- the session ----
   let shownAt = Date.now()
   let hiddenAt: number | null = null
+  noteLastExit()
   void open(false)
+  startHeartbeat(() => shownAt)
   withMap(() => track('boot', { ms: Math.round(performance.now()) }))
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       hiddenAt = Date.now()
       track('close', { sec: Math.round((hiddenAt - shownAt) / 1000) })
+      beat(false, shownAt)
       void flush()
     } else if (hiddenAt != null && Date.now() - hiddenAt >= RESUME_MS) {
       shownAt = Date.now()
@@ -187,4 +190,96 @@ export function initStats(): void {
   useMeasureStore.subscribe((s, p) => {
     if (s.active && !p.active) track('measure')
   })
+}
+
+// ---------- the exit nobody chose ----------
+//
+// iOS never says why an app went away. What we can know: whether the page
+// was in front when it was last heard from, and whether it left cleanly.
+// A heartbeat every ten seconds while visible writes the moment and the
+// load the app was under; pagehide clears it. A launch that finds a
+// heartbeat still there was preceded by a kill — in use if the beat says
+// visible (the "closes on its own" a memory-starved phone does), else the
+// ordinary background purge.
+
+const ALIVE_KEY = 'sandies-alive'
+const LAST_EXIT_KEY = 'sandies-last-exit'
+const BEAT_MS = 10_000
+
+interface Beat {
+  ts: number
+  visible: boolean
+  sec: number
+  sat: boolean
+  wind: boolean
+  sea: boolean
+  low: boolean
+  trip: boolean
+}
+
+function beat(visible: boolean, shownAt: number) {
+  const app = useAppStore.getState()
+  const b: Beat = {
+    ts: Date.now(),
+    visible,
+    sec: Math.round((Date.now() - shownAt) / 1000),
+    sat: app.layers.satellite,
+    wind: app.layers.weather,
+    sea: app.layers.seaFlow,
+    low: app.lowPower,
+    trip: useRouteStore.getState().tripStartedAt != null,
+  }
+  try {
+    localStorage.setItem(ALIVE_KEY, JSON.stringify(b))
+  } catch {
+    /* storage full or gone: nothing to note */
+  }
+}
+
+function startHeartbeat(shownAt: () => number) {
+  beat(true, shownAt())
+  setInterval(() => {
+    if (document.visibilityState === 'visible') beat(true, shownAt())
+  }, BEAT_MS)
+  // a clean exit takes the beat with it
+  window.addEventListener('pagehide', () => {
+    try {
+      localStorage.removeItem(ALIVE_KEY)
+    } catch {
+      /* ignore */
+    }
+  })
+}
+
+/** What the last exit was, for the diagnostics report. */
+export function lastExit(): string | null {
+  try {
+    return localStorage.getItem(LAST_EXIT_KEY)
+  } catch {
+    return null
+  }
+}
+
+function noteLastExit() {
+  let raw: string | null = null
+  try {
+    raw = localStorage.getItem(ALIVE_KEY)
+    localStorage.removeItem(ALIVE_KEY)
+  } catch {
+    return
+  }
+  if (!raw) return
+  try {
+    const b = JSON.parse(raw) as Beat
+    const ago = Math.round((Date.now() - b.ts) / 1000)
+    const kind = b.visible ? 'killed' : 'purged'
+    track(kind, { sec: b.sec, ago, sat: b.sat, wind: b.wind, sea: b.sea, low: b.low, trip: b.trip, dpr: devicePixelRatio })
+    const when = new Date(b.ts).toISOString().slice(0, 16).replace('T', ' ')
+    localStorage.setItem(
+      LAST_EXIT_KEY,
+      `${kind} ${when} after ${b.sec}s in front · sat ${b.sat ? 'on' : 'off'} · wind ${b.wind ? 'on' : 'off'} · sea ${b.sea ? 'on' : 'off'} · low power ${b.low ? 'on' : 'off'} · trip ${b.trip ? 'yes' : 'no'}`,
+    )
+  } catch {
+    /* an old or odd beat: forget it */
+  }
 }

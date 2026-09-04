@@ -153,6 +153,13 @@ export default function MapView() {
         maxPitch: 60,
         attributionControl: { compact: true },
         fadeDuration: 150,
+        // iOS gives a web app a fixed memory budget and kills the page when
+        // it is spent — the app "closes on its own". The chart is the big
+        // spender: a 3× canvas is 2.25× the pixels of a 2× one for no
+        // legible gain on a chart, and every cached tile is a texture. The
+        // flow canvases already cap at 2×.
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        maxTileCacheSize: 48,
       })
 
       const scale = new maplibregl.ScaleControl({

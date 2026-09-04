@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useDiscoverStore } from '../../discover/store'
 import { useRouteStore } from '../../routing/routeStore'
+import { useGpsStore } from '../../tracking/gpsStore'
 import {
   FLOW_TUNING_DEFAULTS,
   SEA_SCALE_MAX_M,
@@ -132,6 +133,8 @@ export default function LayersPanel() {
   const windUnit = useAppStore((s) => s.windUnit)
   const setWindUnit = useAppStore((s) => s.setWindUnit)
   const lowPower = useAppStore((s) => s.lowPower)
+  const wake = useGpsStore((s) => s.wake)
+  const gpsOn = useGpsStore((s) => s.status === 'on')
   const setLowPower = useAppStore((s) => s.setLowPower)
   const recordTrips = useAppStore((s) => s.recordTrips)
   const setRecordTrips = useAppStore((s) => s.setRecordTrips)
@@ -245,6 +248,26 @@ export default function LayersPanel() {
           onChange={(e) => setLowPower(e.target.checked)}
         />
       </label>
+
+      {/* the screen: iOS suspends the app the moment it locks, and then the
+          trip is not being tracked or shared. Said plainly, with the fix. */}
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Screen stays on</span>
+          <span className="row-desc">
+            {wake === 'on'
+              ? 'while the chart is up'
+              : wake === 'refused'
+                ? 'refused by the phone — Low Power Mode? Or set Auto-Lock to Never for the trip'
+                : wake === 'unsupported'
+                  ? 'not on this iOS — set Auto-Lock to Never for the trip (Settings › Display)'
+                  : gpsOn
+                    ? 'not held right now — the lock screen would pause the trip'
+                    : 'once location is on'}
+          </span>
+        </div>
+        <span className={`wake-dot ${wake}`} aria-hidden="true" />
+      </div>
 
       <div className="panel-section">Log</div>
       <label className="row">

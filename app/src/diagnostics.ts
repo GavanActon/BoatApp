@@ -12,6 +12,7 @@
  * stats — src/stats — is the one thing in the app that does. Uncaught
  * errors go there too, as a level and a line, and Settings switches it off.)
  */
+import { lastExit } from './stats/hooks'
 import { listStored, storageEstimate } from './offline/fileStore'
 import { useAppStore } from './state/appStore'
 import { track } from './stats/core'
@@ -151,6 +152,7 @@ export async function buildReport(): Promise<string> {
     `Online: ${yn(app.online)} · service worker ${yn(!!navigator.serviceWorker?.controller)}`,
     ``,
     `GPS: ${gpsLine}${gps.lastError ? ` · last error: ${gps.lastError}` : ''} · ${droppedLine}`,
+    `Last exit: ${lastExit() ?? 'clean'} · wake lock ${gps.wake}`,
     `View: helm ${yn(app.helm)} · low power ${yn(app.lowPower)} · heading-up ${yn(app.headingUp)} · follow ${yn(app.follow)}`,
     `Layers: ${layersOn || 'none'}`,
     `Units: depth ${app.depthUnit} · boat ${app.speedUnit} · wind ${app.windUnit}`,
