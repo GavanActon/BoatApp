@@ -17,6 +17,24 @@ export interface TrackPoint {
   lat: number
   sogKn: number | null
   cog: number | null
+  /** The first point after a silence (the app suspended, no signal): the
+   *  line breaks here rather than drawing a chord across the gap. */
+  gap?: boolean
+}
+
+/** Points as line segments, broken where a point says the track was silent. */
+export function trackSegments(pts: TrackPoint[]): [number, number][][] {
+  const segs: [number, number][][] = []
+  let cur: [number, number][] = []
+  for (const p of pts) {
+    if (p.gap && cur.length) {
+      segs.push(cur)
+      cur = []
+    }
+    cur.push([p.lon, p.lat])
+  }
+  if (cur.length) segs.push(cur)
+  return segs
 }
 
 export interface CachedForecast {

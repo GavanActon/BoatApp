@@ -3,6 +3,7 @@ import { withMap, getMap } from '../map/mapController'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { db } from './db'
+import { judge, newGate, type GateState } from './fixGate'
 import { distanceNm, useGpsStore, type Fix } from './gpsStore'
 
 /**
@@ -26,11 +27,24 @@ let watchdogId: number | null = null
 const STALE_RESTART_MS = 15000
 const STALE_ERROR_MS = 30000
 
+/** The gate every fix passes before the boat moves, the track takes it or
+ *  the crew hears it — see fixGate.ts. */
+let gate: GateState<Fix> = newGate<Fix>()
+/** A coarse fix may still nudge the marker once the good ones have been
+ *  silent this long — a rough place beats a frozen boat — but never the
+ *  store, the track or the crew. */
+const COARSE_MARKER_AFTER_MS = 20_000
+const COARSE_MARKER_MAX_M = 200
+let lastGoodAt = 0
+
 // recording state
 let activeTrackId: number | null = null
 let lastRecorded: Fix | null = null
 let maxSog = 0
-let liveCoords: [number, number][] = []
+/** The live trail, in segments: a new one starts after a silence. */
+let liveSegs: [number, number][][] = []
+/** Silence longer than this breaks the track line. */
+const GAP_MS = 60_000
 
 function vesselElement(): HTMLDivElement {
   const el = document.createElement('div')
@@ -80,11 +94,30 @@ function onFix(pos: GeolocationPosition) {
     cog: c.heading != null && !Number.isNaN(c.heading) ? c.heading : null,
     ts: pos.timestamp,
   }
+  // any fix at all keeps the watchdog quiet: the watch is alive, even if
+  // what it says is not worth keeping
   lastFixAt = Date.now()
   const gps = useGpsStore.getState()
-  gps.setFix(fix)
   if (gps.status !== 'on') gps.setStatus('on')
 
+  const { verdict, keep } = judge(fix, gate)
+  if (verdict !== 'good') {
+    gps.setDropped(gate.dropped)
+    if (verdict === 'coarse' && fix.accuracy <= COARSE_MARKER_MAX_M && Date.now() - lastGoodAt > COARSE_MARKER_AFTER_MS) {
+      placeMarker(fix, false)
+    }
+    return
+  }
+  lastGoodAt = Date.now()
+  for (const f of keep) {
+    gps.setFix(f)
+    void recordPoint(f)
+  }
+  placeMarker(keep[keep.length - 1], true)
+}
+
+/** Move the boat on the chart; `steer` lets the camera follow it too. */
+function placeMarker(fix: Fix, steer: boolean) {
   // the first fix can arrive before the map instance exists now that GPS
   // starts at app launch — queue it; later fixes take the direct path
   // without waiting for the style to finish loading
@@ -97,14 +130,12 @@ function onFix(pos: GeolocationPosition) {
       m.addTo(map)
       markerAdded = true
     }
-
+    if (!steer) return
     const { follow, headingUp, helm } = useAppStore.getState()
     if (follow && Date.now() >= cameraHoldUntil) followCamera(map, fix, headingUp || helm)
   }
   if (liveMap) update(liveMap)
   else withMap(update)
-
-  void recordPoint(fix)
 }
 
 // A fix lands about once a second, and the camera used to answer every one of
@@ -182,7 +213,9 @@ function onError(err: GeolocationPositionError) {
 function beginWatch() {
   watchId = navigator.geolocation.watchPosition(onFix, onError, {
     enableHighAccuracy: true,
-    maximumAge: 1000,
+    // never a cached position: a fresh watch after the lock screen used to
+    // open with the last one it had, and the gate would only have to drop it
+    maximumAge: 0,
     timeout: 30000,
   })
 }
@@ -234,6 +267,8 @@ export function stopGps() {
     watchdogId = null
   }
   lastFixAt = 0
+  lastGoodAt = 0
+  gate = newGate<Fix>()
   marker?.remove()
   marker = null
   markerAdded = false
@@ -468,23 +503,29 @@ function updateLiveTrailOn(map: maplibregl.Map) {
     })
   }
   const src = map.getSource(LIVE_SOURCE) as maplibregl.GeoJSONSource
+  const segs = liveSegs.filter((c) => c.length > 1)
   src.setData(
-    liveCoords.length > 1
-      ? { type: 'Feature', geometry: { type: 'LineString', coordinates: liveCoords }, properties: {} }
+    segs.length
+      ? { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs }, properties: {} }
       : { type: 'FeatureCollection', features: [] },
   )
 }
 
 async function recordPoint(fix: Fix) {
   if (activeTrackId == null) return
+  let gap = false
   if (lastRecorded) {
     const d = distanceNm(lastRecorded.lon, lastRecorded.lat, fix.lon, fix.lat)
     if (d < MIN_DIST_NM && fix.ts - lastRecorded.ts < MIN_INTERVAL_MS) return
+    // the distance across a silence is the straight line — an underestimate,
+    // never a fiction; the LINE breaks there, since the path is unknown
     useGpsStore.getState().addDistance(d)
+    gap = fix.ts - lastRecorded.ts > GAP_MS
   }
   lastRecorded = fix
   if (fix.sogKn != null && fix.sogKn > maxSog) maxSog = fix.sogKn
-  liveCoords.push([fix.lon, fix.lat])
+  if (gap || !liveSegs.length) liveSegs.push([])
+  liveSegs[liveSegs.length - 1].push([fix.lon, fix.lat])
   updateLiveTrail()
   await db.points.add({
     trackId: activeTrackId,
@@ -493,6 +534,7 @@ async function recordPoint(fix: Fix) {
     lat: fix.lat,
     sogKn: fix.sogKn,
     cog: fix.cog,
+    ...(gap ? { gap: true } : {}),
   })
 }
 
@@ -507,7 +549,7 @@ export async function startRecording() {
   })
   maxSog = 0
   lastRecorded = null
-  liveCoords = []
+  liveSegs = []
   updateLiveTrail()
   activeTrackId = (await db.tracks.add({
     name: `Track — ${name}`,

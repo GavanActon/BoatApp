@@ -1,4 +1,4 @@
-import { db, type Track } from './db'
+import { db, type Track, type TrackPoint } from './db'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -6,19 +6,30 @@ function esc(s: string): string {
 
 export async function trackToGpx(track: Track): Promise<string> {
   const pts = await db.points.where('trackId').equals(track.id!).sortBy('ts')
-  const seg = pts
-    .map((p) => {
-      const t = new Date(p.ts).toISOString()
-      return `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}"><time>${t}</time></trkpt>`
-    })
+  // a silence in the track is a new segment, as GPX means it
+  const segs: TrackPoint[][] = []
+  for (const p of pts) {
+    if (p.gap || !segs.length) segs.push([])
+    segs[segs.length - 1].push(p)
+  }
+  const body = segs
+    .map(
+      (seg) =>
+        `    <trkseg>\n` +
+        seg
+          .map((p) => {
+            const t = new Date(p.ts).toISOString()
+            return `      <trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}"><time>${t}</time></trkpt>`
+          })
+          .join('\n') +
+        `\n    </trkseg>`,
+    )
     .join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="Sandies" xmlns="http://www.topografix.com/GPX/1/1">
   <trk>
     <name>${esc(track.name)}</name>
-    <trkseg>
-${seg}
-    </trkseg>
+${body}
   </trk>
 </gpx>
 `

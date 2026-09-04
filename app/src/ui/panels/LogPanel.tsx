@@ -8,7 +8,7 @@ import { useRouteStore } from '../../routing/routeStore'
 import { useAppStore } from '../../state/appStore'
 import { track as count } from '../../stats/core'
 import { dateShort, dayShort, durationLabel, timeLabel } from '../../time'
-import { db, type Mark, type Outing, type Track } from '../../tracking/db'
+import { db, trackSegments, type Mark, type Outing, type Track } from '../../tracking/db'
 import { exportTrackGpx } from '../../tracking/gpx'
 import { startRecording, stopRecording } from '../../tracking/gpsService'
 import { useGpsStore } from '../../tracking/gpsStore'
@@ -57,10 +57,11 @@ async function showTrackOnMap(track: Track): Promise<void> {
   const pts = await db.points.where('trackId').equals(track.id!).sortBy('ts')
   if (!pts.length) return
   const coords = pts.map((p) => [p.lon, p.lat] as [number, number])
+  const segs = trackSegments(pts).filter((c) => c.length > 1)
   withMap((map) => {
     ensureViewLayer(map)
     const src = map.getSource(VIEW_SOURCE) as GeoJSONSource
-    src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} })
+    src.setData({ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs }, properties: {} })
     const bounds = coords.reduce(
       (b: LngLatBounds, c) => b.extend(c),
       new maplibregl.LngLatBounds(coords[0], coords[0]),

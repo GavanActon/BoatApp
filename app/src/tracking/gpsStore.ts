@@ -32,6 +32,9 @@ interface GpsState {
   /** Why the last attempt failed, in the browser's own words. "No GPS fix"
    *  is not a diagnosis; "location services are off" is. */
   lastError: string | null
+  /** Fixes the gate refused this session — for the diagnostics report. */
+  dropped: { coarse: number; stale: number; jump: number }
+  setDropped: (d: { coarse: number; stale: number; jump: number }) => void
   setStatus: (s: GpsStatus, lastError?: string | null) => void
   setFix: (f: Fix | null) => void
   setRecording: (on: boolean, since?: number | null) => void
@@ -46,6 +49,8 @@ export const useGpsStore = create<GpsState>((set) => ({
   recordingSince: null,
   recordingDistanceNm: 0,
   avgSogKn: null,
+  dropped: { coarse: 0, stale: 0, jump: 0 },
+  setDropped: (dropped) => set({ dropped: { ...dropped } }),
   setStatus: (status, lastError) => set(lastError === undefined ? { status } : { status, lastError }),
   setFix: (fix) => set({ fix, avgSogKn: pushSog(fix) }),
   setRecording: (recording, since = null) =>

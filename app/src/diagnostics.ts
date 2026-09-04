@@ -127,6 +127,8 @@ export async function buildReport(): Promise<string> {
       ` · SOG ${fix.sogKn?.toFixed(1) ?? '–'} kn · COG ${fix.cog?.toFixed(0) ?? '–'}°` +
       ` · fix ${agoLabel(now - fix.ts)}`
     : `${gps.status} · no fix`
+  const d = gps.dropped
+  const droppedLine = `dropped · coarse ${d.coarse} · stale ${d.stale} · jump ${d.jump}`
 
   const layersOn = Object.entries(app.layers)
     .filter(([, on]) => on)
@@ -148,7 +150,7 @@ export async function buildReport(): Promise<string> {
     `Time: ${new Date(now).toString()}`,
     `Online: ${yn(app.online)} · service worker ${yn(!!navigator.serviceWorker?.controller)}`,
     ``,
-    `GPS: ${gpsLine}${gps.lastError ? ` · last error: ${gps.lastError}` : ''}`,
+    `GPS: ${gpsLine}${gps.lastError ? ` · last error: ${gps.lastError}` : ''} · ${droppedLine}`,
     `View: helm ${yn(app.helm)} · low power ${yn(app.lowPower)} · heading-up ${yn(app.headingUp)} · follow ${yn(app.follow)}`,
     `Layers: ${layersOn || 'none'}`,
     `Units: depth ${app.depthUnit} · boat ${app.speedUnit} · wind ${app.windUnit}`,
