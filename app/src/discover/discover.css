@@ -13,7 +13,10 @@
 
 .dv-glyph {
   position: absolute;
-  left: 0;
+  /* the strip's glass edge is faint; the day chips inside it are the edge
+     the eye reads — its 1px border and 4px padding in — so the glyph sits
+     on that line, not the panel's */
+  left: 5px;
   top: 0;
   width: 32px;
   height: 32px;
