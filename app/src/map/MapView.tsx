@@ -1,5 +1,6 @@
 import maplibregl from 'maplibre-gl'
 import { useEffect, useRef, useState } from 'react'
+import { devlog } from '../devlog'
 import { BUNDLES, DATA_FILES, HOME, MAX_BOUNDS } from '../config'
 import { listStored } from '../offline/fileStore'
 import { useAppStore } from '../state/appStore'
@@ -96,10 +97,14 @@ function webglAvailable(): boolean {
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [noWebgl, setNoWebgl] = useState(false)
+  // a WebGL context that is lost and not given back is a blank chart with
+  // no way out; bumping this tears the map down and builds it again
+  const [gen, setGen] = useState(0)
   const scaleRef = useRef<maplibregl.ScaleControl | null>(null)
 
   useEffect(() => {
     let disposed = false
+    let lostTimer: number | null = null
     let map: maplibregl.Map | null = null
     let popup: maplibregl.Popup | null = null
     let unsubMeasure: (() => void) | null = null
@@ -285,6 +290,34 @@ export default function MapView() {
         )
       })
 
+      // the chart going blank: the GPU took the context away (memory
+      // pressure, a backgrounded tab). MapLibre restores it when the
+      // browser gives it back; when that does not happen in a few seconds,
+      // rebuild the map — the layers re-add themselves to any later map.
+      const canvas = map.getCanvas()
+      canvas.addEventListener('webglcontextlost', () => {
+        devlog('gl', 'context lost')
+        if (lostTimer == null) {
+          lostTimer = window.setTimeout(() => {
+            lostTimer = null
+            if (!disposed) {
+              devlog('gl', 'not restored · rebuilding the map')
+              setGen((g) => g + 1)
+            }
+          }, 4000)
+        }
+      })
+      canvas.addEventListener('webglcontextrestored', () => {
+        devlog('gl', 'context restored')
+        if (lostTimer != null) {
+          clearTimeout(lostTimer)
+          lostTimer = null
+        }
+      })
+      map.on('error', (e) => devlog('map', 'error', (e as { error?: { message?: string } }).error?.message ?? 'unknown'))
+      map.once('load', () => devlog('map', 'loaded'))
+      if (gen > 0) devlog('map', `rebuilt · #${gen}`)
+
       setMap(map)
       // dev-only handle for driving the map in automated verification
       if (import.meta.env.DEV) (window as unknown as { __map?: unknown }).__map = map
@@ -307,12 +340,13 @@ export default function MapView() {
 
     return () => {
       disposed = true
+      if (lostTimer != null) clearTimeout(lostTimer)
       setMap(null)
       unsubMeasure?.()
       popup?.remove()
       map?.remove()
     }
-  }, [])
+  }, [gen])
 
   // keep layer visibility + label units in sync with the store
   useEffect(

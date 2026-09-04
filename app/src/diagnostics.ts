@@ -12,6 +12,7 @@
  * stats — src/stats — is the one thing in the app that does. Uncaught
  * errors go there too, as a level and a line, and Settings switches it off.)
  */
+import { devLogLines, devLogOn, devlog, lastUpload } from './devlog'
 import { lastExit } from './stats/hooks'
 import { listStored, storageEstimate } from './offline/fileStore'
 import { useAppStore } from './state/appStore'
@@ -58,6 +59,7 @@ function push(level: Level, args: unknown[]) {
   const text = args.map(describe).join(' ').slice(0, ENTRY_CHARS)
   log.push({ at: Date.now(), level, text })
   if (log.length > LOG_MAX) log.shift()
+  devlog(level, text)
   // the crash nobody emailed about: once per session per line
   if (level === 'uncaught' || level === 'rejection') track('error', { level, text }, { every: 3600_000 })
 }
@@ -153,6 +155,7 @@ export async function buildReport(): Promise<string> {
     ``,
     `GPS: ${gpsLine}${gps.lastError ? ` · last error: ${gps.lastError}` : ''} · ${droppedLine}`,
     `Last exit: ${lastExit() ?? 'clean'} · wake lock ${gps.wake}`,
+    `Dev log: ${devLogOn() ? `${devLogLines()} lines` : 'off'}${lastUpload() ? ` · uploaded ${lastUpload()!.url}` : ''}`,
     `View: helm ${yn(app.helm)} · low power ${yn(app.lowPower)} · heading-up ${yn(app.headingUp)} · follow ${yn(app.follow)}`,
     `Layers: ${layersOn || 'none'}`,
     `Units: depth ${app.depthUnit} · boat ${app.speedUnit} · wind ${app.windUnit}`,

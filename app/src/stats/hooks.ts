@@ -38,6 +38,7 @@ import { useGpsStore } from '../tracking/gpsStore'
 import { windOverlayStatus } from '../weather/hrdps'
 import { cachedGridForecast } from '../weather/openMeteo'
 import { waveOverlayStatus } from '../weather/rdwps'
+import { devlog } from '../devlog'
 import { flush, installStats, setStatsEnabled, track } from './core'
 
 /** Hidden this long, coming back counts as a new session. */
@@ -274,6 +275,7 @@ function noteLastExit() {
     const ago = Math.round((Date.now() - b.ts) / 1000)
     const kind = b.visible ? 'killed' : 'purged'
     track(kind, { sec: b.sec, ago, sat: b.sat, wind: b.wind, sea: b.sea, low: b.low, trip: b.trip, dpr: devicePixelRatio })
+    devlog('exit', `${kind} last time`, { ago, sec: b.sec, sat: b.sat, trip: b.trip })
     const when = new Date(b.ts).toISOString().slice(0, 16).replace('T', ' ')
     localStorage.setItem(
       LAST_EXIT_KEY,

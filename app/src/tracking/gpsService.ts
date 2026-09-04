@@ -2,6 +2,7 @@ import maplibregl from 'maplibre-gl'
 import { withMap, getMap } from '../map/mapController'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
+import { devlog } from '../devlog'
 import { track } from '../stats/core'
 import { db } from './db'
 import { judge, newGate, type GateState } from './fixGate'
@@ -86,9 +87,11 @@ async function acquireWakeLock() {
   try {
     wakeLock = await navigator.wakeLock.request('screen')
     gps.setWake('on')
+    devlog('wake', 'held')
     // iOS lets go of it on its own when the app leaves the front; the
     // visibility handler asks again on the way back
     wakeLock.addEventListener('release', () => {
+      devlog('wake', 'released')
       if (useGpsStore.getState().wake === 'on') useGpsStore.getState().setWake('off')
     })
   } catch (e) {
@@ -96,6 +99,7 @@ async function acquireWakeLock() {
     // suspended mid-trip — "the app closes on its own"; said in Settings,
     // counted here, and asked for again in a while
     gps.setWake('refused')
+    devlog('wake', 'refused', e instanceof Error ? e.name : 'unknown')
     track('wakelock_denied', { why: e instanceof Error ? e.name : 'unknown' }, { every: 600_000 })
   }
   if (wakeRetryId == null) {
@@ -132,6 +136,7 @@ function onFix(pos: GeolocationPosition) {
   const { verdict, keep } = judge(fix, gate)
   if (verdict !== 'good') {
     gps.setDropped(gate.dropped)
+    devlog('gps', `dropped ${verdict}`, { acc: Math.round(fix.accuracy), lat: +fix.lat.toFixed(5), lon: +fix.lon.toFixed(5) })
     if (verdict === 'coarse' && fix.accuracy <= COARSE_MARKER_MAX_M && Date.now() - lastGoodAt > COARSE_MARKER_AFTER_MS) {
       placeMarker(fix, false)
     }
@@ -229,6 +234,7 @@ function onError(err: GeolocationPositionError) {
       : err.code === err.TIMEOUT
         ? 'timed out'
         : (err.message ?? 'unknown')
+  devlog('gps', `error · ${why}`)
   if (err.code === err.PERMISSION_DENIED) {
     gps.setStatus('denied', err.message || null)
     return
@@ -251,6 +257,7 @@ function beginWatch() {
 
 function restartWatch() {
   if (watchId == null) return
+  devlog('gps', 'watch restarted')
   navigator.geolocation.clearWatch(watchId)
   beginWatch()
 }

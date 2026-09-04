@@ -104,3 +104,17 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_at ON events (at);
 CREATE INDEX IF NOT EXISTS events_name_at ON events (name, at);
 CREATE INDEX IF NOT EXISTS events_install_at ON events (install, at);
+
+-- Dev logs: a tester's log uploaded by hand from Settings. The code is the
+-- only key; long and random, like a circle secret, since a log carries
+-- positions. Rows older than 30 days are purged.
+CREATE TABLE IF NOT EXISTS devlogs (
+  code TEXT PRIMARY KEY,
+  install TEXT NOT NULL,
+  build TEXT,
+  at INTEGER NOT NULL,
+  text TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS devlogs_at ON devlogs (at);
+CREATE INDEX IF NOT EXISTS devlogs_install_at ON devlogs (install, at);

@@ -24,6 +24,8 @@
  * Usage stats (app/src/stats) share the Worker and the database:
  *
  *   POST   /stats                  { id, build, events: [{ t, n, p? }] } → 204
+ *   POST   /devlog                 { id, build, text }                   → { code, url }   (a tester's log, by hand)
+ *   GET    /devlog/:code                                                 → text/plain
  *   GET    /stats/summary?days=30  Bearer STATS_TOKEN                   → { ... }
  *
  * The summary is for the person who runs the app; STATS_TOKEN is a Worker
@@ -58,6 +60,11 @@ const CIRCLE_TTL_MS = 90 * 86400_000
 const PLAN_LAPSE_MS = 2 * 3600_000
 /** The once-only ledger forgets after this; the crew's clocks run here. */
 const PUSH_LOG_TTL_MS = 30 * 86400_000
+/** An uploaded dev log lives this long. */
+const DEVLOG_TTL_MS = 30 * 86400_000
+const DEVLOG_MAX_CHARS = 400_000
+/** Uploads per install per hour — a stuck finger, not a tester, beyond this. */
+const DEVLOG_PER_HOUR = 12
 const CREW_TZ = 'America/Toronto'
 /** The strip offers seven days; a plan further out than this is a typo. */
 const PLAN_AHEAD_MS = 14 * 86400_000
@@ -96,6 +103,15 @@ function err(status: number, message: string): Response {
 
 function code(len: number): string {
   const a = new Uint8Array(len)
+  crypto.getRandomValues(a)
+  let s = ''
+  for (const b of a) s += ALPHABET[b % 32]
+  return s
+}
+
+/** A code from the readable alphabet, `n` long. */
+function randomCode(n: number): string {
+  const a = new Uint8Array(n)
   crypto.getRandomValues(a)
   let s = ''
   for (const b of a) s += ALPHABET[b % 32]
@@ -753,9 +769,44 @@ async function statsSummary(env: Env, days: number): Promise<Response> {
   })
 }
 
+// ---------- dev logs ----------
+
+/** A tester's log, uploaded by hand: kept under a random code, answered
+ *  with the code and the link to read it. */
+async function postDevLog(req: Request, env: Env, origin: string): Promise<Response> {
+  const b = await readBody(req)
+  if (!b) return err(400, 'body must be JSON')
+  const install = typeof b.id === 'string' && /^[a-f0-9]{16}$/.test(b.id) ? b.id : null
+  if (!install) return err(400, 'id required')
+  const textIn = typeof b.text === 'string' ? b.text : ''
+  if (!textIn.trim()) return err(400, 'an empty log')
+  const now = Date.now()
+  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM devlogs WHERE install = ? AND at > ?')
+    .bind(install, now - 3600_000)
+    .first<{ n: number }>()
+  if ((recent?.n ?? 0) >= DEVLOG_PER_HOUR) return err(429, 'that is enough logs for one hour')
+  const code = randomCode(12)
+  await env.DB.prepare('INSERT INTO devlogs (code, install, build, at, text) VALUES (?, ?, ?, ?, ?)')
+    .bind(code, install, text(b.build, 40) || null, now, textIn.slice(-DEVLOG_MAX_CHARS))
+    .run()
+  return json({ code, url: `${origin}/devlog/${code}` })
+}
+
+async function getDevLog(env: Env, code: string): Promise<Response> {
+  const row = await env.DB.prepare('SELECT install, build, at, text FROM devlogs WHERE code = ?')
+    .bind(code)
+    .first<{ install: string; build: string | null; at: number; text: string }>()
+  if (!row) return err(404, 'no such log')
+  const head = `# Sandies dev log ${code} · uploaded ${new Date(row.at).toISOString()} · build ${row.build ?? '?'} · install ${row.install}\n\n`
+  return new Response(head + row.text, {
+    headers: { ...CORS, 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+  })
+}
+
 async function purge(env: Env): Promise<void> {
   const now = Date.now()
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM devlogs WHERE at < ?').bind(now - DEVLOG_TTL_MS),
     env.DB.prepare('DELETE FROM events WHERE at < ?').bind(now - EVENTS_TTL_MS),
     env.DB.prepare('DELETE FROM push_log WHERE at < ?').bind(now - PUSH_LOG_TTL_MS),
     env.DB.prepare('DELETE FROM boats WHERE updated < ?').bind(now - BOAT_TTL_MS),
@@ -780,6 +831,9 @@ export default {
       if (path === '/push/subscribe' && req.method === 'PUT') return await putSubscription(req, env)
       if (path === '/push/subscribe' && req.method === 'DELETE') return await deleteSubscription(req, env)
       if (path === '/stats' && req.method === 'POST') return await postStats(req, env)
+      if (path === '/devlog' && req.method === 'POST') return await postDevLog(req, env, url.origin)
+      const dl = /^\/devlog\/([A-Z0-9]{12})$/i.exec(path)
+      if (dl && req.method === 'GET') return await getDevLog(env, dl[1].toUpperCase())
       if (path === '/stats/summary' && req.method === 'GET') {
         if (!env.STATS_TOKEN) return err(503, 'STATS_TOKEN is not set on the Worker')
         if (req.headers.get('authorization') !== `Bearer ${env.STATS_TOKEN}`) return err(403, 'not the stats token')

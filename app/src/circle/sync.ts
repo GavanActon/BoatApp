@@ -1,3 +1,4 @@
+import { devlog } from '../devlog'
 import { useDiscoverStore } from '../discover/store'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
@@ -77,7 +78,10 @@ export function pollCircles(): Promise<void> {
         failed = e instanceof Error ? e.message : String(e)
       }
     }
-    if (failed) useCircleStore.getState().setFetchError(failed)
+    if (failed) {
+      useCircleStore.getState().setFetchError(failed)
+      devlog('crew', `poll failed · ${failed}`)
+    }
     for (const cb of LISTENERS) cb()
   })()
   polling = run
@@ -148,6 +152,7 @@ export async function postNow(override?: { trip: BoatTrip | null }): Promise<voi
   postingSince = Date.now()
   try {
     const sent = await Promise.all(s.circles.map((c) => postBoat(c, rec).then(() => true, () => false)))
+    if (!sent.every(Boolean)) devlog('crew', `post failed · ${sent.filter((x) => !x).length} of ${sent.length}`)
     // a trip the crew could see: On the Radar
     if (sent.some(Boolean) && useRouteStore.getState().tripStartedAt != null) useDiscoverStore.getState().touch('shared')
   } finally {

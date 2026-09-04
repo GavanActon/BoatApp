@@ -3172,3 +3172,6 @@
 .wake-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: var(--c-text-faint); }
 .wake-dot.on { background: var(--c-track); box-shadow: 0 0 8px rgba(89, 224, 184, 0.5); }
 .wake-dot.refused, .wake-dot.unsupported { background: var(--c-warn); }
+
+/* Settings: the dev log's small row of links under its buttons */
+.devlog-actions { padding: 4px 4px 8px; flex-wrap: wrap; row-gap: 4px; }
