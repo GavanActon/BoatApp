@@ -1,13 +1,20 @@
 name: Deploy API worker
 
-# api.sandies.app — the circle ("Boats out") API. Deploys on any push to
-# main that touches worker/. Needs the CF_WORKER_TOKEN repo secret
-# (Workers Scripts, D1, Workers Routes, DNS · Edit on the sandies.app zone).
+# The circle ("Boats out") and stats API. Two homes for one codebase:
+#   main → api.sandies.app       (the family's app)
+#   dev  → api-next.sandies.app  (the next build, its own Worker and D1)
+# Deploys on any push to either branch that touches worker/. Needs the
+# CF_WORKER_TOKEN repo secret (Workers Scripts, D1, Workers Routes, DNS ·
+# Edit on the sandies.app zone).
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths: ['worker/**', '.github/workflows/worker.yml']
   workflow_dispatch:
+
+concurrency:
+  group: worker-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -20,11 +27,48 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Pick the home
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "env=" >> "$GITHUB_OUTPUT"
+            echo "db=sandies-api" >> "$GITHUB_OUTPUT"
+            echo "host=api.sandies.app" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=--env next" >> "$GITHUB_OUTPUT"
+            echo "db=sandies-api-next" >> "$GITHUB_OUTPUT"
+            echo "host=api-next.sandies.app" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The next database (created once; then its id is pasted into wrangler.toml)
+        if: github.ref_name != 'main'
+        working-directory: worker
+        run: |
+          if grep -q NEXT_D1_ID wrangler.toml; then
+            npx --yes wrangler@4.128.0 d1 create sandies-api-next || true
+            id=$(npx --yes wrangler@4.128.0 d1 list --json | node -e '
+              let s = ""; process.stdin.on("data", (d) => s += d).on("end", () => {
+                const d = JSON.parse(s).find((x) => x.name === "sandies-api-next")
+                if (!d) { console.error("no sandies-api-next in d1 list"); process.exit(1) }
+                console.log(d.uuid || d.id)
+              })')
+            sed -i "s/NEXT_D1_ID/$id/" wrangler.toml
+            echo "::notice title=next D1 id::$id — paste it over NEXT_D1_ID in worker/wrangler.toml"
+          fi
+
       - name: Apply schema (idempotent)
         working-directory: worker
-        run: npx --yes wrangler@4.128.0 d1 execute sandies-api --remote --yes --file=schema.sql
+        run: npx --yes wrangler@4.128.0 d1 execute ${{ steps.target.outputs.db }} --remote --yes --file=schema.sql ${{ steps.target.outputs.env }}
+
       - name: Deploy
         working-directory: worker
-        run: npx --yes wrangler@4.128.0 deploy
+        run: npx --yes wrangler@4.128.0 deploy ${{ steps.target.outputs.env }}
+
       - name: Smoke
-        run: curl -sf https://api.sandies.app/health
+        run: |
+          for i in 1 2 3 4 5 6; do
+            curl -sf "https://${{ steps.target.outputs.host }}/health" && exit 0
+            sleep 10
+          done
+          echo "no answer from ${{ steps.target.outputs.host }} (a new custom domain can take a minute)"; exit 1

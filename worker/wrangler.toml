@@ -24,3 +24,24 @@ crons = ["17 * * * *"]
 
 [observability]
 enabled = true
+
+# ---- next: the dev branch's own API, so a test crew never lands in the
+# family's circle and a schema change can't touch live. Same code, its own
+# Worker, route and database. Deployed by worker.yml on pushes to dev.
+# The database is created by that workflow's first run, which prints its
+# id — paste it over the placeholder below and the create step becomes a
+# no-op.
+[env.next]
+name = "sandies-api-next"
+routes = [{ pattern = "api-next.sandies.app", custom_domain = true }]
+
+[[env.next.d1_databases]]
+binding = "DB"
+database_name = "sandies-api-next"
+database_id = "NEXT_D1_ID"
+
+[env.next.triggers]
+crons = ["17 * * * *"]
+
+[env.next.observability]
+enabled = true
