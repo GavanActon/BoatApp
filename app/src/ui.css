@@ -2836,6 +2836,9 @@
 .crew .bo-what { font-size: 14.5px; }
 .crew .bo-what b { color: var(--c-text); font-weight: 600; }
 .crew .bo-row.ashore .bo-name { color: var(--c-text-dim); }
+/* the boat's own colour, on the chart and beside its name */
+.crew-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; box-shadow: 0 0 0 1.5px rgba(8, 20, 34, 0.6); }
+.crew .ashore .crew-dot { opacity: 0.55; }
 .crew .panel-section { display: flex; justify-content: space-between; align-items: baseline; }
 .crew .panel-section .meta { text-transform: none; letter-spacing: 0; font-weight: 500; }
 /* ---------- the log: trips, not files ---------- */

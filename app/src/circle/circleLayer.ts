@@ -4,25 +4,26 @@ import { getMap, onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
 import { agoLabel, timeLabel } from '../time'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../units'
-import { friendBoats, useCircleStore, type Boat } from './store'
+import { boatColor, friendBoats, useCircleStore, type Boat } from './store'
 import { onCirclePoll } from './sync'
 
 /**
  * Friends on the chart. Each boat in the circle that is out is a small
- * hollow glyph in the own-boat blue with its name and the age of its
- * position beside it — the same honesty rule as every weather surface: a
- * position under 15 min is solid, older is hollow and says how old, and
- * after two hours it leaves the chart (it stays in the Boats out list).
+ * glyph in ITS OWN colour (boatColor: by place in the crew, the same on
+ * every phone) with its name and the age of its position beside it — the
+ * same honesty rule as every weather surface: a position under 15 min is
+ * solid, older is hollow and says how old, and after two hours it leaves
+ * the chart (it stays in the Crew list).
  *
  * A friend under way toward a spot also draws their plotted course as a
- * faint dashed line, so you see them COMING across the bay, not a dot.
- * Tapping a glyph opens its card: who, where they're going, when.
+ * dashed line in that colour with their name written along it, so you see
+ * WHO is coming across the bay, not a dot. Tapping a glyph opens its card:
+ * who, where they're going, when.
  */
 
 const STALE_MS = 15 * 60_000
 const GONE_MS = 2 * 3600_000
 const HIT_PAD = 22
-const BLUE = '#3fc8ff'
 
 let layersOn: MlMap | null = null
 let popup: maplibregl.Popup | null = null
@@ -45,9 +46,9 @@ function addLayers(map: MlMap) {
       source: 'circle-routes',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': BLUE,
-        'line-width': 1.6,
-        'line-opacity': 0.4,
+        'line-color': ['get', 'color'],
+        'line-width': 1.8,
+        'line-opacity': 0.55,
         'line-dasharray': [2, 2.5],
       },
     },
@@ -59,12 +60,33 @@ function addLayers(map: MlMap) {
     source: 'circle-boats',
     paint: {
       'circle-radius': 7,
-      'circle-color': BLUE,
+      'circle-color': ['get', 'color'],
       // solid when fresh, hollow when the position has aged
       'circle-opacity': ['case', ['get', 'stale'], 0, 0.85],
-      'circle-stroke-color': BLUE,
+      'circle-stroke-color': ['get', 'color'],
       'circle-stroke-width': 2,
       'circle-stroke-opacity': ['case', ['get', 'stale'], 0.6, 1],
+    },
+  })
+  // whose course this is, written along it in their colour
+  map.addLayer({
+    id: 'circle-route-name',
+    type: 'symbol',
+    source: 'circle-routes',
+    layout: {
+      'symbol-placement': 'line',
+      'symbol-spacing': 320,
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 10,
+      'text-letter-spacing': 0.06,
+      'text-offset': [0, -0.9],
+      'text-keep-upright': true,
+    },
+    paint: {
+      'text-color': ['get', 'color'],
+      'text-halo-color': 'rgba(8, 20, 34, 0.9)',
+      'text-halo-width': 1.3,
     },
   })
   map.addLayer({
@@ -145,6 +167,7 @@ function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection 
     if (age > GONE_MS) continue
     if (b.trip?.state === 'home') continue
     const stale = age > STALE_MS
+    const color = boatColor(b.deviceId)
     boats.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
@@ -152,6 +175,7 @@ function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection 
         deviceId: b.deviceId,
         label: `${b.name} · ${agoLabel(age)}`,
         stale,
+        color,
       },
     })
     const t = b.trip
@@ -159,7 +183,7 @@ function buildFeatures(): { boats: FeatureCollection; routes: FeatureCollection 
       routes.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: t.route },
-        properties: { deviceId: b.deviceId },
+        properties: { deviceId: b.deviceId, name: b.name, color },
       })
     }
   }
@@ -212,7 +236,7 @@ function cardHtml(b: Boat): string {
   const who = b.boat ? `${b.name} · ${b.boat}` : b.name
   return (
     `<div class="boat-card">` +
-    `<div class="boat-card-who">${esc(who)}</div>` +
+    `<div class="boat-card-who"><i class="crew-dot" style="background:${boatColor(b.deviceId)}"></i>${esc(who)}</div>` +
     `<div class="boat-card-what">${esc(describeBoat(b))}</div>` +
     `<div class="boat-card-age">position ${esc(agoLabel(boatAgeMs(b)))}</div>` +
     `</div>`

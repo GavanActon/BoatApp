@@ -174,6 +174,21 @@ export const useCircleStore = create<CircleState>()(
   ),
 )
 
+/** Each boat its own colour, the same on every phone: by place in the
+ *  crew (oldest member first — the order the server gives). None of these
+ *  is the own-boat blue, the track green, the amber or the reserved red. */
+const BOAT_COLORS = ['#c58bff', '#ff7ac6', '#ffd166', '#a3e635', '#5ec8ff', '#ff9e7a']
+
+export function boatColor(deviceId: string): string {
+  const { members } = useCircleStore.getState()
+  const i = members.findIndex((m) => m.deviceId === deviceId)
+  if (i >= 0) return BOAT_COLORS[i % BOAT_COLORS.length]
+  // an older app's boat with no member row: a stable pick from its id
+  let h = 0
+  for (const c of deviceId) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return BOAT_COLORS[h % BOAT_COLORS.length]
+}
+
 /** Friends only: every position the store holds that isn't this device. */
 export function friendBoats(): Boat[] {
   const { boats, deviceId } = useCircleStore.getState()

@@ -4,7 +4,7 @@ import { agoLabel, timeLabel } from '../time'
 import CircleSettings from './CircleSettings'
 import { boatAgeMs, describeBoat, showBoat } from './circleLayer'
 import { disablePush, enablePush, pushState, type PushState } from './push'
-import { friendBoats, friendMembers, useCircleStore, type Boat, type Member, type Plan } from './store'
+import { boatColor, friendBoats, friendMembers, useCircleStore, type Boat, type Member, type Plan } from './store'
 import { onCirclePoll } from './sync'
 
 /**
@@ -46,8 +46,14 @@ function describePlan(p: Plan, now: number): string {
   return parts.join(' · ')
 }
 
-function who(m: { name: string; boat: string }): string {
-  return m.boat ? `${m.name} · ${m.boat}` : m.name
+/** "Name · Boat" behind the boat's own colour — the same dot the chart wears. */
+function who(m: { deviceId: string; name: string; boat: string }) {
+  return (
+    <>
+      <i className="crew-dot" style={{ background: boatColor(m.deviceId) }} aria-hidden="true" />
+      {m.boat ? `${m.name} · ${m.boat}` : m.name}
+    </>
+  )
 }
 
 export default function CrewPanel() {
