@@ -54,7 +54,7 @@ function CardSheet({ then }: { then: (() => void) | null }) {
     s.setCardDone(true)
     s.setCardOpen(null)
     haptic('confirm')
-    track('skipper-card', { mark: mark ? 1 : 0, flair: flair ? 1 : 0, color: picked ? 1 : 0 })
+    track('skipper_card', { mark: mark ? 1 : 0, flair: flair ? 1 : 0, color: picked ? 1 : 0 })
     then?.()
   }
   const who = [name.trim(), boat.trim()].filter(Boolean).join(' · ')
