@@ -42,6 +42,21 @@ function dayLabel(ms: number, now: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/** When a friend's app last spoke to the crew: "just now", "3 h ago",
+ *  "yesterday", "Sat", "Aug 12". */
+function seenLabel(ms: number, now: number): string {
+  const age = now - ms
+  if (age < 24 * 3600_000) return agoLabel(age)
+  const days = Math.round((startOfDay(now) - startOfDay(ms)) / DAY_MS)
+  if (days === 1) return 'yesterday'
+  return dayLabel(ms, now)
+}
+
+function startOfDay(ms: number): number {
+  const d = new Date(ms)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
 function describePlan(p: Plan, now: number): string {
   const parts = [p.dest.name ?? 'a pinned spot', whenLabel(p.outMs, now)]
   if (p.backMs != null) parts.push(`back ${timeLabel(p.backMs)}`)
@@ -152,10 +167,10 @@ export default function CrewPanel() {
               </div>
               {ashore.map((m) => {
                 const last = lastRecord(m)
-                const what =
-                  last?.trip?.state === 'home'
-                    ? `home · ${dayLabel(last.updated, now)}`
-                    : `joined ${dayLabel(m.joined, now)}`
+                // the member row is restated on every launch, the boat row on
+                // every post under way: the newer is when they were last seen
+                const seenAt = Math.max(m.updated, last?.updated ?? 0)
+                const what = `last seen ${seenLabel(seenAt, now)}`
                 return (
                   <div key={m.deviceId} className="bo-row ashore">
                     {markCell(m)}
