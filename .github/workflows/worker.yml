@@ -23,8 +23,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ebcafd8e3dbdaad405e17dfb174c0f0f
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 

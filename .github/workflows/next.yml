@@ -28,9 +28,9 @@ jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -40,7 +40,7 @@ jobs:
           pip install --quiet numpy imagecodecs
           python pipeline/fetch_rdwps.py || echo "RDWPS fetch failed — building with the last good waves file"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -64,7 +64,7 @@ jobs:
           ls -la dist/data
 
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.next }}
           accountId: ebcafd8e3dbdaad405e17dfb174c0f0f
