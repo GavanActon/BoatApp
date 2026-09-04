@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl'
 import { FetchSource, PMTiles, Protocol } from 'pmtiles'
 import type { RangeResponse, Source } from 'pmtiles'
+import { devlog } from '../devlog'
 import { DATA_BASE, DATA_FILES } from '../config'
 import { getStoredFile } from '../offline/fileStore'
 
@@ -21,8 +22,21 @@ class BlobSource implements Source {
     return this.key
   }
   async getBytes(offset: number, length: number): Promise<RangeResponse> {
-    const data = await this.blob.slice(offset, offset + length).arrayBuffer()
-    return { data }
+    // a slice of a stored archive can fail to read under memory pressure —
+    // Safari rejects the arrayBuffer — and one refusal is not the file gone;
+    // ask again, twice, before the tile is a hole
+    let last: unknown = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const data = await this.blob.slice(offset, offset + length).arrayBuffer()
+        return { data }
+      } catch (e) {
+        last = e
+        if (attempt === 0) devlog('data', `${this.key} read failed at ${offset} · retrying`, (e as Error)?.message)
+        await new Promise((r) => setTimeout(r, 150 * (attempt + 1)))
+      }
+    }
+    throw last instanceof Error ? last : new Error('archive read failed')
   }
 }
 

@@ -9,7 +9,7 @@ import { loadContours } from './contoursData'
 import { depthAt, formatDepth, loadDepthGrid } from './depthGrid'
 import { applyLayerVisibility, getMap, setMap } from './mapController'
 import { buildMapStyle, depthLabelExpr, satTreatment } from './mapStyle'
-import { registerAllDataFiles } from './pmtilesRegistry'
+import { registerAllDataFiles, sourceModes } from './pmtilesRegistry'
 import { useMeasureStore } from '../measure/measureStore'
 import { routeEditedRecently, sampleDotAt } from '../routing/routeLayer'
 import { spotBadgeAt } from '../routing/spotBadges'
@@ -327,8 +327,89 @@ export default function MapView() {
           lostTimer = null
         }
       })
-      map.on('error', (e) => devlog('map', 'error', (e as { error?: { message?: string } }).error?.message ?? 'unknown'))
-      map.once('load', () => devlog('map', 'loaded'))
+      // A tile that fails — a range read the phone refused under memory
+      // pressure, a request that timed out on one bar — is a hole in the
+      // imagery that MapLibre leaves until the view changes. Name each one
+      // in the log, and ask for the failed tiles again once the map is idle.
+      const failed = new Map<string, Map<string, { x: number; y: number; z: number }>>()
+      let healTimer: number | null = null
+      const heal = () => {
+        healTimer = null
+        if (!map || disposed) return
+        for (const [source, tiles] of failed) {
+          if (!tiles.size || !map.getSource(source)) continue
+          tiles.clear()
+          // MapLibre never asks again for a tile it has marked errored while
+          // that tile stays in its cache — and refreshTiles() on such a tile
+          // throws inside the raster renderer, which stops the chart dead.
+          // Dropping the errored entries makes the next frame request them
+          // afresh, the way the library reloads a tile it has let go of.
+          try {
+            // MapLibre 5 keeps a tile manager per source; a tile it has
+            // marked errored is never asked for again while it sits there
+            const style = map.style as unknown as {
+              tileManagers?: Record<
+                string,
+                {
+                  _inViewTiles?: { getAllIds: () => string[]; getTileById: (id: string) => { state: string } | undefined }
+                  _removeTile?: (id: string) => void
+                  reload: () => void
+                }
+              >
+            }
+            const tm = style.tileManagers?.[source]
+            if (!tm) continue
+            let n = 0
+            const iv = tm._inViewTiles
+            if (iv && tm._removeTile) {
+              for (const id of iv.getAllIds()) {
+                if (iv.getTileById(id)?.state === 'errored') {
+                  tm._removeTile(id)
+                  n++
+                }
+              }
+            } else {
+              tm.reload()
+              n = -1
+            }
+            if (n) {
+              map.triggerRepaint()
+              devlog('tiles', `asked again for ${source} ${n > 0 ? `×${n}` : '(all)'}`)
+            }
+          } catch (err) {
+            devlog('tiles', `retry failed · ${(err as Error).message}`)
+          }
+        }
+      }
+      const scheduleHeal = () => {
+        if (healTimer != null) return
+        healTimer = window.setTimeout(heal, 4000)
+      }
+      map.on('error', (e) => {
+        const ev = e as { error?: { message?: string }; sourceId?: string; tile?: { tileID?: { canonical?: { x: number; y: number; z: number } } } }
+        const c = ev.tile?.tileID?.canonical
+        if (ev.sourceId && c) {
+          devlog('tiles', `${ev.sourceId} ${c.z}/${c.x}/${c.y} failed · ${ev.error?.message ?? 'unknown'}`)
+          let m = failed.get(ev.sourceId)
+          if (!m) failed.set(ev.sourceId, (m = new Map()))
+          if (m.size < 200) m.set(`${c.z}/${c.x}/${c.y}`, { x: c.x, y: c.y, z: c.z })
+          scheduleHeal()
+        } else {
+          devlog('map', 'error', ev.error?.message ?? 'unknown')
+        }
+      })
+      // back in front, or back online: whatever failed while away gets asked for
+      const onVisible = () => {
+        if (document.visibilityState === 'visible' && [...failed.values()].some((m) => m.size)) scheduleHeal()
+      }
+      document.addEventListener('visibilitychange', onVisible)
+      window.addEventListener('online', onVisible)
+      map.once('remove', () => {
+        document.removeEventListener('visibilitychange', onVisible)
+        window.removeEventListener('online', onVisible)
+        if (healTimer != null) clearTimeout(healTimer)
+      })
+      map.once('load', () => devlog('map', 'loaded', Object.fromEntries(sourceModes)))
       if (gen > 0) devlog('map', `rebuilt · #${gen}`)
 
       setMap(map)
