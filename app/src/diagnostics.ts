@@ -8,10 +8,13 @@
  * app is built for.
  *
  * Nothing here phones home on its own. The report is assembled only when
- * the user taps the button, and they see it before it is sent.
+ * the user taps the button, and they see it before it is sent. (Usage
+ * stats — src/stats — is the one thing in the app that does. Uncaught
+ * errors go there too, as a level and a line, and Settings switches it off.)
  */
 import { listStored, storageEstimate } from './offline/fileStore'
 import { useAppStore } from './state/appStore'
+import { track } from './stats/core'
 import { agoLabel } from './time'
 import { useGpsStore } from './tracking/gpsStore'
 import { windOverlayInfo, windOverlayStatus } from './weather/hrdps'
@@ -54,6 +57,8 @@ function push(level: Level, args: unknown[]) {
   const text = args.map(describe).join(' ').slice(0, ENTRY_CHARS)
   log.push({ at: Date.now(), level, text })
   if (log.length > LOG_MAX) log.shift()
+  // the crash nobody emailed about: once per session per line
+  if (level === 'uncaught' || level === 'rejection') track('error', { level, text }, { every: 3600_000 })
 }
 
 let installed = false

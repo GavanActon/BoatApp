@@ -9,6 +9,7 @@ import { useRouteStore } from './routeStore'
 import { planTrip } from './tripPlan'
 import { haversineNm, lockDelayMin } from './waterRouter'
 import { onWeatherGrid } from '../weather/weatherLayer'
+import { track } from '../stats/core'
 
 /**
  * Keeps the planned trip current.
@@ -144,6 +145,7 @@ export async function replan(quiet = false): Promise<void> {
     }
   }
 
+  const t0 = performance.now() // how long the router takes on this phone
   let result = await computeRoute(start, target, vias)
   const home = homeCenter()
   if (
@@ -160,6 +162,7 @@ export async function replan(quiet = false): Promise<void> {
   }
   if (token !== replanToken) return
   if ('error' in result) {
+    if (!quiet) track('route', { ok: false, ms: Math.round(performance.now() - t0) })
     s.setRoute(
       null,
       // with a fixed start and no course points the failure could be either
@@ -207,6 +210,10 @@ export async function replan(quiet = false): Promise<void> {
     })
     if (token !== replanToken) return
     useRouteStore.getState().setPlan(plan)
+    // the user's own replans, not the two-minute progress ticks under way
+    if (!quiet) {
+      track('route', { ok: true, ms: Math.round(performance.now() - t0), nm: result.distanceNm, round: roundTrip })
+    }
   } catch {
     if (token !== replanToken) return
     if (!quiet) {

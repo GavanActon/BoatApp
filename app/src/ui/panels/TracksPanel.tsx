@@ -5,6 +5,7 @@ import { withMap } from '../../map/mapController'
 import { useAppStore } from '../../state/appStore'
 import { db, type Track } from '../../tracking/db'
 import { exportTrackGpx } from '../../tracking/gpx'
+import { track } from '../../stats/core'
 import { startRecording, stopRecording } from '../../tracking/gpsService'
 import { useGpsStore } from '../../tracking/gpsStore'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel } from '../../units'
@@ -137,7 +138,14 @@ export default function TracksPanel() {
                 : ''}
             </span>
           </button>
-          <button className="icon-btn" onClick={() => void exportTrackGpx(t)} aria-label="Export GPX">
+          <button
+            className="icon-btn"
+            onClick={() => {
+              track('gpx')
+              void exportTrackGpx(t)
+            }}
+            aria-label="Export GPX"
+          >
             <IconShare size={19} />
           </button>
           <button className="icon-btn danger" onClick={() => void remove(t)} aria-label="Delete">

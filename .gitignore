@@ -10,3 +10,7 @@ external/
 
 # dev-only Open-Meteo response cache
 app/.om-cache/
+
+# wrangler dev state (local D1) and local secrets
+worker/.wrangler/
+worker/.dev.vars

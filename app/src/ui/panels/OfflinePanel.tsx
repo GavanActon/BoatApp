@@ -10,6 +10,7 @@ import {
   storageEstimate,
 } from '../../offline/fileStore'
 import { useAppStore } from '../../state/appStore'
+import { flush, track } from '../../stats/core'
 import { IconCheck, IconDownload, IconTrash } from '../icons'
 
 function fmtBytes(n: number): string {
@@ -54,9 +55,12 @@ export default function OfflinePanel() {
         setStored(listStored())
       }
       setDl(null)
+      track('charts', { files: todo.length, ok: true })
+      void flush() // keepalive: it survives the reload
       // data files are re-read at startup — reload so the map switches to local copies
       window.location.reload()
     } catch {
+      track('charts', { files: todo.length, ok: false })
       setDl(null)
       setError('Download failed — check your connection and try again.')
       setStored(listStored())
@@ -67,11 +71,13 @@ export default function OfflinePanel() {
   // Assigning location (not window.open) is what works from an installed
   // iOS PWA — a popup would be blocked or open a blank Safari tab.
   async function emailReport() {
+    track('report', { how: 'email' })
     location.assign(reportMailto(await buildReport()))
   }
 
   // For the phone with no mail app set up: the same text, to paste anywhere.
   async function copyReport() {
+    track('report', { how: 'copy' })
     try {
       await navigator.clipboard.writeText(await buildReport())
       setCopied(true)

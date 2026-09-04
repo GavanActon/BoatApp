@@ -56,3 +56,11 @@ In the app, open the Offline tab and tap **Report a problem**. It opens an email
 to info@sandies.app with the build, your position and the age of every cached
 forecast filled in; add what happened. Technical users can also open a GitHub
 issue on this repo.
+
+## Usage stats
+
+The app counts what gets used and how it performs — a tab opened, the
+router's milliseconds, a trip's minutes and miles — under a random id, never
+with a position. It queues on the phone and posts to `api.sandies.app` when
+there is signal. The switch is the last row of Settings. What is counted,
+where it lands and how to read it: [docs/USAGE-STATS.md](docs/USAGE-STATS.md).

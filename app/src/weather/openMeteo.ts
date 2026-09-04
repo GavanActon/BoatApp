@@ -3,6 +3,7 @@ import { db } from '../tracking/db'
 import { applyWaveOverlayToSeries, ensureWaveOverlay } from './rdwps'
 import { applyWindOverlayToSeries, ensureWindOverlay, type ApplyOptions } from './hrdps'
 import { fetchMetNoPoint } from './metno'
+import { track } from '../stats/core'
 
 /**
  * Open-Meteo client. Free, no API key, CORS-enabled.
@@ -339,6 +340,7 @@ export function fetchTimeout(ms = FETCH_TIMEOUT_MS): AbortSignal | undefined {
 }
 
 async function getJson(url: string): Promise<unknown> {
+  const t0 = performance.now()
   try {
     const resp = await fetch(url, { signal: fetchTimeout() })
     const text = await resp.text()
@@ -356,9 +358,13 @@ async function getJson(url: string): Promise<unknown> {
       throw new Error(`HTTP ${resp.status}${reason ? ` · ${reason}` : ''}`)
     }
     lastError = null
+    // one timing per half hour says how the provider is doing from the bay
+    track('wx_fetch', { ms: Math.round(performance.now() - t0) }, { every: 30 * 60_000, key: 'wx_fetch' })
     return body
   } catch (e) {
     lastError = { at: Date.now(), reason: e instanceof Error ? e.message : String(e) }
+    // a 429 answers every poll for an hour — count it once per ten minutes
+    track('wx_fail', { reason: lastError.reason.slice(0, 60) }, { every: 10 * 60_000 })
     throw e
   }
 }
@@ -568,6 +574,7 @@ export async function fetchPointForecast(
       await dressPointForecast(alt)
       await cachePut(key, alt)
       lastSource = 'met.no'
+      track('wx_source', { src: 'met.no' }, { every: 10 * 60_000 })
       return { forecast: alt, stale: false }
     } catch {
       /* both providers down — the disk copy, below */
@@ -579,6 +586,7 @@ export async function fetchPointForecast(
       // RDWPS sea on it beats the old copy as cached
       await dressPointForecast(cached.payload, { sky: true })
       lastSource = 'cache'
+      track('wx_source', { src: 'cache' }, { every: 10 * 60_000 })
       return { forecast: cached.payload, stale: true }
     }
     throw e

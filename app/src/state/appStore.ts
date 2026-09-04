@@ -115,6 +115,11 @@ interface AppState {
   // mounted at the helm shouldn't forget the mode over a refresh.
   lowPower: boolean
   setLowPower: (v: boolean) => void
+  // Usage stats: what gets used and how the app performs, counted under a
+  // random id (src/stats). On by default; the switch is in Settings and a
+  // no is persisted.
+  usageStats: boolean
+  setUsageStats: (v: boolean) => void
 
   // First run (DESIGN-SPEC §10). `onboarded`: the welcome card has been
   // answered (Get set up or Later) — either way it never shows again.
@@ -252,6 +257,7 @@ type PersistedPrefs = Pick<
   | 'windFlowOpacity'
   | 'flowTuning'
   | 'lowPower'
+  | 'usageStats'
   | 'onboarded'
   | 'setupDone'
   | 'firstRouteDone'
@@ -309,6 +315,8 @@ export const useAppStore = create<AppState>()(
       setHelm: (v) => set({ helm: v }),
       lowPower: false,
       setLowPower: (v) => set({ lowPower: v }),
+      usageStats: true,
+      setUsageStats: (v) => set({ usageStats: v }),
 
       onboarded: false,
       setOnboarded: (v) => set({ onboarded: v }),
@@ -423,6 +431,7 @@ export const useAppStore = create<AppState>()(
         windFlowOpacity: s.windFlowOpacity,
         flowTuning: s.flowTuning,
         lowPower: s.lowPower,
+        usageStats: s.usageStats,
         onboarded: s.onboarded,
         setupDone: s.setupDone,
         firstRouteDone: s.firstRouteDone,

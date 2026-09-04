@@ -16,6 +16,7 @@ import { initRouteLayer } from './routing/routeLayer'
 import { initRoutePlanner } from './routing/planner'
 import { initCircle } from './circle/sync'
 import { initCircleLayer } from './circle/circleLayer'
+import { initStats } from './stats/hooks'
 import { useRouteStore } from './routing/routeStore'
 import { initMeasureLayer } from './measure/measureLayer'
 import { useMeasureStore } from './measure/measureStore'
@@ -377,6 +378,7 @@ export default function App() {
     initSeaFlow()
     initForecastWatch()
     void initDiscover()
+    initStats() // last: the stores it watches all exist
 
     // grab a position right away — but only when that costs no PROMPT: the
     // first location ask belongs to onboarding (§10.2), never to a cold

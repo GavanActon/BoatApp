@@ -132,6 +132,8 @@ export default function LayersPanel() {
   const setWindUnit = useAppStore((s) => s.setWindUnit)
   const lowPower = useAppStore((s) => s.lowPower)
   const setLowPower = useAppStore((s) => s.setLowPower)
+  const usageStats = useAppStore((s) => s.usageStats)
+  const setUsageStats = useAppStore((s) => s.setUsageStats)
   const satOpacity = useAppStore((s) => s.satOpacity)
   const satVivid = useAppStore((s) => s.satVivid)
   const setSatVivid = useAppStore((s) => s.setSatVivid)
@@ -515,6 +517,22 @@ export default function LayersPanel() {
           </div>
         </div>
       </Group>
+
+      {/* last, and outside the groups: a promise is not a setting to hunt for */}
+      <label className="row">
+        <div className="row-text">
+          <span className="row-title">Usage stats</span>
+          <span className="row-desc">
+            Counts what gets used and how fast, under a random id — never your position
+          </span>
+        </div>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={usageStats}
+          onChange={(e) => setUsageStats(e.target.checked)}
+        />
+      </label>
       </div>
     </div>
   )

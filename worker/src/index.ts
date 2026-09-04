@@ -14,12 +14,22 @@
  *   DELETE /circle/:id/boat    Bearer secret + { deviceId, deviceKey } → 204
  *   GET    /health
  *
+ * Usage stats (app/src/stats) share the Worker and the database:
+ *
+ *   POST   /stats                  { id, build, events: [{ t, n, p? }] } → 204
+ *   GET    /stats/summary?days=30  Bearer STATS_TOKEN                   → { ... }
+ *
+ * The summary is for the person who runs the app; STATS_TOKEN is a Worker
+ * secret (`wrangler secret put STATS_TOKEN`) and the route answers 503
+ * until it is set. Events keep for 400 days.
+ *
  * CORS is open: the secret in the Authorization header is the gate, not
  * the origin.
  */
 
 interface Env {
   DB: D1Database
+  STATS_TOKEN?: string
 }
 
 // ---------- the small alphabet a person can read back over the phone ----------
@@ -32,6 +42,18 @@ const BOAT_TTL_MS = 12 * 3600_000
 const CIRCLE_TTL_MS = 90 * 86400_000
 const MAX_ROUTE_POINTS = 60
 const MAX_TEXT = 40
+
+const EVENTS_TTL_MS = 400 * 86400_000
+const MAX_EVENTS = 200
+const MAX_PROPS_CHARS = 600
+/** A phone's clock can be anything; a stamp this far off is replaced by
+ *  the server's. */
+const CLOCK_SLACK_MS = 15 * 60_000
+const EVENT_NAME = /^[a-z][a-z0-9_]{0,31}$/
+const INSTALL_ID = /^[a-f0-9]{16}$/
+const SUMMARY_DAYS = 30
+const MAX_SUMMARY_DAYS = 400
+const TIMED = ['boot', 'route', 'wx_fetch']
 
 const CORS: Record<string, string> = {
   'access-control-allow-origin': '*',
@@ -248,9 +270,171 @@ async function deleteBoat(req: Request, env: Env, circleId: string): Promise<Res
   return new Response(null, { status: 204, headers: CORS })
 }
 
+// ---------- usage stats ----------
+
+interface EventRow {
+  install: string
+  build: string | null
+  at: number
+  received: number
+  name: string
+  props: string | null
+}
+
+/** Check a batch field by field; a bad event is skipped, not the batch. */
+function eventsOf(b: Record<string, unknown>, install: string, build: string | null): EventRow[] {
+  if (!Array.isArray(b.events)) return []
+  const now = Date.now()
+  const rows: EventRow[] = []
+  for (const e of b.events.slice(0, MAX_EVENTS)) {
+    if (!e || typeof e !== 'object') continue
+    const ev = e as Record<string, unknown>
+    const name = typeof ev.n === 'string' && EVENT_NAME.test(ev.n) ? ev.n : null
+    if (!name) continue
+    let at = num(ev.t, 0, 4e12) ?? now
+    if (at > now + CLOCK_SLACK_MS || at < now - EVENTS_TTL_MS) at = now
+    let props: string | null = null
+    if (ev.p && typeof ev.p === 'object' && !Array.isArray(ev.p)) {
+      const clean: Record<string, string | number | boolean> = {}
+      for (const [k, v] of Object.entries(ev.p as Record<string, unknown>)) {
+        if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') clean[k] = v
+      }
+      const str = JSON.stringify(clean)
+      props = str.length <= MAX_PROPS_CHARS ? str : null
+    }
+    rows.push({ install, build, at, received: now, name, props })
+  }
+  return rows
+}
+
+async function postStats(req: Request, env: Env): Promise<Response> {
+  const b = await readBody(req)
+  if (!b) return err(400, 'body must be JSON')
+  const install = typeof b.id === 'string' && INSTALL_ID.test(b.id) ? b.id : null
+  if (!install) return err(400, 'an install id is required')
+  const build = text(b.build, 12) || null
+  const rows = eventsOf(b, install, build)
+  // one statement per row; D1 batches take a couple of hundred happily
+  const stmt = env.DB.prepare(
+    'INSERT INTO events (install, build, at, received, name, props) VALUES (?, ?, ?, ?, ?, ?)',
+  )
+  for (let i = 0; i < rows.length; i += 100) {
+    await env.DB.batch(
+      rows.slice(i, i + 100).map((r) => stmt.bind(r.install, r.build, r.at, r.received, r.name, r.props)),
+    )
+  }
+  return new Response(null, { status: 204, headers: CORS })
+}
+
+function percentile(sorted: number[], p: number): number | null {
+  if (!sorted.length) return null
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]
+}
+
+/** The numbers behind "is anyone using it, and does it work": installs by
+ *  day and by week, every event counted, the timings, the errors — all
+ *  over one window of days. */
+async function statsSummary(env: Env, days: number): Promise<Response> {
+  const now = Date.now()
+  const since = now - days * 86400_000
+  const day = now - 86400_000
+  const week = now - 7 * 86400_000
+
+  const q = <T>(sql: string, ...bind: unknown[]) =>
+    env.DB.prepare(sql)
+      .bind(...bind)
+      .all<T>()
+      .then((r) => r.results ?? [])
+
+  const [active, daily, byName, builds, platforms, timings, errors, trips, firstSeen] = await Promise.all([
+    q<{ window: string; n: number }>(
+      `SELECT 'day' AS window, COUNT(DISTINCT install) AS n FROM events WHERE at > ?
+       UNION ALL SELECT 'week', COUNT(DISTINCT install) FROM events WHERE at > ?
+       UNION ALL SELECT 'period', COUNT(DISTINCT install) FROM events WHERE at > ?`,
+      day,
+      week,
+      since,
+    ),
+    q<{ d: string; installs: number; opens: number }>(
+      `SELECT date(at / 1000, 'unixepoch') AS d, COUNT(DISTINCT install) AS installs,
+              SUM(name = 'open') AS opens
+       FROM events WHERE at > ? GROUP BY d ORDER BY d`,
+      since,
+    ),
+    q<{ name: string; n: number; installs: number }>(
+      `SELECT name, COUNT(*) AS n, COUNT(DISTINCT install) AS installs
+       FROM events WHERE at > ? GROUP BY name ORDER BY n DESC`,
+      since,
+    ),
+    q<{ build: string | null; installs: number; last: number }>(
+      `SELECT build, COUNT(DISTINCT install) AS installs, MAX(at) AS last
+       FROM events WHERE at > ? GROUP BY build ORDER BY last DESC`,
+      since,
+    ),
+    q<{ platform: string | null; installed: number | null; installs: number }>(
+      `SELECT json_extract(props, '$.platform') AS platform, json_extract(props, '$.installed') AS installed,
+              COUNT(DISTINCT install) AS installs
+       FROM events WHERE name = 'open' AND at > ? GROUP BY platform, installed ORDER BY installs DESC`,
+      since,
+    ),
+    q<{ name: string; ms: number }>(
+      `SELECT name, json_extract(props, '$.ms') AS ms FROM events
+       WHERE at > ? AND name IN ('boot', 'route', 'wx_fetch') AND json_extract(props, '$.ms') IS NOT NULL
+       LIMIT 20000`,
+      since,
+    ),
+    q<{ name: string; text: string | null; n: number; installs: number; last: number }>(
+      `SELECT name, COALESCE(json_extract(props, '$.text'), json_extract(props, '$.reason')) AS text,
+              COUNT(*) AS n, COUNT(DISTINCT install) AS installs, MAX(at) AS last
+       FROM events WHERE name IN ('error', 'wx_fail') AND at > ?
+       GROUP BY name, text ORDER BY n DESC LIMIT 30`,
+      since,
+    ),
+    q<{ n: number; min: number | null; nm: number | null; arrived: number | null }>(
+      `SELECT COUNT(*) AS n, AVG(json_extract(props, '$.min')) AS min, AVG(json_extract(props, '$.nm')) AS nm,
+              AVG(json_extract(props, '$.arrived')) AS arrived
+       FROM events WHERE name = 'trip_end' AND at > ?`,
+      since,
+    ),
+    q<{ install: string; first: number }>('SELECT install, MIN(at) AS first FROM events GROUP BY install'),
+  ])
+
+  const perf: Record<string, { n: number; p50: number | null; p90: number | null; max: number | null }> = {}
+  for (const name of TIMED) {
+    const ms = timings
+      .filter((t) => t.name === name && typeof t.ms === 'number')
+      .map((t) => t.ms)
+      .sort((a, b) => a - b)
+    perf[name] = {
+      n: ms.length,
+      p50: percentile(ms, 0.5),
+      p90: percentile(ms, 0.9),
+      max: ms.length ? ms[ms.length - 1] : null,
+    }
+  }
+
+  return json({
+    now,
+    days,
+    installs: {
+      total: firstSeen.length,
+      new: firstSeen.filter((r) => r.first > since).length,
+      active: Object.fromEntries(active.map((r) => [r.window, r.n])),
+    },
+    daily,
+    events: byName,
+    builds,
+    platforms,
+    perf,
+    trips: trips[0] ?? null,
+    errors,
+  })
+}
+
 async function purge(env: Env): Promise<void> {
   const now = Date.now()
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM events WHERE at < ?').bind(now - EVENTS_TTL_MS),
     env.DB.prepare('DELETE FROM boats WHERE updated < ?').bind(now - BOAT_TTL_MS),
     env.DB.prepare('DELETE FROM boats WHERE circle_id IN (SELECT id FROM circles WHERE last_post < ?)').bind(
       now - CIRCLE_TTL_MS,
@@ -266,6 +450,13 @@ export default {
     const path = url.pathname.replace(/\/+$/, '') || '/'
     try {
       if (path === '/health') return json({ ok: true, now: Date.now() })
+      if (path === '/stats' && req.method === 'POST') return await postStats(req, env)
+      if (path === '/stats/summary' && req.method === 'GET') {
+        if (!env.STATS_TOKEN) return err(503, 'STATS_TOKEN is not set on the Worker')
+        if (req.headers.get('authorization') !== `Bearer ${env.STATS_TOKEN}`) return err(403, 'not the stats token')
+        const days = Math.min(MAX_SUMMARY_DAYS, Math.max(1, Number(url.searchParams.get('days')) || SUMMARY_DAYS))
+        return await statsSummary(env, days)
+      }
       if (path === '/circle' && req.method === 'POST') return await createCircle(req, env)
       const m = /^\/circle\/([A-Za-z0-9]{6})(\/boat)?$/.exec(path)
       if (m) {
