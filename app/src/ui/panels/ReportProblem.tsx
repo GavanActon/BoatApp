@@ -54,8 +54,16 @@ export default function ReportProblem() {
       </div>
       {error && <div className="panel-note row-desc">{error}</div>}
       <DevLogRows />
-      <div className="panel-note row-desc">
-        Build {BUILD.sha} · {BUILD.at.slice(0, 10)}
+      <div className="panel-note row-desc numeral">
+        {/* date AND time, in the phone's clock: two builds a day is normal on dev */}
+        Build {BUILD.sha} ·{' '}
+        {new Date(BUILD.at).toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })}
       </div>
     </>
   )
