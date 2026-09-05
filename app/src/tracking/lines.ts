@@ -55,7 +55,7 @@ export async function deleteLine(id: number): Promise<void> {
 
 function ensureLayer(map: MlMap) {
   if (map.getSource(SOURCE)) return
-  map.addSource(SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  map.addSource(SOURCE, { type: 'geojson', maxzoom: 13, data: { type: 'FeatureCollection', features: [] } })
   const before = map.getLayer('route-line-casing') ? 'route-line-casing' : undefined
   map.addLayer(
     {

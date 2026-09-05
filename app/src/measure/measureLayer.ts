@@ -40,7 +40,7 @@ function emptyFc(): FeatureCollection {
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
 
-  map.addSource('measure', { type: 'geojson', data: emptyFc() })
+  map.addSource('measure', { type: 'geojson', maxzoom: 13, data: emptyFc() })
 
   const lineFilter: FilterSpecification = ['==', ['get', 'kind'], 'track']
   map.addLayer({

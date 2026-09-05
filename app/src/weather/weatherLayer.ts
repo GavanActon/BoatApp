@@ -3,7 +3,7 @@ import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
 import { REGION_BBOX } from '../config'
 import { onEachMap, withMap } from '../map/mapController'
 import { useAppStore } from '../state/appStore'
-import { depthAt } from '../map/depthGrid'
+import { depthAt, onDepthGrid } from '../map/depthGrid'
 import {
   applyWaveOverlay,
   ensureWaveOverlay,
@@ -49,6 +49,11 @@ let gridStale = false
 // the map the layers live on, so a replacement map re-adds them instead of
 // silently swallowing every setData (see onEachMap)
 let layersOn: MlMap | null = null
+// What render() last handed the map. A moveend lands on every GPS fix under
+// follow, and with the layer off each one used to re-send an empty collection
+// to the worker and re-diff four visibilities that hadn't changed.
+let wxEmpty = false
+const wxVis = new Map<string, 'visible' | 'none'>()
 
 const GRID_MAX_AGE_MS = 30 * 60_000
 // About ten arrows on screen, whatever the screen. A COUNT, not a pixel
@@ -167,7 +172,8 @@ function addLayers(map: MlMap) {
     map.addImage('wx-wave-arrow', makeWaveArrowImage(), { pixelRatio: 2 })
   }
 
-  map.addSource('wx', { type: 'geojson', data: emptyFc() })
+  // a few dozen points: tiled coarsely (see routeLayer's sources)
+  map.addSource('wx', { type: 'geojson', maxzoom: 12, data: emptyFc() })
 
   map.addLayer({
     id: 'wx-wave',
@@ -270,7 +276,18 @@ function addLayers(map: MlMap) {
   // the lattice spans the viewport, so panning and zooming rebuild it
   map.on('moveend', () => render(map))
 
+  // a fresh source and fresh layers: the first render sends everything once
+  wxEmpty = false
+  wxVis.clear()
   layersOn = map
+}
+
+/** A layer's visibility — sent only when it changes; setLayoutProperty diffs
+ *  and dirties the layer even for the same value. */
+function setVis(map: MlMap, id: string, v: 'visible' | 'none') {
+  if (wxVis.get(id) === v) return
+  wxVis.set(id, v)
+  map.setLayoutProperty(id, 'visibility', v)
 }
 
 function emptyFc(): FeatureCollection {
@@ -527,16 +544,20 @@ function render(map: MlMap) {
   const src = map.getSource('wx') as GeoJSONSource | undefined
   if (!src) return
   const nums = showWaveNumbers()
-  src.setData(
-    grid && (layers.weather || nums)
-      ? fcForView(map, grid, planTimeMs ?? floorHourMs(), windUnit)
-      : emptyFc(),
-  )
+  if (grid && (layers.weather || nums)) {
+    // the lattice follows the viewport: rebuilt on every moveend while on
+    src.setData(fcForView(map, grid, planTimeMs ?? floorHourMs(), windUnit))
+    wxEmpty = false
+  } else if (!wxEmpty) {
+    // off (or no grid yet): clear once, then leave the worker alone
+    src.setData(emptyFc())
+    wxEmpty = true
+  }
   const vis = layers.weather ? 'visible' : 'none'
-  map.setLayoutProperty('wx-wave', 'visibility', vis)
-  map.setLayoutProperty('wx-wind', 'visibility', vis)
-  map.setLayoutProperty('wx-wave-num', 'visibility', nums ? 'visible' : 'none')
-  map.setLayoutProperty('wx-wave-dir', 'visibility', nums ? 'visible' : 'none')
+  setVis(map, 'wx-wave', vis)
+  setVis(map, 'wx-wind', vis)
+  setVis(map, 'wx-wave-num', nums ? 'visible' : 'none')
+  setVis(map, 'wx-wave-dir', nums ? 'visible' : 'none')
 }
 
 let refreshing: Promise<{ fetchedAt: number; stale: boolean } | null> | null = null
@@ -683,6 +704,121 @@ export function gridConditionsAt(lon: number, lat: number, ms: number): GridCond
   }
 }
 
+/** Wind at a point, into `out` as [knots, from-degrees]. False off the grid. */
+export type WindSample = (lon: number, lat: number, out: Float32Array) => boolean
+/** The sea at a point, or null where the grid has none. */
+export type SeaSample = (lon: number, lat: number) => { waveM: number; waveDir: number; wavePeriodS: number | null } | null
+
+/**
+ * A wind sampler for one moment. The flow field asks for the wind at a few
+ * hundred points every time the camera settles; the full lookup resolves the
+ * hour and the lattice each call and carries the sky, the rain and the water
+ * temperature along — none of which the wind wants. This resolves once and
+ * blends only speed and direction. Null before any grid has landed.
+ */
+export function windSampler(ms: number): WindSample | null {
+  const g = grid
+  if (!g || g.time.length === 0) return null
+  const i = hourIndexAt(g.time, ms)
+  const f = fieldOf(g)
+  if (!f) {
+    // a cached grid of another shape: the nearest-cell fallback, as gridConditionsAt
+    return (lon, lat, out) => {
+      const c = gridConditionsAt(lon, lat, ms)
+      if (!c) return false
+      out[0] = c.windKn
+      out[1] = c.windDir
+      return true
+    }
+  }
+  const cells = g.cells
+  return (lon, lat, out) => {
+    const fx = (lon - f.lon0) / f.dLon
+    const fy = (lat - f.lat0) / f.dLat
+    const x0 = Math.min(f.cols - 2, Math.max(0, Math.floor(fx)))
+    const y0 = Math.min(f.rows - 2, Math.max(0, Math.floor(fy)))
+    const tx = Math.min(1, Math.max(0, fx - x0))
+    const ty = Math.min(1, Math.max(0, fy - y0))
+    let wind = 0
+    let u = 0
+    let v = 0
+    for (let k = 0; k < 4; k++) {
+      const c = cells[(y0 + (k >> 1)) * f.cols + x0 + (k & 1)]
+      const w = (k & 1 ? tx : 1 - tx) * (k >> 1 ? ty : 1 - ty)
+      if (!c || !w) continue
+      wind += (c.windKn[i] ?? 0) * w
+      const rad = ((c.windDir[i] ?? 0) * Math.PI) / 180
+      u += Math.sin(rad) * w
+      v += Math.cos(rad) * w
+    }
+    if (!Number.isFinite(wind)) return false
+    out[0] = wind
+    out[1] = ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360
+    return true
+  }
+}
+
+/** The sea's sibling of windSampler: height, direction (from) and period,
+ *  null-aware across the corners the way sampleField is. */
+export function seaSampler(ms: number): SeaSample | null {
+  const g = grid
+  if (!g || g.time.length === 0) return null
+  const i = hourIndexAt(g.time, ms)
+  const f = fieldOf(g)
+  if (!f) {
+    return (lon, lat) => {
+      const c = gridConditionsAt(lon, lat, ms)
+      return c && c.waveM != null && c.waveDir != null
+        ? { waveM: c.waveM, waveDir: c.waveDir, wavePeriodS: c.wavePeriodS }
+        : null
+    }
+  }
+  const cells = g.cells
+  return (lon, lat) => {
+    const fx = (lon - f.lon0) / f.dLon
+    const fy = (lat - f.lat0) / f.dLat
+    const x0 = Math.min(f.cols - 2, Math.max(0, Math.floor(fx)))
+    const y0 = Math.min(f.rows - 2, Math.max(0, Math.floor(fy)))
+    const tx = Math.min(1, Math.max(0, fx - x0))
+    const ty = Math.min(1, Math.max(0, fy - y0))
+    let wave = 0
+    let waveW = 0
+    let period = 0
+    let periodW = 0
+    let wdU = 0
+    let wdV = 0
+    let wdW = 0
+    for (let k = 0; k < 4; k++) {
+      const c = cells[(y0 + (k >> 1)) * f.cols + x0 + (k & 1)]
+      const w = (k & 1 ? tx : 1 - tx) * (k >> 1 ? ty : 1 - ty)
+      if (!c || !w) continue
+      const h = c.waveM[i]
+      if (h != null) {
+        wave += h * w
+        waveW += w
+      }
+      const p = c.wavePeriodS?.[i]
+      if (p != null) {
+        period += p * w
+        periodW += w
+      }
+      const wd = c.waveDir?.[i]
+      if (wd != null) {
+        const wr = (wd * Math.PI) / 180
+        wdU += Math.sin(wr) * w
+        wdV += Math.cos(wr) * w
+        wdW += w
+      }
+    }
+    if (waveW <= 0 || wdW <= 0) return null
+    return {
+      waveM: wave / waveW,
+      waveDir: ((Math.atan2(wdU, wdV) * 180) / Math.PI + 360) % 360,
+      wavePeriodS: periodW > 0 ? period / periodW : null,
+    }
+  }
+}
+
 /**
  * Resolves as soon as ANY grid is in hand. A stale one (including the
  * IndexedDB seed at startup) still answers now — last-known data beats a
@@ -788,6 +924,9 @@ export function initWeatherLayer() {
     addLayers(map)
     render(map)
   })
+  // the wave numbers' shoreline mask reads the depth grid, which now lands
+  // after the chart: draw them again once it has
+  onDepthGrid(() => withMap(render))
 
   // Last-known weather first: seed from the IndexedDB copy so the strip, the
   // layers and the flow engines open with data the moment the map exists,

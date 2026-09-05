@@ -43,7 +43,7 @@ interface Entry {
 
 function ensureViewLayer(map: maplibregl.Map) {
   if (map.getSource(VIEW_SOURCE)) return
-  map.addSource(VIEW_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  map.addSource(VIEW_SOURCE, { type: 'geojson', maxzoom: 13, data: { type: 'FeatureCollection', features: [] } })
   map.addLayer({
     id: 'track-view-line',
     type: 'line',

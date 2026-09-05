@@ -50,6 +50,12 @@ let lastRoute: unknown = null
 // camera afterwards; 'user' (a trip change) also switches follow off so the
 // frame sticks
 let fitPending: 'launch' | 'user' | null = 'launch'
+// The ramp each lane last wore, keyed by layer id. The comet moves every step,
+// so its stops always differ — but a null highlight, a progress replan that
+// lands the same samples, or a settings repaint would otherwise re-send an
+// identical expression, and setPaintProperty validates, deep-compares and
+// dirties the layer before it finds that out.
+const lastRamp = new Map<string, string>()
 
 // in-flight edit gesture; the moving point renders from here until commit
 type Drag =
@@ -132,16 +138,21 @@ const ROUTE_LINE_FILTER: FilterSpecification = [
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
 
-  map.addSource('route', { type: 'geojson', data: emptyFc() })
+  // Tiled no finer than z13: geojson sources default to z18, so a pitched
+  // chart at the helm kept a dozen tiles of this source alive per zoom and
+  // asked the worker for fresh ones on every move. At z13 a tile unit is
+  // ~1.2 m — finer than a pixel at any zoom the chart reaches — and the
+  // view is three or four tiles.
+  map.addSource('route', { type: 'geojson', maxzoom: 13, data: emptyFc() })
 
   // The run's own source, separate from `route` so the editing interactions
   // (drag handles, the fat hit target) keep working on untouched geometry.
   // lineMetrics is what makes `line-progress` — and so `line-gradient` —
   // available at all.
-  map.addSource('run', { type: 'geojson', lineMetrics: true, data: emptyFc() })
+  map.addSource('run', { type: 'geojson', maxzoom: 13, lineMetrics: true, data: emptyFc() })
   // the rake: crests combed off the run, an ADDITIVE layer over the lanes
-  map.addSource('rake', { type: 'geojson', data: emptyFc() })
-  map.addSource('run-shallow', { type: 'geojson', data: emptyFc() })
+  map.addSource('rake', { type: 'geojson', maxzoom: 12, data: emptyFc() })
+  map.addSource('run-shallow', { type: 'geojson', maxzoom: 13, data: emptyFc() })
 
   map.addLayer({
     id: 'route-line-casing',
@@ -403,6 +414,8 @@ function addLayers(map: MlMap) {
     },
   })
 
+  // fresh layers wear the default flat ramp; forget what the last map's wore
+  lastRamp.clear()
   layersOn = map
 }
 
@@ -757,16 +770,6 @@ const HL_TAIL = 0.26
  *  information, and this only has to say which way and that it's live. */
 const HL_PEAK = 0.34
 
-/**
- * Repaint both lanes.
- *
- * `highlight` (0..1, or null) slides a crest of light along each lane inside
- * its own gradient — the lane brightens where the light is and settles back
- * behind it. Motion carried by the colour ramp rather than by dashes riding on
- * top: nothing is added to the chart, the water just moves. Each lane's
- * geometry runs its own way, so one shared value sends the light out along one
- * and home along the other.
- */
 /** The stretches of the plotted course that cross charted water under 2 m —
  *  sampled every ~60 m along the line off the offline depth grid. */
 const SHALLOW_MARK_M = 2
@@ -810,11 +813,15 @@ function buildShallowFc(): FeatureCollection {
   }
 }
 
-function renderRun(
-  map: MlMap,
-  highlight: number | null = null,
-  lane: 'out' | 'back' | 'both' = 'both',
-) {
+/**
+ * The run's geometry: the rake, the lanes and the shallow marks, rebuilt from
+ * the store. Three setData round-trips to the worker — and a depth sample
+ * every ~60 m of course for the shallow marks — so this runs on route and
+ * plan changes ONLY, never per animation frame. The comet lives in paintRun,
+ * which touches no source at all; that is what lets the `run` source reach
+ * (and stay in) its loaded state while the light moves.
+ */
+function renderRunGeometry(map: MlMap) {
   const rakeSrc = map.getSource('rake') as GeoJSONSource | undefined
   if (rakeSrc) {
     rakeSrc.setData(buildRakeFc())
@@ -831,24 +838,54 @@ function renderRun(
   if (!src) return
   src.setData(buildRunFc())
   ;(map.getSource('run-shallow') as GeoJSONSource | undefined)?.setData(buildShallowFc())
+}
 
+/** One lane's ramp — sent only when it differs from what the lane already wears. */
+function setRamp(map: MlMap, id: string, stops: (number | string)[] | null) {
+  const key = stops ? stops.join(',') : 'flat'
+  if (lastRamp.get(id) === key) return
+  lastRamp.set(id, key)
+  map.setPaintProperty(
+    id,
+    'line-gradient',
+    stops ? ['interpolate', ['linear'], ['line-progress'], ...stops] : FLAT_UNKNOWN,
+  )
+}
+
+/**
+ * Repaint both lanes.
+ *
+ * `highlight` (0..1, or null) slides a crest of light along each lane inside
+ * its own gradient — the lane brightens where the light is and settles back
+ * behind it. Motion carried by the colour ramp rather than by dashes riding on
+ * top: nothing is added to the chart, the water just moves. Each lane's
+ * geometry runs its own way, so one shared value sends the light out along one
+ * and home along the other.
+ *
+ * Paint only: two `line-gradient` expressions, no source data. MapLibre
+ * re-renders a lane's gradient texture from the new ramp without reloading
+ * the tile, which is why this is cheap enough to run at 25 fps.
+ */
+function paintRun(
+  map: MlMap,
+  highlight: number | null = null,
+  lane: 'out' | 'back' | 'both' = 'both',
+) {
+  if (!map.getLayer('run-out')) return
   const { plan } = useRouteStore.getState()
-  const setRamp = (id: string, stops: (number | string)[] | null) =>
-    map.setPaintProperty(id, 'line-gradient', stops
-      ? ['interpolate', ['linear'], ['line-progress'], ...stops]
-      : FLAT_UNKNOWN)
 
   if (!plan || plan.samples.length < 2 || plan.oneWayNm <= 0) {
     // a route with no forecast yet: neutral grey, never a pale ramp colour —
     // pale reads as calm, and "we don't know" is not calm
-    setRamp('run-out', null)
-    setRamp('run-back', null)
+    setRamp(map, 'run-out', null)
+    setRamp(map, 'run-back', null)
     return
   }
 
   const nOut = outboundCount(plan)
   const out = plan.samples.slice(0, nOut)
   setRamp(
+    map,
     'run-out',
     gradientStops(out, (s) => s.distNm / plan.oneWayNm, lane !== 'back' ? highlight : null),
   )
@@ -856,6 +893,7 @@ function renderRun(
   const back = plan.samples.slice(nOut)
   const backSpan = plan.totalNm - plan.oneWayNm
   setRamp(
+    map,
     'run-back',
     backSpan > 0
       ? gradientStops(
@@ -867,20 +905,30 @@ function renderRun(
   )
 }
 
-/** Slide the lanes' highlight without touching anything else. `lane` narrows
- *  the light to one lane, for animations that take the run one way at a time. */
+/** Slide the lanes' highlight without touching anything else — paint only,
+ *  no source is rebuilt. `lane` narrows the light to one lane, for animations
+ *  that take the run one way at a time. */
 export function setLaneHighlight(
   map: MlMap,
   highlight: number | null,
   lane: 'out' | 'back' | 'both' = 'both',
 ) {
   if (layersOn !== map) return
-  renderRun(map, highlight, lane)
+  paintRun(map, highlight, lane)
+}
+
+/** Rebuild the run's sources from the store — for a caller that has been
+ *  drawing its own geometry into them (the crest-variant trials borrow the
+ *  rake) and is handing them back. Not for the animation loop. */
+export function refreshRunGeometry(map: MlMap) {
+  if (layersOn !== map) return
+  renderRunGeometry(map)
 }
 
 function render(map: MlMap) {
   if (layersOn !== map) return
-  renderRun(map)
+  renderRunGeometry(map)
+  paintRun(map)
   // the handles grow while the course is editable — the only on-map sign that
   // a press will now do something, and the thing you have to hit to drag
   const editing = useRouteStore.getState().editing

@@ -1,5 +1,4 @@
 import { DARK, layers as basemapLayers } from '@protomaps/basemaps'
-import type { FeatureCollection } from 'geojson'
 import type {
   ExpressionSpecification,
   LayerSpecification,
@@ -51,8 +50,8 @@ export interface StyleOpts {
   satVivid: boolean
   /** which pmtiles sources are reachable (from registerAllDataFiles) */
   available: Set<string>
-  /** contour + sounding GeoJSON, if loaded */
-  contoursData: FeatureCollection | null
+  /** where the contour + sounding GeoJSON is (a URL the source loads itself), if anywhere */
+  contours: string | null
   depthUnit: DepthUnit
 }
 
@@ -178,19 +177,13 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
     ...(opts.available.has('depth') ? [depthLayers[0]] : []),
     ...base.slice(insertAt, symbolsAt),
     satelliteLayer,
-    ...(opts.contoursData ? depthLayers.slice(1) : []),
+    ...(opts.contours ? depthLayers.slice(1) : []),
     ...base.slice(symbolsAt),
     seamarkLayer,
     // track + weather layers are added at runtime on top
   ]
 
   const sources: StyleSpecification['sources'] = {
-    seamarks: {
-      type: 'raster',
-      tiles: [SEAMARKS_URL],
-      tileSize: 256,
-      attribution: 'Seamarks © OpenSeaMap',
-    },
     // baked regional archive when reachable (offline-capable), else live Esri
     // tiles — different sources, so each carries its own credit
     satellite: opts.available.has('satellite')
@@ -198,6 +191,12 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
           type: 'raster',
           url: 'pmtiles://satellite',
           tileSize: 256,
+          // The archive goes to z14, but z14 is Sentinel-2's 10 m pixels
+          // upsampled — it carries nothing z13 lacks. Stopping at 13 draws
+          // the same picture from a quarter of the tiles: at a pitched helm
+          // view that is the difference between 35 satellite textures in
+          // flight and about a dozen.
+          maxzoom: 13,
           attribution: 'Contains modified Copernicus Sentinel data 2023',
         }
       : {
@@ -218,8 +217,20 @@ export function buildMapStyle(opts: StyleOpts): StyleSpecification {
   if (opts.available.has('depth')) {
     sources.depth = { type: 'raster', url: 'pmtiles://depth', tileSize: 256 }
   }
-  if (opts.contoursData) {
-    sources.contours = { type: 'geojson', data: opts.contoursData }
+  if (opts.contours) {
+    // a URL, not the parsed object: the source fetches and parses the 2.4 MB
+    // itself once the map exists, so the chart no longer waits on it
+    sources.contours = { type: 'geojson', data: opts.contours }
+  }
+  // Last on purpose: MapLibre asks sources for tiles in this order through
+  // one small image queue, and the seamarks come over the network. Behind
+  // the local archives, a slow cell link can no longer hold the chart's
+  // own imagery back. (The layer order is set above and does not change.)
+  sources.seamarks = {
+    type: 'raster',
+    tiles: [SEAMARKS_URL],
+    tileSize: 256,
+    attribution: 'Seamarks © OpenSeaMap',
   }
 
   return {

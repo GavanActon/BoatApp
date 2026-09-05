@@ -41,10 +41,11 @@ function emptyFc(): FeatureCollection {
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
 
-  map.addSource('spots', { type: 'geojson', data: emptyFc() })
+  // a handful of points: tiled coarsely (see routeLayer's sources)
+  map.addSource('spots', { type: 'geojson', maxzoom: 12, data: emptyFc() })
   // the focus dot: wherever the outlook strip is pointed, ON the chart — a
   // Places row tap, a water tap, a badge. Drawn last, so it rides on top.
-  map.addSource('focus-dot', { type: 'geojson', data: emptyFc() })
+  map.addSource('focus-dot', { type: 'geojson', maxzoom: 12, data: emptyFc() })
 
   // inserted beneath the route layers when they exist, so a plotted run and
   // its dots always draw over the badges rather than under them

@@ -1,3 +1,4 @@
+import type { GeoJSON } from 'geojson'
 import maplibregl from 'maplibre-gl'
 import { nearestInBounds } from '../config'
 import { withMap, getMap } from '../map/mapController'
@@ -229,7 +230,17 @@ function followCamera(map: maplibregl.Map, fix: Fix, courseUp: boolean) {
     map.jumpTo({ center })
     return
   }
-  map.easeTo({ center, bearing, duration: 900, essential: true })
+  // A turn used to ease for 900 ms — most of the second between fixes spent
+  // drawing the whole chart every frame, and a boat holding a wandering
+  // course kept the ease going more or less always. 600 ms reads the same
+  // from the helm and gives a third of every second back to the fix and
+  // the flows.
+  // Its own easeId: a turn that interrupts a turn restarts the ease without
+  // a synthetic moveend. And while it runs the next fix does not cut it
+  // short — a jumpTo stops any ease where it stands, which used to leave
+  // the chart's bearing part-way round.
+  map.easeTo({ center, bearing, duration: 600, essential: true, easeId: 'follow' })
+  if (map.isEasing()) cameraHoldUntil = Date.now() + 650
 }
 
 function onError(err: GeolocationPositionError) {
@@ -412,6 +423,8 @@ function watchHelmPadding() {
     if (p.bottom === last) return
     last = p.bottom
     map.easeTo({ padding: p, duration: 400 })
+    // the next fix must not stop this half-way: a jumpTo ends any running ease
+    if (map.isEasing()) cameraHoldUntil = Date.now() + 500
   })
   helmRo.observe(bar)
 }
@@ -521,7 +534,10 @@ export function setHeadingUpMode(on: boolean) {
   } else if (!useAppStore.getState().helm) {
     // the rotation was this mode's doing, so take it back — unless helm view
     // still owns the bearing, in which case leave the course where it is
-    withMap((map) => map.easeTo({ bearing: 0, duration: 800 }))
+    withMap((map) => {
+      map.easeTo({ bearing: 0, duration: 800 })
+      if (map.isEasing()) cameraHoldUntil = Date.now() + 900
+    })
   }
 }
 
@@ -530,7 +546,11 @@ export function exitHelmView() {
   useAppStore.getState().setHelm(false)
   helmRo?.disconnect()
   helmRo = null
-  withMap((map) => map.easeTo({ pitch: 0, padding: flatPadding, duration: 800 }))
+  withMap((map) => {
+    map.easeTo({ pitch: 0, padding: flatPadding, duration: 800 })
+    // a fix landing mid-ease used to freeze the pitch wherever it was
+    if (map.isEasing()) cameraHoldUntil = Date.now() + 900
+  })
 }
 
 // ---------- track recording ----------
@@ -538,35 +558,74 @@ export function exitHelmView() {
 const MIN_DIST_NM = 0.003 // ~5.5 m
 const MIN_INTERVAL_MS = 2000
 
+// The trail is two sources wearing one style. The HEAD is the last stretch,
+// re-sent on every point — a few dozen coordinates, the same cost at the end
+// of a day as at the start. The HISTORY is everything before it, re-sent only
+// now and then: the whole track used to go to the worker on every point, a
+// payload and a re-index that grew for as long as the trip lasted. The head
+// starts on the history's last point, so the line never breaks.
 const LIVE_SOURCE = 'track-live'
+const HEAD_SOURCE = 'track-live-head'
+const HISTORY_EVERY_MS = 30_000
+const HEAD_MAX_PTS = 40
+const TRAIL_PAINT = { 'line-color': '#59e0b8', 'line-width': 3.5, 'line-opacity': 0.85 }
+let historyOn: maplibregl.Map | null = null // which map holds the history
+let historySentAt = 0
+let historySegs = 0 // how many segments the history had
+let historyLen = 0 // how far into the last segment it reaches
 
 // withMap, not map.loaded() — loaded() waits on every tile source, and a fix
 // arriving while tiles stream (or never finish) would drop the trail update
-function updateLiveTrail() {
-  withMap(updateLiveTrailOn)
+function updateLiveTrail(force = false) {
+  withMap((map) => updateLiveTrailOn(map, force))
 }
 
-function updateLiveTrailOn(map: maplibregl.Map) {
+function updateLiveTrailOn(map: maplibregl.Map, force: boolean) {
   if (!map.getSource(LIVE_SOURCE)) {
-    map.addSource(LIVE_SOURCE, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [] },
-    })
-    map.addLayer({
-      id: 'track-live-line',
-      type: 'line',
-      source: LIVE_SOURCE,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': '#59e0b8', 'line-width': 3.5, 'line-opacity': 0.85 },
-    })
+    for (const [id, layer] of [
+      [LIVE_SOURCE, 'track-live-line'],
+      [HEAD_SOURCE, 'track-live-head-line'],
+    ] as const) {
+      map.addSource(id, {
+        type: 'geojson',
+        maxzoom: 13, // one line: tiled coarsely (see routeLayer's sources)
+        data: { type: 'FeatureCollection', features: [] },
+      })
+      map.addLayer({
+        id: layer,
+        type: 'line',
+        source: id,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: TRAIL_PAINT,
+      })
+    }
   }
-  const src = map.getSource(LIVE_SOURCE) as maplibregl.GeoJSONSource
-  const segs = liveSegs.filter((c) => c.length > 1)
-  src.setData(
-    segs.length
-      ? { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: segs }, properties: {} }
-      : { type: 'FeatureCollection', features: [] },
-  )
+  const lines = (segs: [number, number][][]): GeoJSON => {
+    const kept = segs.filter((c) => c.length > 1)
+    return kept.length
+      ? { type: 'Feature', geometry: { type: 'MultiLineString', coordinates: kept }, properties: {} }
+      : { type: 'FeatureCollection', features: [] }
+  }
+  const last = liveSegs[liveSegs.length - 1] ?? []
+  const now = Date.now()
+  // the history moves on when it is due, when a new segment began (a gap),
+  // when the head has grown long, on a map that has never had it, or on demand
+  const due =
+    force ||
+    historyOn !== map ||
+    historySegs !== liveSegs.length ||
+    now - historySentAt >= HISTORY_EVERY_MS ||
+    last.length - historyLen > HEAD_MAX_PTS
+  if (due) {
+    historyOn = map
+    historySentAt = now
+    historySegs = liveSegs.length
+    historyLen = last.length
+    ;(map.getSource(LIVE_SOURCE) as maplibregl.GeoJSONSource).setData(lines(liveSegs))
+  }
+  // the head: from the history's last point to the boat
+  const head = last.slice(Math.max(0, historyLen - 1))
+  ;(map.getSource(HEAD_SOURCE) as maplibregl.GeoJSONSource).setData(lines([head]))
 }
 
 async function recordPoint(fix: Fix) {
@@ -608,7 +667,7 @@ export async function startRecording() {
   maxSog = 0
   lastRecorded = null
   liveSegs = []
-  updateLiveTrail()
+  updateLiveTrail(true)
   activeTrackId = (await db.tracks.add({
     name: `Track — ${name}`,
     startedAt,

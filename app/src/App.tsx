@@ -243,18 +243,41 @@ function FabStack() {
   const route = useRouteStore((s) => s.route)
   const editing = useRouteStore((s) => s.editing)
   const setEditing = useRouteStore((s) => s.setEditing)
-  const [bearing, setBearing] = useState(0)
-  const [pitched, setPitched] = useState(false)
+  // The compass turns on every frame of every rotation ease. That is one DOM
+  // write on one SVG, not a render — carried as React state it re-rendered
+  // all six glass FABs per frame. The only state is "off north" (the reset
+  // button's opacity), a boolean that flips at the threshold and nowhere else.
+  const [offNorth, setOffNorth] = useState(false)
+  const compassBtn = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
+    let raf: number | null = null
+    let off = false
+    let lastBearing: number | null = null
     withMap((map) => {
+      const apply = () => {
+        raf = null
+        const bearing = map.getBearing()
+        if (bearing !== lastBearing) {
+          lastBearing = bearing
+          // the icon's own inline transform (IconCompass) — same string it
+          // would have rendered, same 0.2 s transition, no React in between
+          const svg = compassBtn.current?.querySelector('svg')
+          if (svg) svg.style.transform = `rotate(${-bearing}deg)`
+        }
+        const now = Math.abs(bearing) > 0.5 || map.getPitch() > 0.5
+        if (now !== off) {
+          off = now
+          setOffNorth(now)
+        }
+      }
+      // rotate and pitch both fire on a combined ease: one write per frame
       const update = () => {
-        setBearing(map.getBearing())
-        setPitched(map.getPitch() > 0.5)
+        if (raf == null) raf = requestAnimationFrame(apply)
       }
       map.on('rotate', update)
       map.on('pitch', update)
-      update()
+      apply()
     })
   }, [])
 
@@ -290,8 +313,9 @@ function FabStack() {
         <IconRuler />
       </button>
       <button
+        ref={compassBtn}
         className="fab"
-        style={{ opacity: Math.abs(bearing) > 0.5 || pitched ? 1 : 0.55 }}
+        style={{ opacity: offNorth ? 1 : 0.55 }}
         // the full "flatten and square up" reset: it must also leave helm
         // view and heading-up, or the next fix would immediately re-rotate
         // the chart to the course — one combined ease, since exitHelmView's
@@ -306,7 +330,7 @@ function FabStack() {
         }}
         aria-label="Reset north"
       >
-        <IconCompass rotation={-bearing} />
+        <IconCompass />
       </button>
       {underWay && (
         <button

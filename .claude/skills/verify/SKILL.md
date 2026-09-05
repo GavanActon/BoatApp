@@ -33,3 +33,8 @@ description: Build, launch and drive the Sandies chartplotter PWA to verify chan
 - Trip tab → preset destination → verdict card + timeline; close sheet → route line + trip chip on map.
 - "Pick on map" → tap water (plans) / tap far inland (clean "No water route found" error).
 - Router itself can be exercised headlessly: `app/src/routing/waterRouter.ts` is dependency-free; Node 24 imports it directly (type stripping) — load `app/public/data/*.dgrid`, `buildNavMask`, `routeOnGrid`, then check min depth along the track.
+
+## Performance harnesses (added 2026-09-05)
+- `C:/tmp/pwscratch/perf.mjs --label <name> [--url http://127.0.0.1:5400/] [--cpu 4] [--boot-only --warm]` — boot marks (`performance.mark('sandies:*')`, also the devlog `boot ·` line), flat / helm-under-way / flat-under-way frame stats, canvas rebuild count, tap→sheet latency. `profile.mjs` gives a CDP CPU profile by function and file; `helmshots.mjs` screenshots a turn at the helm; `offline.mjs --browser chromium|webkit` downloads the bundle and checks the local-archive path. `common.mjs` fakes `navigator.geolocation` with heading and speed (`window.__sim`).
+- Launch Chromium with `--enable-gpu --use-gl=angle --use-angle=d3d11 --ignore-gpu-blocklist` (new headless) for a real GPU; the headless shell renders WebGL in SwiftShader and skews everything.
+- Measure with the map alone on the machine: a build or a second browser running at the same time moves the numbers.

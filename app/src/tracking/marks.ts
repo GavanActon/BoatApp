@@ -18,7 +18,7 @@ const AMBER = '#ffb454'
 
 function ensureLayer(map: MlMap) {
   if (map.getSource(SOURCE)) return
-  map.addSource(SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  map.addSource(SOURCE, { type: 'geojson', maxzoom: 12, data: { type: 'FeatureCollection', features: [] } })
   map.addLayer({
     id: 'mark-ring',
     type: 'circle',

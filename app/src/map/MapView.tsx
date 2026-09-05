@@ -5,7 +5,7 @@ import { BUNDLES, DATA_FILES, HOME, MAX_BOUNDS } from '../config'
 import { listStored } from '../offline/fileStore'
 import { useAppStore } from '../state/appStore'
 import type { SpeedUnit } from '../units'
-import { loadContours } from './contoursData'
+import { contoursUrl } from './contoursData'
 import { depthAt, formatDepth, loadDepthGrid } from './depthGrid'
 import { applyLayerVisibility, getMap, setMap } from './mapController'
 import { buildMapStyle, depthLabelExpr, satTreatment } from './mapStyle'
@@ -123,11 +123,17 @@ export default function MapView() {
     let unsubMeasure: (() => void) | null = null
 
     ;(async () => {
-      const [available, contoursData] = await Promise.all([
-        registerAllDataFiles(),
-        loadContours(),
-        loadDepthGrid(),
-      ])
+      // the boot timeline, for the dev log and the perf harness: how long
+      // until the chart is on screen, and which step took it
+      performance.mark('sandies:boot')
+      // Only the archive headers gate the chart. The 7.5 MB depth grid
+      // loads alongside and announces itself (onDepthGrid) to whatever
+      // draws from it; the contours are handed to the style as a URL for
+      // the map to load on its own. Both used to be awaited here, which
+      // held the whole chart behind ten megabytes and a JSON parse.
+      void loadDepthGrid()
+      const [available, contours] = await Promise.all([registerAllDataFiles(), contoursUrl()])
+      performance.mark('sandies:data')
       const storedNames = new Set(listStored().map((s) => s.name))
       useAppStore
         .getState()
@@ -161,7 +167,7 @@ export default function MapView() {
           satOpacity,
           satVivid,
           available,
-          contoursData,
+          contours,
           depthUnit,
         }),
         center: saved?.center ?? homeCenter() ?? HOME.center,
@@ -177,7 +183,11 @@ export default function MapView() {
         // legible gain on a chart, and every cached tile is a texture. The
         // flow canvases already cap at 2×.
         pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-        maxTileCacheSize: 48,
+        // tiles kept after they leave the view, per source: they come back
+        // from the archive in a few milliseconds, and 48 of them per raster
+        // source was up to 50 MB of textures held for a pan that may never
+        // come — on the phone that kills the app for memory
+        maxTileCacheSize: 16,
         // and fewer ancestor levels kept for a pitched view
         maxTileCacheZoomLevels: 3,
       })
@@ -297,12 +307,35 @@ export default function MapView() {
         if (s.active) popup?.remove()
       })
 
+      // Following the boat, moveend fires once a second; the view is worth
+      // saving once it has settled, and on the way out of the page.
+      let viewTimer: number | null = null
+      const saveView = () => {
+        viewTimer = null
+        if (!map || disposed) return
+        const c = map.getCenter()
+        try {
+          localStorage.setItem(
+            VIEW_KEY,
+            JSON.stringify({ center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing() }),
+          )
+        } catch {
+          /* storage full or denied: the next launch opens on home waters */
+        }
+      }
       map.on('moveend', () => {
-        const c = map!.getCenter()
-        localStorage.setItem(
-          VIEW_KEY,
-          JSON.stringify({ center: [c.lng, c.lat], zoom: map!.getZoom(), bearing: map!.getBearing() }),
-        )
+        if (viewTimer == null) viewTimer = window.setTimeout(saveView, 1500)
+      })
+      const flushView = () => {
+        if (viewTimer != null) {
+          clearTimeout(viewTimer)
+          saveView()
+        }
+      }
+      window.addEventListener('pagehide', flushView)
+      map.once('remove', () => {
+        window.removeEventListener('pagehide', flushView)
+        if (viewTimer != null) clearTimeout(viewTimer)
       })
 
       // the chart going blank: the GPU took the context away (memory
@@ -411,7 +444,23 @@ export default function MapView() {
         window.removeEventListener('online', onVisible)
         if (healTimer != null) clearTimeout(healTimer)
       })
-      map.once('load', () => devlog('map', 'loaded', Object.fromEntries(sourceModes)))
+      performance.mark('sandies:map')
+      map.once('style.load', () => {
+        performance.mark('sandies:style')
+        // the first frame with the style on it: the chart is on screen
+        // from here, tiles filling in as they land
+        map!.once('render', () => performance.mark('sandies:render'))
+      })
+      map.once('load', () => {
+        performance.mark('sandies:load')
+        devlog('map', 'loaded', Object.fromEntries(sourceModes))
+      })
+      map.once('idle', () => {
+        performance.mark('sandies:idle')
+        // one line with the whole boot: page start → data → map → style → chart drawn
+        const at = (n: string) => Math.round(performance.getEntriesByName(`sandies:${n}`)[0]?.startTime ?? -1)
+        devlog('boot', `data ${at('data')} ms · map ${at('map')} · style ${at('style')} · drawn ${at('render')} · load ${at('load')} · idle ${at('idle')}`)
+      })
       if (gen > 0) devlog('map', `rebuilt · #${gen}`)
 
       setMap(map)

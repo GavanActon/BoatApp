@@ -23,19 +23,27 @@ export function isToday(ms: number): boolean {
   return startOfDayMs(ms) === startOfDayMs(Date.now())
 }
 
+// One formatter each, built once. Constructing an Intl.DateTimeFormat is the
+// expensive part (locale data lookup) and toLocale*String builds a fresh one
+// per call — these run for every strip hour, leg label and log row on the way
+// up. Same locale, same options, so the strings are the ones they always were.
+const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+const dateFmt = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' })
+const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+
 /** "9:45 AM" */
 export function timeLabel(ms: number): string {
-  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return timeFmt.format(new Date(ms))
 }
 
 /** "Aug 24" */
 export function dateShort(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return dateFmt.format(new Date(ms))
 }
 
 /** "Sat" */
 export function dayShort(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, { weekday: 'short' })
+  return dayFmt.format(new Date(ms))
 }
 
 /** "Today" for today, otherwise "Sat". */

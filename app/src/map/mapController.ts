@@ -85,6 +85,23 @@ export function withMap(fn: MapReadyFn) {
   else waiters.push(fn)
 }
 
+/**
+ * Run `fn` once the map has drawn its first settled frame — or after
+ * `fallbackMs` if that never comes ('idle' waits on every tile source, and
+ * an archive that does not cover the view leaves one loading forever). For
+ * work that should start AFTER the chart is on screen, not race it.
+ */
+export function onFirstIdle(m: MlMap, fn: () => void, fallbackMs = 2500) {
+  let done = false
+  const go = () => {
+    if (done) return
+    done = true
+    fn()
+  }
+  m.once('idle', go)
+  window.setTimeout(go, fallbackMs)
+}
+
 /** Like withMap, but for the layer modules: also runs against any *later* map.
  *  A one-shot withMap would leave a replacement map (a remount, an HMR update)
  *  with no route/weather/measure layers at all, and since render() writes

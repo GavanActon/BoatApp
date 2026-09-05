@@ -37,8 +37,9 @@ function emptyFc(): FeatureCollection {
 
 function addLayers(map: MlMap) {
   if (layersOn === map || !map.getStyle()) return
-  map.addSource('circle-routes', { type: 'geojson', data: emptyFc() })
-  map.addSource('circle-boats', { type: 'geojson', data: emptyFc() })
+  // a few boats and their courses: tiled coarsely (see routeLayer's sources)
+  map.addSource('circle-routes', { type: 'geojson', maxzoom: 13, data: emptyFc() })
+  map.addSource('circle-boats', { type: 'geojson', maxzoom: 12, data: emptyFc() })
 
   // under the run's own line, so a shared spot's approaches don't cover it
   const before = map.getLayer('route-line-casing') ? 'route-line-casing' : undefined

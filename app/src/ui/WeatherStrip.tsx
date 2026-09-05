@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HOME } from '../config'
-import { nearestWater } from '../map/depthGrid'
+import { nearestWater, onDepthGrid } from '../map/depthGrid'
 import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { adoptWindow } from '../routing/planner'
 import { useRouteStore } from '../routing/routeStore'
@@ -203,12 +203,16 @@ export default function WeatherStrip() {
     const offGrid = onWeatherGrid(() => {
       if (staleRef.current) void load()
     })
+    // the depth grid lands after the chart now, and a fix on land needs it
+    // to find the nearest water — load again when it does
+    const offDepth = onDepthGrid(() => void load())
     return () => {
       alive = false
       clearInterval(t)
       offHour()
       offWind()
       offGrid()
+      offDepth()
     }
     // re-fetch when connectivity returns so a stale strip heals itself
   }, [show, online, focusPoint, departFrom, hasFix])

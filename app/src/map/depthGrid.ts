@@ -26,11 +26,32 @@ let data: Int16Array | null = null
 
 let loadPromise: Promise<boolean> | null = null
 
+// The grid is 7.5 MB and arrives well after the chart is on screen — it no
+// longer gates the map. Whatever drew without it (the sea's crests, the
+// wave numbers' shoreline mask, the strip's nearest-water pick) asks to be
+// told when it lands, and draws again.
+const loadedListeners = new Set<() => void>()
+
+/** Run `cb` once the grid is in memory — at once if it already is. Returns the unsubscribe. */
+export function onDepthGrid(cb: () => void): () => void {
+  if (data) {
+    cb()
+    return () => {}
+  }
+  loadedListeners.add(cb)
+  return () => loadedListeners.delete(cb)
+}
+
 /** Idempotent: concurrent callers (map boot, route planner) share one load. */
 export function loadDepthGrid(): Promise<boolean> {
   if (!loadPromise) {
     loadPromise = doLoad().then((ok) => {
       if (!ok) loadPromise = null // allow a retry once files/network appear
+      else {
+        performance.mark('sandies:dgrid')
+        for (const cb of loadedListeners) cb()
+        loadedListeners.clear()
+      }
       return ok
     })
   }

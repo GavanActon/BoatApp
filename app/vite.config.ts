@@ -132,7 +132,13 @@ export default defineConfig({
     omCache(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt', and nobody ever prompts: a new build installs in the
+      // background and takes over at the NEXT launch. With autoUpdate the
+      // first open after every deploy booted, then reloaded itself a second
+      // or two in — the whole start paid twice, and "the app restarted on
+      // its own" to whoever was holding it. (Reloading later is worse: the
+      // new worker's cache no longer has the old build's lazy panels.)
+      registerType: 'prompt',
       manifest: {
         name: 'Sandies — Lake Superior Chartplotter',
         short_name: 'Sandies',

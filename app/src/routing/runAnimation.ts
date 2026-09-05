@@ -1,6 +1,6 @@
 import type { Feature, FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl'
-import { setLaneHighlight } from './routeLayer'
+import { refreshRunGeometry, setLaneHighlight } from './routeLayer'
 import { useRouteStore } from './routeStore'
 import { useAppStore } from '../state/appStore'
 
@@ -36,7 +36,7 @@ export type RunAnimVariant = 'comet' | 'trail' | 'roll' | 'march' | 'wave'
 const LANE_MS = 4600 // one pass along a lane — slow on purpose
 const HOLD_MS = 900 // the finished pass stands for a beat before the return
 const CYCLE_MS = (LANE_MS + HOLD_MS) * 2
-const FPS_MS = 40 // per-step rebuild cost is small; 25 fps is plenty
+const FPS_MS = 40 // a step is a couple of paint properties; 25 fps is plenty
 
 // 'march': one set of crests lives this long, drifting this far
 const MARCH_MS = 3600
@@ -116,7 +116,11 @@ function restore(map: MlMap) {
   map.setPaintProperty('run-rake-haze', 'line-opacity', HAZE_OPACITY as never)
   rakeForced = false
   rakeBase = null
-  // rebuilds the rake source from the plan and re-applies the layer toggle
+  // rebuilds the rake source from the plan (a march may have been drawing
+  // its own crests into it) and re-applies the layer toggle — after
+  // rakeForced is down, so the toggle reads as released…
+  refreshRunGeometry(map)
+  // …then the lanes go back to their plain ramps, no light on them
   setLaneHighlight(map, null)
 }
 

@@ -1,4 +1,5 @@
 import { HOME, REGION_BBOX } from '../config'
+import { onFirstIdle, withMap } from '../map/mapController'
 import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { useAppStore } from '../state/appStore'
 import { startRecording, stopRecording } from '../tracking/gpsService'
@@ -283,7 +284,19 @@ export function initRoutePlanner() {
     persisted.setDestination(null) // yesterday's outing doesn't resume as today's plan
   }
   const resumed = useRouteStore.getState()
-  if (resumed.destination) void replan(resumed.tripStartedAt != null)
+  if (resumed.destination) {
+    // The route — a nav mask over the whole depth grid, the search, the
+    // weather sweep — is a long task, and at launch it used to land in the
+    // chart's first frames. It waits for the chart's first settled frame
+    // (or a moment, if that never comes), unless a fix or a store change
+    // has already asked for it by then.
+    const quiet = resumed.tripStartedAt != null
+    withMap((map) =>
+      onFirstIdle(map, () => {
+        if (replanToken === 0 && useRouteStore.getState().destination) void replan(quiet)
+      }, 1500),
+    )
+  }
   if (resumed.tripStartedAt != null && !useGpsStore.getState().recording) {
     void startRecording()
   }
