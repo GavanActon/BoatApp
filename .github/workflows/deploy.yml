@@ -21,7 +21,11 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  # A push supersedes whatever is running; a scheduled wave refresh never
+  # cancels anything — it queues. (2026-09-05: a cron run cancelled a push
+  # deploy mid-flight, then found nothing newer to carry and skipped, and
+  # the site stayed on the old build with nobody the wiser.)
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   build-deploy:
