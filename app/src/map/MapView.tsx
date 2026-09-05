@@ -168,7 +168,7 @@ export default function MapView() {
         zoom: saved?.zoom ?? HOME.zoom,
         bearing: saved?.bearing ?? 0,
         maxBounds: MAX_BOUNDS,
-        maxPitch: 60,
+        maxPitch: 50,
         attributionControl: { compact: true },
         fadeDuration: 150,
         // iOS gives a web app a fixed memory budget and kills the page when
@@ -178,6 +178,8 @@ export default function MapView() {
         // flow canvases already cap at 2×.
         pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
         maxTileCacheSize: 48,
+        // and fewer ancestor levels kept for a pitched view
+        maxTileCacheZoomLevels: 3,
       })
 
       const scale = new maplibregl.ScaleControl({

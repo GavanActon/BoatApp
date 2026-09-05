@@ -1,4 +1,5 @@
 import maplibregl from 'maplibre-gl'
+import { nearestInBounds } from '../config'
 import { withMap, getMap } from '../map/mapController'
 import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
@@ -180,6 +181,7 @@ const MICRO_PX = 0.75 // below this the screen cannot show the move at all
 const STEP_PX = 12 // small enough to place instantly without reading as a jump
 const TURN_DEG = 3 // a course change, not the wander of a steady heading
 const COG_MIN_KN = 1.5 // below steerage way COG is noise, not a course
+let lastEdge: [number, number] | null = null // where an off-chart boat was last followed to
 
 /**
  * Keep the boat centred without animating for movement nobody can see.
@@ -197,9 +199,17 @@ const COG_MIN_KN = 1.5 // below steerage way COG is noise, not a course
  * second, which is what made the field blink while sitting still.
  */
 function followCamera(map: maplibregl.Map, fix: Fix, courseUp: boolean) {
-  const from = map.project(map.getCenter())
-  const to = map.project([fix.lon, fix.lat])
+  // A boat outside the chart is followed to the nearest spot on it. The map
+  // then holds the viewport inside the bounds, so its centre never reaches
+  // that edge point: measured against the centre, a boat parked beyond the
+  // edge would read as a jump on every fix and the camera would ease to the
+  // same place once a second. Measured against the last edge point, it
+  // moves only when the boat does.
+  const { center, clamped } = nearestInBounds(fix.lon, fix.lat)
+  const from = map.project(clamped && lastEdge ? lastEdge : map.getCenter())
+  const to = map.project(center)
   const movedPx = Math.hypot(to.x - from.x, to.y - from.y)
+  lastEdge = clamped ? center : null
 
   // Course-up holds its heading when the boat is not making way. COG is
   // derived from successive fixes, so tied up or drifting it is not a course
@@ -215,7 +225,6 @@ function followCamera(map: maplibregl.Map, fix: Fix, courseUp: boolean) {
   const turning = bearing !== now
 
   if (movedPx < MICRO_PX && !turning) return // jitter: leave the camera alone
-  const center: [number, number] = [fix.lon, fix.lat]
   if (movedPx <= STEP_PX && !turning) {
     map.jumpTo({ center })
     return
@@ -348,7 +357,7 @@ export function locateAndFollow() {
   if (fix) {
     const ease = (map: maplibregl.Map) => {
       cameraHoldUntil = Date.now() + 1200
-      map.easeTo({ center: [fix.lon, fix.lat], zoom: Math.max(map.getZoom(), 12) })
+      map.easeTo({ center: nearestInBounds(fix.lon, fix.lat).center, zoom: Math.max(map.getZoom(), 12) })
     }
     // direct when possible — easeTo needs no style, so don't make the tap wait
     // on the style parsing
@@ -359,13 +368,17 @@ export function locateAndFollow() {
 }
 
 // Helm view geometry. The pitch matches the map's maxPitch, so the gesture
-// and the toggle land on the same horizon. The padding pushes the camera's
+// and the toggle land on the same horizon. 50, not 60: with the boat low on
+// the screen a 60 deg pitch looks nearly to the horizon, and MapLibre has
+// to hold tiles at every zoom from here to there — several times the
+// textures of a flat chart, on the phone that already has the least room.
+// That was the view the chart went blank and the imagery came apart in. The padding pushes the camera's
 // center point (the boat, while following) down the screen: MapLibre places
 // the center in the middle of the UNPADDED area, so reserving everything
 // above the bottom cards but a sliver renders the boat just clear of them —
 // the whole screen above is what's coming up ahead, and the cards never
 // cover the boat.
-const HELM_PITCH = 60
+const HELM_PITCH = 50
 const HELM_AHEAD_PX = 44 // water between the boat and the top of the cards
 const HELM_MIN_ZOOM = 13 // "what's coming up" scale, not the passage overview
 
@@ -456,13 +469,17 @@ export function enterHelmView() {
   startGps()
   useAppStore.getState().setFollow(true)
   useAppStore.getState().setHelm(true)
+  // under way, the helm is orientation-to-travel by default: heading-up
+  // comes on with it, so the FAB says so and the course stays at the top if
+  // the chart is flattened mid-trip (Gavan, 2026-09-04)
+  if (useRouteStore.getState().tripStartedAt != null) useAppStore.getState().setHeadingUp(true)
   const fix = useGpsStore.getState().fix
   const ease = (map: maplibregl.Map) => {
     cameraHoldUntil = Date.now() + 1600
     const steering = fix?.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
     const planned = fix ? plannedCourse(fix.lon, fix.lat) : null
     map.easeTo({
-      ...(fix ? { center: [fix.lon, fix.lat] } : {}),
+      ...(fix ? { center: nearestInBounds(fix.lon, fix.lat).center } : {}),
       zoom: Math.max(map.getZoom(), HELM_MIN_ZOOM),
       pitch: HELM_PITCH,
       bearing: steering ? fix.cog! : (planned ?? map.getBearing()),
@@ -492,7 +509,7 @@ export function setHeadingUpMode(on: boolean) {
       cameraHoldUntil = Date.now() + 1200
       const steering = fix?.cog != null && (fix.sogKn ?? 0) >= COG_MIN_KN
       map.easeTo({
-        ...(fix ? { center: [fix.lon, fix.lat] } : {}),
+        ...(fix ? { center: nearestInBounds(fix.lon, fix.lat).center } : {}),
         ...(steering ? { bearing: fix!.cog! } : {}),
         duration: 900,
         essential: true,

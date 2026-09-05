@@ -18,7 +18,7 @@ const ON_KEY = 'sandies-devlog'
 const LINES_KEY = 'sandies-devlog-lines'
 const LAST_KEY = 'sandies-devlog-last'
 const MAX_LINES = 1500
-const MAX_CHARS = 220
+const MAX_CHARS = 320
 const FLUSH_MS = 5000
 const FREEZE_MS = 3000
 
@@ -127,7 +127,7 @@ function boot(why: string) {
   devlog('boot', why, {
     date: dateLine(),
     build: __BUILD__.sha,
-    ua: navigator.userAgent.slice(0, 120),
+    ua: navigator.userAgent.replace(/^Mozilla\/5\.0 \(/, '').slice(0, 70),
     dpr: devicePixelRatio,
     vp: `${innerWidth}x${innerHeight}`,
     installed: nav.standalone === true || matchMedia('(display-mode: standalone)').matches,
@@ -185,14 +185,17 @@ function installHooks() {
   }
 }
 
-/** The whole log as text, newest last. */
-export function devLogText(): string {
+/** The whole log as text, newest last. `report` goes in front of it —
+ *  the problem report's snapshot (layers, storage, last exit, wake lock),
+ *  so one upload says both what the app is and what it did. */
+export function devLogText(report?: string): string {
   const head = [
     `Sandies dev log · ${dateLine()} · build ${__BUILD__.sha} · install ${statsInstallId() || '?'}`,
     `${lines.length} lines · ${navigator.userAgent.slice(0, 120)}`,
     '',
   ]
-  return head.concat(lines).join('\n') + '\n'
+  const snapshot = report ? ['---- snapshot ----', report, '', '---- log ----'] : []
+  return head.concat(snapshot, lines).join('\n') + '\n'
 }
 
 export interface Uploaded {
@@ -214,7 +217,9 @@ export function lastUpload(): Uploaded | null {
 /** Send the log to the API; the answer is a code to read out and a link. */
 export async function uploadDevLog(): Promise<Uploaded> {
   flush()
-  const text = devLogText()
+  // the report module imports this one; a late import keeps the log cheap
+  const report = await import('./diagnostics').then((m) => m.buildReport()).catch(() => undefined)
+  const text = devLogText(report)
   const resp = await fetch(`${API}/devlog`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -232,7 +237,8 @@ export async function uploadDevLog(): Promise<Uploaded> {
 
 /** Hand the log to the share sheet as a file, or copy it where there is none. */
 export async function shareDevLog(): Promise<'shared' | 'copied' | 'failed'> {
-  const text = devLogText()
+  const report = await import('./diagnostics').then((m) => m.buildReport()).catch(() => undefined)
+  const text = devLogText(report)
   const file = new File([text], `sandies-log-${dateLine()}.txt`, { type: 'text/plain' })
   if (navigator.canShare?.({ files: [file] })) {
     try {

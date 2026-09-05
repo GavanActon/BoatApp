@@ -125,7 +125,10 @@ export function initStats(): void {
       if (s.usageStats) track('stats_on')
     }
     if (s.sheetTab !== p.sheetTab && s.sheetTab) track('tab', { tab: s.sheetTab })
-    if (s.helm !== p.helm) track('helm', { on: s.helm })
+    if (s.helm !== p.helm) {
+      track('helm', { on: s.helm })
+      devlog('helm', s.helm ? 'on' : 'off')
+    }
     if (s.lowPower !== p.lowPower) track('low_power', { on: s.lowPower })
     if (s.headingUp !== p.headingUp && s.headingUp) track('heading_up')
     if (s.follow !== p.follow && s.follow) track('follow')

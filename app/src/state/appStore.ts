@@ -104,7 +104,7 @@ interface AppState {
   // and like helm below, not persisted: a reload starts north-up.
   headingUp: boolean
   setHeadingUp: (v: boolean) => void
-  // Helm view: the chart pitched to 60° and course-up, boat low on the
+  // Helm view: the chart pitched to 50° and course-up, boat low on the
   // screen, the water ahead filling the top. A camera stance layered on
   // follow — deliberately NOT persisted: a reload starts flat, because a
   // pitched chart greeting someone at the kitchen table is the same
@@ -125,6 +125,11 @@ interface AppState {
   // no is persisted.
   usageStats: boolean
   setUsageStats: (v: boolean) => void
+  /** After a run, ask how the water felt — the arrival strip's one question,
+   *  asked once more at the ramp if it went unanswered. Off by default: a
+   *  run is not a survey (Gavan, 2026-09-04). */
+  askSeaFelt: boolean
+  setAskSeaFelt: (v: boolean) => void
 
   // First run (DESIGN-SPEC §10). `onboarded`: the welcome card has been
   // answered (Get set up or Later) — either way it never shows again.
@@ -264,6 +269,7 @@ type PersistedPrefs = Pick<
   | 'lowPower'
   | 'recordTrips'
   | 'usageStats'
+  | 'askSeaFelt'
   | 'onboarded'
   | 'setupDone'
   | 'firstRouteDone'
@@ -325,6 +331,8 @@ export const useAppStore = create<AppState>()(
       setRecordTrips: (v) => set({ recordTrips: v }),
       usageStats: true,
       setUsageStats: (v) => set({ usageStats: v }),
+      askSeaFelt: false,
+      setAskSeaFelt: (v) => set({ askSeaFelt: v }),
 
       onboarded: false,
       setOnboarded: (v) => set({ onboarded: v }),
@@ -445,6 +453,7 @@ export const useAppStore = create<AppState>()(
         lowPower: s.lowPower,
         recordTrips: s.recordTrips,
         usageStats: s.usageStats,
+        askSeaFelt: s.askSeaFelt,
         onboarded: s.onboarded,
         setupDone: s.setupDone,
         firstRouteDone: s.firstRouteDone,
