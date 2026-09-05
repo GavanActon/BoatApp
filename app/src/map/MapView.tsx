@@ -127,11 +127,14 @@ export default function MapView() {
       // until the chart is on screen, and which step took it
       performance.mark('sandies:boot')
       // Only the archive headers gate the chart. The 7.5 MB depth grid
-      // loads alongside and announces itself (onDepthGrid) to whatever
-      // draws from it; the contours are handed to the style as a URL for
-      // the map to load on its own. Both used to be awaited here, which
-      // held the whole chart behind ten megabytes and a JSON parse.
-      void loadDepthGrid()
+      // (1.3 MB over the wire) loads once the chart is drawn — below, on
+      // the map's 'load' — and announces itself (onDepthGrid) to whatever
+      // draws from it; until then depth reads '—'. It used to start here,
+      // alongside the tiles, the fonts and the forecast, and on a thin
+      // signal the first frame waited on the fight. The router asks for it
+      // itself the moment a route needs it. The contours are handed to the
+      // style as a URL for the map's worker to load on its own.
+      const depthGridSoon = window.setTimeout(() => void loadDepthGrid(), 12_000) // no map (no WebGL): still load it
       const [available, contours] = await Promise.all([registerAllDataFiles(), contoursUrl()])
       performance.mark('sandies:data')
       const storedNames = new Set(listStored().map((s) => s.name))
@@ -454,6 +457,9 @@ export default function MapView() {
       map.once('load', () => {
         performance.mark('sandies:load')
         devlog('map', 'loaded', Object.fromEntries(sourceModes))
+        // the chart is on screen: now the depth grid can have the pipe
+        window.clearTimeout(depthGridSoon)
+        void loadDepthGrid()
       })
       map.once('idle', () => {
         performance.mark('sandies:idle')

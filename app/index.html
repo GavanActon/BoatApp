@@ -21,9 +21,34 @@
     <link rel="dns-prefetch" href="https://api.met.no" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Sandies</title>
+    <!-- The first frame, before any script or stylesheet arrives: the app's
+         own dark ground, the panes where the strip and the dock will be, the
+         name, and a bar that moves — so a cold load over a thin signal is a
+         chart on its way, not a black screen. App.tsx takes it down once
+         React has drawn. Inline on purpose: it must cost no request. -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a1522; }
+      #splash { position: fixed; inset: 0; background: #0a1522; color: #eaf3fb; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.35s ease; }
+      #splash.gone { opacity: 0; pointer-events: none; }
+      #splash .pane { position: absolute; left: 8px; right: 8px; border: 1px solid rgba(126, 178, 224, 0.14); background: rgba(14, 27, 42, 0.78); border-radius: 10px; }
+      #splash .pane.top { top: calc(env(safe-area-inset-top, 0px) + 8px); height: 112px; }
+      #splash .pane.bottom { bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 6px); height: 56px; border-radius: 8px; }
+      #splash .word { text-align: center; }
+      #splash .word b { display: block; font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
+      #splash .word span { display: block; margin-top: 4px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #5c7a89; }
+      #splash .bar { position: relative; width: 120px; height: 2px; margin: 22px auto 0; background: rgba(126, 178, 224, 0.18); border-radius: 1px; overflow: hidden; }
+      #splash .bar::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 100%; background: #3fc8ff; border-radius: 1px; animation: splash-sweep 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+      @keyframes splash-sweep { to { left: 100%; } }
+      @media (prefers-reduced-motion: reduce) { #splash .bar::after { animation: none; left: 30%; } #splash { transition: none; } }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="splash" aria-hidden="true">
+      <div class="pane top"></div>
+      <div class="word"><b>Sandies</b><span>Whitefish Bay</span><div class="bar"></div></div>
+      <div class="pane bottom"></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

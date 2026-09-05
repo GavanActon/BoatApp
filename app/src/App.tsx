@@ -407,6 +407,13 @@ export default function App() {
     void initDiscover()
     initStats() // last: the stores it watches all exist
 
+    // the HTML shell's splash has done its job: React has drawn
+    const splash = document.getElementById('splash')
+    if (splash) {
+      splash.classList.add('gone')
+      window.setTimeout(() => splash.remove(), 400)
+    }
+
     // grab a position right away — but only when that costs no PROMPT: the
     // first location ask belongs to onboarding (§10.2), never to a cold
     // open. Granted-or-wanted installs behave exactly as before: follow it
