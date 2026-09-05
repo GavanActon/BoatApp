@@ -1,4 +1,5 @@
 import type { Map as MlMap } from 'maplibre-gl'
+import { devlog } from '../devlog'
 
 /** Singleton access to the MapLibre map for non-React modules (weather, tracking). */
 
@@ -8,6 +9,12 @@ let map: MlMap | null = null
 // style parsed — sources and layers can be added; tracked ourselves because no
 // MapLibre predicate says exactly this (see setMap)
 let ready = false
+// the WebGL context is gone: MapLibre destroys the style and sets it to
+// null until the browser gives the context back, and every call that
+// touches the style throws in between. Coming back from the lock screen on
+// an iPhone does this on nearly every resume — the log showed it — so for
+// that window the map is not there: getMap() says so, withMap() queues.
+let lost = false
 const waiters: MapReadyFn[] = [] // one-shot: the next ready map, then dropped
 const perMap: MapReadyFn[] = [] // layer setup: re-run for every map instance
 
@@ -33,6 +40,28 @@ export function setMap(m: MlMap | null) {
     for (const fn of waiters.splice(0)) run(fn, m)
   }
 
+  lost = false
+  m.on('webglcontextlost', () => {
+    if (map !== m) return
+    lost = true
+    ready = false
+    devlog('map', 'held back while the context is lost')
+  })
+  m.on('webglcontextrestored', () => {
+    if (map !== m) return
+    // the style comes back from a serialized copy — runtime sources, layers
+    // and images included — and is usable at its own 'style.load'
+    const back = () => {
+      if (map !== m) return
+      lost = false
+      ready = true
+      devlog('map', `back · ${waiters.length} waiting`)
+      for (const fn of waiters.splice(0)) run(fn, m)
+    }
+    if (m.isStyleLoaded()) back()
+    else m.once('style.load', back)
+  })
+
   // 'style.load' — the moment the style's own sources and layers exist, which
   // is all addSource/addLayer needs. Deliberately NOT 'load' (nor loaded() /
   // isStyleLoaded(), which mean the same thing): those also wait on every tile
@@ -45,8 +74,9 @@ export function setMap(m: MlMap | null) {
   m.once('load', markReady) // belt and braces if 'style.load' is ever missed
 }
 
+/** The map, or null while there is none — or while its context is lost. */
 export function getMap(): MlMap | null {
-  return map
+  return lost ? null : map
 }
 
 /** Run fn now if the map exists (and its style has loaded), otherwise when it becomes ready. */

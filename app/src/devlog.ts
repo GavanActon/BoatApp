@@ -165,14 +165,22 @@ function installHooks() {
   // the main thread went away: a timer that should fire every second
   // fires late by seconds. Hidden, that is the ordinary suspend; in front
   // it is the screen that stopped answering.
+  // a gap that spans a trip to the background is the ordinary suspend,
+  // whatever the page says by the time the timer runs again
   let last = Date.now()
+  let hiddenSince = document.visibilityState === 'hidden' ? Date.now() : 0
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hiddenSince = Date.now()
+  })
   setInterval(() => {
     const now = Date.now()
     const gap = now - last
     last = now
     if (gap > FREEZE_MS) {
-      devlog(document.visibilityState === 'visible' ? 'freeze' : 'suspend', `${(gap / 1000).toFixed(1)} s`)
+      const away = hiddenSince > 0 && hiddenSince >= now - gap - 1000
+      devlog(away || document.visibilityState !== 'visible' ? 'suspend' : 'freeze', `${(gap / 1000).toFixed(1)} s`)
     }
+    if (document.visibilityState === 'visible') hiddenSince = 0
   }, 1000)
   // memory, where the browser will say (Chrome; not Safari)
   const perf = performance as Performance & { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } }
