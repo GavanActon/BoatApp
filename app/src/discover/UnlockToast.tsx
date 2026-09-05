@@ -81,11 +81,13 @@ function Moment() {
   )
 }
 
-/** The trip ended at the ramp before the ramp was tapped: ask once, here. */
+/** The trip ended at the ramp before the ramp was tapped: ask once, here —
+ *  for those who switched the question on (Settings › Sea felt). */
 function FeltAsk() {
   const pf = useDiscoverStore((s) => s.pendingFelt)
   const underWay = useDiscoverStore((s) => s.trip != null)
-  if (!pf || underWay) return null
+  const ask = useAppStore((s) => s.askSeaFelt)
+  if (!pf || underWay || !ask) return null
   return (
     <div className="dv-toast dv-felt-ask glass" role="group" aria-label="Sea felt">
       <span className="dv-toast-k">Sea felt · {pf.destName ?? 'the run'}</span>

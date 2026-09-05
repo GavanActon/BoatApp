@@ -20,6 +20,8 @@ export type AchIcon =
   | 'back'
   | 'via'
   | 'light'
+  | 'shoal'
+  | 'bay'
   | 'grid'
   | 'log'
   | 'laker'
@@ -68,6 +70,8 @@ const PATHS: Record<AchIcon, string> = {
   back: '<path d="M20 12H6"/><path d="M11 7l-5 5 5 5"/>',
   via: '<path d="M4 18c4 0 4-12 8-12s4 12 8 12"/>',
   light: '<path d="M9 21h6l-1-12h-4Z"/><path d="M8 9h8M12 3v3"/><path d="M5 6l2 2M19 6l-2 2"/>',
+  shoal: '<path d="M3 8c3 0 3-2 6-2s3 2 6 2 3-2 6-2"/><path d="M4 19c1.5-4.5 4.5-7 8-7s6.5 2.5 8 7Z"/>',
+  bay: '<path d="M4 4c0 8 3.5 12 8 12s8-4 8-12"/><path d="M3 20c3 0 3-1.5 6-1.5s3 1.5 6 1.5 3-1.5 6-1.5"/>',
   grid: '<path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5"/><path d="M4 19.5h16"/>',
   log: '<path d="M6 3h12v18H6Z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
   laker: '<path d="M2 17h20l-2 3H4Z"/><path d="M5 17V9h5l2-4h8v12"/>',

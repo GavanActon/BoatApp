@@ -390,7 +390,7 @@ export default function TripCard() {
         />
         {/* the instruments ride in the card: one card under way, not two */}
         {!folded && <InstrumentBar embedded />}
-        {/* back at the dock: sea felt, and what the trip earned (the discover trial) */}
+        {/* at the destination: the sea-felt question, for those who switched it on */}
         <ArrivalStrip />
         {raised && (
           <div className="tb-scroll">

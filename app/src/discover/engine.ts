@@ -3,6 +3,7 @@ import { pushState } from '../circle/push'
 import { friendBoats, friendMembers, useCircleStore } from '../circle/store'
 import { useAppStore } from '../state/appStore'
 import { allPlaces, usePlacesStore } from '../state/placesStore'
+import { isThere, REACH_NM } from '../routing/arrival'
 import { isAfloat } from '../routing/router'
 import { useRouteStore } from '../routing/routeStore'
 import { haversineNm } from '../routing/waterRouter'
@@ -12,7 +13,7 @@ import { gridConditionsAt } from '../weather/weatherLayer'
 import { seaBand } from '../weather/seaState'
 import { addArrival, loadLog, logView, onLog, outingStartedAt, refreshTracks, saveOuting } from './log'
 import { ACHIEVEMENTS, type Ctx } from './registry'
-import { REACH_NM, SEASON_PLACES, seasonOf } from './season'
+import { SEASON_PLACES, seasonOf } from './season'
 import { chapters, levelOf } from './setup'
 import { useDiscoverStore, type TripCtx } from './store'
 import { initInstall } from './install'
@@ -385,7 +386,8 @@ function markArrived(at: number) {
     useDiscoverStore.getState().setLateFor({ names: there.map((b) => b.name), where: t.destName ?? 'a pinned spot', at })
   }
   if (t.destName) void addArrival(t.destName, t.destLon, t.destLat, at)
-  reachSeasonNear(t.destLon, t.destLat, at)
+  // the destination IS the season place, give or take the pin: no speed to ask
+  reachSeasonNear(t.destLon, t.destLat, at, 0)
   persistTrip()
 }
 
@@ -405,7 +407,7 @@ function endTripCtx(endedAt: number, trackNm: number | null) {
   const t = disc.trip
   if (!t) return
   disc.setTrip(null)
-  if (t.arrivedAt != null && t.feltBand == null) {
+  if (t.arrivedAt != null && t.feltBand == null && useAppStore.getState().askSeaFelt) {
     disc.setPendingFelt({ startedAt: t.startedAt, destName: t.destName })
   }
   chain = chain
@@ -446,9 +448,12 @@ function onFix(fix: Fix) {
   const now = Date.now()
   const disc = useDiscoverStore.getState()
   const t = disc.trip
+  // the fix's own speed; the rolling average when it has none (null once
+  // the boat has sat still for the whole window — idle, which is the point)
+  const sog = fix.sogKn ?? useGpsStore.getState().avgSogKn
   if (t) {
     const toDest = haversineNm(fix.lon, fix.lat, t.destLon, t.destLat)
-    if (t.arrivedAt == null && toDest < REACH_NM) markArrived(now)
+    if (t.arrivedAt == null && isThere(toDest, sog)) markArrived(now)
     else if (t.arrivedAt != null && t.leftDestAt == null && toDest > REACH_NM) {
       disc.patchTrip({ leftDestAt: now })
       persistTrip()
@@ -460,7 +465,7 @@ function onFix(fix: Fix) {
       t2.arrivedAt != null &&
       t2.leftDestAt != null &&
       t2.homeAt == null &&
-      haversineNm(fix.lon, fix.lat, t2.originLon, t2.originLat) < REACH_NM
+      isThere(haversineNm(fix.lon, fix.lat, t2.originLon, t2.originLat), sog)
     ) {
       disc.patchTrip({ homeAt: now })
       persistTrip()
@@ -477,16 +482,16 @@ function onFix(fix: Fix) {
   const home = usePlacesStore.getState().homeName
   for (const p of allPlaces()) {
     if (p.name === home) continue
-    if (haversineNm(fix.lon, fix.lat, p.lon, p.lat) < REACH_NM) void addArrival(p.name, p.lon, p.lat, now)
+    if (isThere(haversineNm(fix.lon, fix.lat, p.lon, p.lat), sog)) void addArrival(p.name, p.lon, p.lat, now)
   }
-  reachSeasonNear(fix.lon, fix.lat, now)
+  reachSeasonNear(fix.lon, fix.lat, now, sog)
 }
 
-/** Any season place within arrival range of here is reached — first time this year. */
-function reachSeasonNear(lon: number, lat: number, at: number) {
+/** Any season place the boat is at from here is reached — first time this year. */
+function reachSeasonNear(lon: number, lat: number, at: number, sogKn: number | null) {
   const disc = useDiscoverStore.getState()
   for (const p of SEASON_PLACES) {
-    if (haversineNm(lon, lat, p.lon, p.lat) < REACH_NM) {
+    if (isThere(haversineNm(lon, lat, p.lon, p.lat), sogKn)) {
       const had = disc.seasonReached[p.id]
       if (had == null || seasonOf(had) !== seasonOf(at)) disc.reachSeason(p.id, at)
     }

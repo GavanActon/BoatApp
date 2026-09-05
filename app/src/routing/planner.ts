@@ -4,6 +4,7 @@ import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { useAppStore } from '../state/appStore'
 import { startRecording, stopRecording } from '../tracking/gpsService'
 import { resetSogAverage, useGpsStore } from '../tracking/gpsStore'
+import { boatSogKn, isThere } from './arrival'
 import { capturePromise } from './legReadout'
 import { computeRoute, ensureNav, isAfloat } from './router'
 import { useRouteStore } from './routeStore'
@@ -26,7 +27,6 @@ import { track } from '../stats/core'
  */
 
 const TICK_MS = 2 * 60_000
-const ARRIVED_NM = 0.5 // within this of the destination = "we're there"
 const TRIP_EXPIRY_MS = 12 * 3600_000 // a persisted "under way" older than this is over
 
 let replanToken = 0
@@ -135,7 +135,7 @@ export async function replan(quiet = false): Promise<void> {
   if (underWay && s.roundTrip && s.tripOrigin) {
     const reached =
       s.reachedDestAt != null ||
-      haversineNm(start[0], start[1], dest.lon, dest.lat) < ARRIVED_NM
+      isThere(haversineNm(start[0], start[1], dest.lon, dest.lat), boatSogKn())
     if (reached && s.reachedDestAt == null) s.setReachedDest(Date.now())
     if (reached) {
       target = s.tripOrigin
@@ -248,6 +248,8 @@ export function startTrip() {
   capturePromise() // before the window is cleared — it IS the promise
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
+  // cast off at the helm: the course goes to the top by default
+  if (useAppStore.getState().helm) useAppStore.getState().setHeadingUp(true)
   // every trip records for the log, unless Settings › Log says not to
   if (useAppStore.getState().recordTrips && !useGpsStore.getState().recording) void startRecording()
   void replan()

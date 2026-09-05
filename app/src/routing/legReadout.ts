@@ -1,5 +1,6 @@
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
+import { boatSogKn, isThere } from './arrival'
 import { useRouteStore } from './routeStore'
 import type { TripPlan } from './tripPlan'
 
@@ -40,7 +41,6 @@ export interface LegReadout {
 
 // don't cry wolf over a wave or two — only call the arrival moved once it has
 const DRIFT_THRESHOLD_MIN = 3
-const ARRIVED_NM = 0.5
 
 export function legReadout(plan: TripPlan | null): LegReadout | null {
   const rs = useRouteStore.getState()
@@ -61,7 +61,7 @@ export function legReadout(plan: TripPlan | null): LegReadout | null {
   // the planner flips the plan to the ride home once the boat reaches the far
   // end, so that — not a separate flag — is what says which leg we're on
   const homeward = plan.destName === 'Home'
-  const phase: LegPhase = homeward ? 'homeward' : remainingNm < ARRIVED_NM ? 'ashore' : 'outbound'
+  const phase: LegPhase = homeward ? 'homeward' : isThere(remainingNm, boatSogKn()) ? 'ashore' : 'outbound'
 
   const promisedHomeMs = rs.promisedHomeMs
   const promisedArriveMs = rs.promisedArriveMs

@@ -303,6 +303,28 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     },
   },
   {
+    id: 'shoal-thing',
+    name: 'Shoal Thing',
+    hint: "Sydney's Shoal",
+    icon: 'shoal',
+    group: 'going',
+    check: (c) => {
+      const at = c.seasonReached['sydneys-shoal']
+      return at ? [['Reached', dateShort(at)]] : null
+    },
+  },
+  {
+    id: 'bay-watch',
+    name: 'Bay Watch',
+    hint: 'Batchawana Bay',
+    icon: 'bay',
+    group: 'going',
+    check: (c) => {
+      const at = c.seasonReached['batchawana']
+      return at ? [['Reached', dateShort(at)]] : null
+    },
+  },
+  {
     id: 'laker',
     name: 'Laker',
     hint: '50 nm this season',

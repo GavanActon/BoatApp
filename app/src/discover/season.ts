@@ -22,9 +22,6 @@ export const SEASON_PLACES: SeasonPlace[] = [
   { id: 'batchawana', name: 'Batchawana Bay', lon: -84.52, lat: 46.93 },
 ]
 
-/** Within this of a place counts as being there — the planner's own arrival range. */
-export const REACH_NM = 0.5
-
 /** The season is the calendar year: the lake freezes between two of them. */
 export function seasonOf(ms: number): number {
   return new Date(ms).getFullYear()

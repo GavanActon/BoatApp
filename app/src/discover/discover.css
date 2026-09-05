@@ -811,20 +811,6 @@
   opacity: 0.3;
 }
 
-.dv-earned {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.dv-earned .dv-ach {
-  flex: 1 1 45%;
-  min-height: 52px;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
 /* ---------- the moment: a small glass pill, alive for three seconds ---------- */
 
 .dv-moment {

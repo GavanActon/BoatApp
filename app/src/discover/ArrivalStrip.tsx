@@ -1,20 +1,23 @@
+import { useAppStore } from '../state/appStore'
 import { SEA_BANDS } from '../weather/seaState'
 import { setSeaFelt } from './engine'
-import { AchGlyph } from './icons'
-import { ACH_BY_ID } from './registry'
 import { useDiscoverStore } from './store'
 
 /**
- * The arrival card's strip, on the live trip card from the moment the boat
- * reaches the destination: the one question — what did the water feel
- * like, one tap on the ramp — and the tiles earned since cast-off. Asked
- * here, on the ride home, because END at the ramp closes the card; a trip
- * ended before it was answered gets asked once more (UnlockToast).
+ * The arrival strip on the live trip card, from the moment the boat reaches
+ * the destination: the one question — what did the water feel like, one tap
+ * on the ramp — and only for those who asked for it (Settings › Sea felt).
+ * Asked here, on the ride home, because END at the ramp closes the card; a
+ * trip ended before it was answered gets asked once more (UnlockToast).
+ *
+ * What the trip earned is NOT here any more: the moments play over the
+ * chart as they land, and the card at arrival is for the arrival (Gavan,
+ * 2026-09-04).
  */
 export default function ArrivalStrip() {
   const trip = useDiscoverStore((s) => s.trip)
-  if (!trip || trip.arrivedAt == null) return null
-  const earned = trip.earnedIds.map((id) => ACH_BY_ID.get(id)).filter((a) => a != null)
+  const ask = useAppStore((s) => s.askSeaFelt)
+  if (!trip || trip.arrivedAt == null || !ask) return null
   return (
     <div className="dv-arrive">
       <div className="dv-felt">
@@ -33,19 +36,6 @@ export default function ArrivalStrip() {
           ))}
         </div>
       </div>
-      {earned.length > 0 && (
-        <div className="dv-earned">
-          {earned.map((a) => (
-            <span key={a.id} className="dv-ach fresh">
-              <AchGlyph icon={a.icon} />
-              <span>
-                <b>{a.name}</b>
-                <i>today</i>
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

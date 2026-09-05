@@ -140,6 +140,8 @@ export default function LayersPanel() {
   const setRecordTrips = useAppStore((s) => s.setRecordTrips)
   const usageStats = useAppStore((s) => s.usageStats)
   const setUsageStats = useAppStore((s) => s.setUsageStats)
+  const askSeaFelt = useAppStore((s) => s.askSeaFelt)
+  const setAskSeaFelt = useAppStore((s) => s.setAskSeaFelt)
   const satOpacity = useAppStore((s) => s.satOpacity)
   const satVivid = useAppStore((s) => s.satVivid)
   const setSatVivid = useAppStore((s) => s.setSatVivid)
@@ -558,6 +560,21 @@ export default function LayersPanel() {
           </div>
         </div>
       </Group>
+
+      {/* outside the groups, beside the promise: the one question the app
+          may ask after a run, and only if you want it asked */}
+      <label className="row">
+        <div className="row-text">
+          <span className="row-title">Sea felt</span>
+          <span className="row-desc">After a run, one tap for how the water felt. Off, and the app never asks</span>
+        </div>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={askSeaFelt}
+          onChange={(e) => setAskSeaFelt(e.target.checked)}
+        />
+      </label>
 
       {/* last, and outside the groups: a promise is not a setting to hunt for */}
       <label className="row">
