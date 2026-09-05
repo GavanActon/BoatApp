@@ -78,17 +78,34 @@ export const REGION_BBOX = {
 }
 
 /**
- * How far the camera may wander: the region plus ~25 km of shoulder. Beyond
- * the region the global fallbacks (Esri imagery, OpenSeaMap) keep rendering a
- * plausible-looking map with no depth data behind it, so unlimited panning
- * quietly implies coverage we don't have. The shoulder exists so fitBounds
- * with padding never fights the clamp at the region's edge.
+ * How far the camera may wander: exactly the region, the area the depth grid
+ * covers. Beyond it the global fallbacks (Esri imagery, OpenSeaMap) keep
+ * rendering a plausible-looking map with no depth data behind it, so even a
+ * shoulder of open panning quietly implies coverage we don't have (Gavan,
+ * 2026-09-04: the box stops where the bathymetry stops). A fitBounds that
+ * pads past the edge is clamped by the map, not fought.
  * When a second region ships, compute this as the union of installed bundles.
  */
 export const MAX_BOUNDS: [[number, number], [number, number]] = [
-  [REGION_BBOX.west - 0.35, REGION_BBOX.south - 0.25],
-  [REGION_BBOX.east + 0.35, REGION_BBOX.north + 0.25],
+  [REGION_BBOX.west, REGION_BBOX.south],
+  [REGION_BBOX.east, REGION_BBOX.north],
 ]
+
+/**
+ * The nearest point of the chart to a position: a fix outside the bounds —
+ * the drive to the ramp, a run past the region's edge — puts the map at the
+ * closest spot the chart covers, never off it (Gavan, 2026-09-04). The map
+ * then nudges that edge point inward so the viewport itself stays on the
+ * chart. `clamped` says the position was outside.
+ */
+export function nearestInBounds(lon: number, lat: number): {
+  center: [number, number]
+  clamped: boolean
+} {
+  const [[w, s], [e, n]] = MAX_BOUNDS
+  const center: [number, number] = [Math.min(Math.max(lon, w), e), Math.min(Math.max(lat, s), n)]
+  return { center, clamped: center[0] !== lon || center[1] !== lat }
+}
 
 export const SEAMARKS_URL = 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
 
