@@ -265,7 +265,13 @@ export function initCircle() {
   if (m) {
     history.replaceState(null, '', location.pathname + location.search)
     void joinCircle(`${m[1]}-${m[2]}`)
-      .then(() => useAppStore.getState().setSheetTab('crew'))
+      .then(() => {
+        useAppStore.getState().setSheetTab('crew')
+        // the link skipped the door, so it skipped the card: a crew needs
+        // a name to show, and this is the moment to ask
+        const s = useCircleStore.getState()
+        if (!s.cardDone || !s.skipper.name.trim()) s.setCardOpen({ then: null })
+      })
       .catch(() => undefined)
   }
   // a tapped notification lands on the Crew sheet: cold from its URL, warm

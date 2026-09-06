@@ -19,6 +19,8 @@ import { onCirclePoll } from './sync'
 
 const DAY_MS = 86400_000
 const GONE_MS = 2 * 3600_000
+/** The card was opened for a missing name this launch — once is a nudge, twice is a nag. */
+let askedForName = false
 
 /** "10:00" today, "tomorrow 10:00", "Sat 10:00", else "Sep 20 10:00". */
 function whenLabel(ms: number, now: number): string {
@@ -114,8 +116,30 @@ export default function CrewPanel() {
 
   const checked = fetchError && online ? 'no answer' : fetchedAt ? `checked ${agoLabel(now - fetchedAt)}` : online ? 'checking…' : 'offline'
 
+  // in a crew with no name: the crew sees "A boat". Say so at the top, and
+  // open the card for it once per launch — a link-join or an old card can
+  // land here without one
+  const skipperName = useCircleStore((s) => s.skipper.name)
+  const setCardOpen = useCircleStore((s) => s.setCardOpen)
+  const unnamed = circles.length > 0 && !skipperName.trim()
+  useEffect(() => {
+    if (unnamed && !askedForName) {
+      askedForName = true
+      setCardOpen({ then: null })
+    }
+  }, [unnamed, setCardOpen])
+
   return (
     <div className="panel crew">
+      {unnamed && (
+        <button className="row bo-need" onClick={() => setCardOpen({ then: null })}>
+          <div className="row-text">
+            <span className="row-title">Add your name</span>
+            <span className="row-desc">the crew sees “A boat” until then</span>
+          </div>
+          <svg className="sk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+      )}
       {circles.length > 0 && (
         <>
           <div className="panel-section panel-section-first">
@@ -199,7 +223,11 @@ function OwnCardRow() {
   const cardDone = useCircleStore((s) => s.cardDone)
   const setCardOpen = useCircleStore((s) => s.setCardOpen)
   const title = who(skipper) || 'Your skipper card'
-  const desc = cardDone ? ['your skipper card', flairSummary(skipper.flair)].filter(Boolean).join(' · ') : 'a mark · your name · your boat'
+  const desc = !skipper.name.trim()
+    ? 'name needed · the crew sees “A boat”'
+    : cardDone
+      ? ['your skipper card', flairSummary(skipper.flair)].filter(Boolean).join(' · ')
+      : 'a mark · your name · your boat'
   return (
     <button className="row sk-row" onClick={() => setCardOpen({ then: null })} aria-label="Edit your skipper card">
       <Mark size={30} mark={skipper.mark} color={boatColor(deviceId)} flair={skipper.flair} />

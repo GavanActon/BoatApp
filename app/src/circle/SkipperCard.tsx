@@ -47,8 +47,12 @@ function CardSheet({ then }: { then: (() => void) | null }) {
   const auto = autoColor(deviceId)
   const color = picked ?? auto
 
+  // a name is the one thing the crew needs — without it the boat is "A boat"
+  // on every phone in the crew; the boat and the mark are theirs to skip
+  const named = name.trim().length > 0
   const close = () => useCircleStore.getState().setCardOpen(null)
   const save = () => {
+    if (!named) return
     const s = useCircleStore.getState()
     s.setSkipper({ name: name.trim(), boat: boat.trim(), mark, flair, color: picked })
     s.setCardDone(true)
@@ -95,6 +99,9 @@ function CardSheet({ then }: { then: (() => void) | null }) {
                   placeholder="Your name"
                   maxLength={40}
                   aria-label="Your name"
+                  aria-invalid={!named}
+                  autoFocus={!named}
+                  className={named ? '' : 'sk-needed'}
                   onChange={(e) => setName(e.target.value)}
                 />
                 <input
@@ -212,8 +219,9 @@ function CardSheet({ then }: { then: (() => void) | null }) {
                 <svg className="sk-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
               </button>
 
-              <button className="btn-primary sk-btn" onClick={save}>
-                That's me
+              {!named && <div className="sk-note sk-need">A name is the one thing the crew needs. The boat and the mark can wait.</div>}
+              <button className="btn-primary sk-btn" onClick={save} disabled={!named}>
+                {named ? "That's me" : 'Add your name'}
               </button>
             </div>
           </>

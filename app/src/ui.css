@@ -3144,6 +3144,12 @@
 .sk-swatch.any input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .sk-swatch.any span { pointer-events: none; }
 .sk-note { padding: 6px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--c-text-dim); }
+/* the one field the crew needs: lit until it is filled */
+.circle-fields input.sk-needed { border-color: rgba(63, 200, 255, 0.55); box-shadow: 0 0 0 3px rgba(63, 200, 255, 0.12); }
+.sk-note.sk-need { color: var(--c-accent); padding-top: 14px; }
+.sk-btn:disabled { opacity: 0.5; box-shadow: none; }
+.crew .bo-need { width: 100%; text-align: left; color: inherit; font: inherit; background: var(--c-accent-dim); border: 1px solid rgba(63, 200, 255, 0.35); border-radius: var(--r-tile); padding: 10px 12px; margin: 2px 0 8px; }
+.crew .bo-need .row-title { color: var(--c-accent); }
 .sk-row { width: 100%; text-align: left; background: none; border-radius: 8px; color: inherit; font: inherit; }
 .sk-row:active { background: rgba(126, 178, 224, 0.08); transform: none; }
 .sk-row .row-text { flex: 1 1 0; }

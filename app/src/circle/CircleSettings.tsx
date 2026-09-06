@@ -117,10 +117,11 @@ export default function CircleSettings() {
     setInviteNote(`Read out the code · ${joinCode(c)}`)
   }
 
-  /** The door's tap, after the card — once. */
+  /** The door's tap, after the card — once, and again for a card that was
+   *  saved without a name (the one thing the crew needs). */
   const withCard = (go: () => Promise<void>) => {
     const s = useCircleStore.getState()
-    if (s.cardDone) return void go()
+    if (s.cardDone && s.skipper.name.trim()) return void go()
     s.setCardOpen({ then: () => void go() })
   }
 
