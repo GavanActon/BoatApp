@@ -244,6 +244,11 @@ interface AppState {
   waveLimitM: number | null
   windLimitKn: number | null
   setLimits: (waveM: number | null, windKn: number | null) => void
+  // The shallow-water figure the cone ahead lights up under (metres): the
+  // boat's draft and whatever margin the skipper wants. Null until set —
+  // the cone still reports the shallowest sounding ahead, just never amber.
+  shallowM: number | null
+  setShallowM: (m: number | null) => void
 
   // Where the sea-state ramp's bands fall (persisted): the wave height at
   // which Rough begins; every band scales with it. Unlike the limits above
@@ -281,6 +286,7 @@ type PersistedPrefs = Pick<
   | 'planEndMs'
   | 'usualOutingMin'
   | 'waveLimitM'
+  | 'shallowM'
   | 'windLimitKn'
   | 'seaScaleM'
 >
@@ -399,6 +405,8 @@ export const useAppStore = create<AppState>()(
       waveLimitM: null,
       windLimitKn: null,
       setLimits: (waveLimitM, windLimitKn) => set({ waveLimitM, windLimitKn }),
+      shallowM: null,
+      setShallowM: (shallowM) => set({ shallowM }),
 
       seaScaleM: SEA_SCALE_DEFAULT_M,
       setSeaScale: (m) =>
@@ -465,6 +473,7 @@ export const useAppStore = create<AppState>()(
         planEndMs: s.planEndMs,
         usualOutingMin: s.usualOutingMin,
         waveLimitM: s.waveLimitM,
+        shallowM: s.shallowM,
         windLimitKn: s.windLimitKn,
         seaScaleM: s.seaScaleM,
       }),

@@ -9,6 +9,7 @@ import { track } from '../stats/core'
 import { db } from './db'
 import { judge, newGate, type GateState } from './fixGate'
 import { distanceNm, useGpsStore, type Fix } from './gpsStore'
+import { clearLookAhead, updateLookAhead } from './lookahead'
 
 /**
  * GPS service: owns the geolocation watch, the vessel marker, follow-mode
@@ -150,6 +151,8 @@ function onFix(pos: GeolocationPosition) {
     void recordPoint(f)
   }
   placeMarker(keep[keep.length - 1], true)
+  // the cone ahead: the chart's soundings over the course being made good
+  updateLookAhead(keep[keep.length - 1])
 }
 
 /** Move the boat on the chart; `steer` lets the camera follow it too. */
@@ -314,6 +317,7 @@ export function startGps() {
 }
 
 export function stopGps() {
+  clearLookAhead()
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId)
     watchId = null

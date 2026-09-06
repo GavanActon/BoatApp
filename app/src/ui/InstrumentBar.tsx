@@ -5,6 +5,7 @@ import { useRouteStore } from '../routing/routeStore'
 import { useAppStore } from '../state/appStore'
 import { useGpsStore } from '../tracking/gpsStore'
 import { stopRecording } from '../tracking/gpsService'
+import { useLookAhead } from '../tracking/lookahead'
 import { addMark, initMarks } from '../tracking/marks'
 import { distanceUnitFor, knToUnit, runDistance, speedUnitLabel, type SpeedUnit } from '../units'
 import { haptic } from './haptics'
@@ -114,10 +115,34 @@ export default function InstrumentBar({ embedded = false }: { embedded?: boolean
         <span className="inst-label">DEPTH</span>
         <span className="inst-value numeral">{hasGps ? formatDepth(depth, depthUnit) : '—'}</span>
         <span className="inst-unit">{depthUnit}</span>
+        <AheadLine depthUnit={depthUnit} />
       </div>
       {recording && <MarkButton />}
       <RecPill />
     </div>
+  )
+}
+
+/** The cone ahead, under the depth: the shallowest charted water over the
+ *  next two minutes of course — and, amber, the nearest sounding under the
+ *  skipper's own shallow figure with its distance and side. Nothing while
+ *  stopped or without a course. Numbers, not a verdict. */
+function AheadLine({ depthUnit }: { depthUnit: 'm' | 'ft' }) {
+  const ahead = useLookAhead((s) => s.ahead)
+  if (!ahead || ahead.minM == null) return null
+  const s = ahead.shallow
+  if (s) {
+    const side = s.side === 'port' ? '◀' : s.side === 'starboard' ? '▶' : '▲'
+    return (
+      <span className="inst-ahead shallow numeral" aria-label={`Shallow ahead: ${formatDepth(s.depthM, depthUnit)} ${depthUnit} in ${Math.round(s.distM)} metres`}>
+        {side} {formatDepth(s.depthM, depthUnit)} · {Math.round(s.distM)} m
+      </span>
+    )
+  }
+  return (
+    <span className="inst-ahead numeral" aria-label={`Shallowest ahead ${formatDepth(ahead.minM, depthUnit)} ${depthUnit}`}>
+      ahead {formatDepth(ahead.minM, depthUnit)}
+    </span>
   )
 }
 

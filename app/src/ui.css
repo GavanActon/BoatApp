@@ -483,6 +483,20 @@
   color: var(--c-text-dim);
 }
 
+/* the cone ahead, under the depth: quiet numbers, amber under the skipper's
+   own shallow figure (their limit, never the app's) */
+.inst-ahead {
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--c-text-faint);
+  white-space: nowrap;
+}
+
+.inst-ahead.shallow {
+  color: var(--c-warn);
+}
+
 .inst-divider {
   width: 1px;
   height: 34px;

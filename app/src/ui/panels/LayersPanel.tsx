@@ -10,6 +10,7 @@ import {
   type FlowTuning,
 } from '../../state/appStore'
 import { knToUnit, SPEED_UNITS, speedUnitLabel, unitToKn } from '../../units'
+import { formatDepth } from '../../map/depthGrid'
 import { IconMinus, IconPlus } from '../icons'
 import SeaRamp from '../SeaRamp'
 import OfflinePanel from './OfflinePanel'
@@ -138,6 +139,8 @@ export default function LayersPanel() {
   const setLowPower = useAppStore((s) => s.setLowPower)
   const recordTrips = useAppStore((s) => s.recordTrips)
   const setRecordTrips = useAppStore((s) => s.setRecordTrips)
+  const shallowM = useAppStore((s) => s.shallowM)
+  const setShallowM = useAppStore((s) => s.setShallowM)
   const usageStats = useAppStore((s) => s.usageStats)
   const setUsageStats = useAppStore((s) => s.setUsageStats)
   const askSeaFelt = useAppStore((s) => s.askSeaFelt)
@@ -182,6 +185,14 @@ export default function LayersPanel() {
   )
   const cruiseShown = Math.round(knToUnit(speedUnit, cruiseKn))
   const stepCruise = (d: number) => setCruiseKn(unitToKn(speedUnit, cruiseShown + d))
+  // steps of a tenth of a metre or half a foot, from a first tap at 1 m;
+  // stepping down past the bottom clears it
+  const stepShallow = (d: number) => {
+    const step = depthUnit === 'ft' ? 0.5 / 3.28084 : 0.1
+    if (shallowM == null) return void setShallowM(d > 0 ? 1 : null)
+    const next = Math.round((shallowM + d * step) * 100) / 100
+    setShallowM(next < 0.15 ? null : next)
+  }
 
   const onNames = (defs: readonly { key: keyof typeof layers; name: string }[]) =>
     defs.filter((d) => layers[d.key]).map((d) => d.name)
@@ -209,6 +220,24 @@ export default function LayersPanel() {
             {cruiseShown} {speedUnitLabel(speedUnit)}
           </b>
           <button className="nudge" onClick={() => stepCruise(1)} aria-label="Faster">
+            <IconPlus size={11} />
+          </button>
+        </span>
+      </div>
+
+      {/* the cone ahead lights up under this (§1.4: the skipper's figure, null
+          until set — the cone reports the shallowest sounding either way) */}
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Shallow water</span>
+          <span className="row-desc">The cone ahead turns amber under this · your draft, plus what you like</span>
+        </div>
+        <span className="speed-step">
+          <button className="nudge" onClick={() => stepShallow(-1)} aria-label="Less" disabled={shallowM == null}>
+            <IconMinus size={11} />
+          </button>
+          <b className="numeral">{shallowM == null ? '—' : `${formatDepth(shallowM, depthUnit)} ${depthUnit}`}</b>
+          <button className="nudge" onClick={() => stepShallow(1)} aria-label="More">
             <IconPlus size={11} />
           </button>
         </span>
