@@ -728,6 +728,24 @@ function LiveLeg({
         </button>
       </div>
 
+      {/* how much of the leg is behind the boat — folded or not, the one
+          line that says "getting there" without a number to read */}
+      {ready && !ashore && leg.progress != null && (
+        <div className="leg-progress-row">
+          <span
+            className="leg-progress"
+            role="progressbar"
+            aria-label="Leg progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(leg.progress * 100)}
+          >
+            <i style={{ width: `${Math.round(leg.progress * 100)}%` }} />
+          </span>
+          <span className="leg-pct numeral">{Math.round(leg.progress * 100)}%</span>
+        </div>
+      )}
+
       {folded ? null : !ready ? (
         <div className="leg-body">
           <span className="numeral">…</span>

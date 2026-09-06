@@ -63,6 +63,8 @@ interface RouteState {
   // honest to be measured against. See legReadout.capturePromise.
   promisedArriveMs: number | null
   promisedHomeMs: number | null
+  /** The current leg's whole length as it began (nm) — progress's denominator. */
+  legNm: number | null
   startTrip: (origin: [number, number]) => void
   endTrip: () => void
 
@@ -101,6 +103,7 @@ type PersistedTrip = Pick<
   | 'reachedDestAt'
   | 'promisedArriveMs'
   | 'promisedHomeMs'
+  | 'legNm'
 > & { flowV: number }
 
 /**
@@ -172,7 +175,12 @@ export const useRouteStore = create<RouteState>()(
       setReachedDest: (reachedDestAt) => set({ reachedDestAt }),
       promisedArriveMs: null,
       promisedHomeMs: null,
-      startTrip: (tripOrigin) => set({ tripStartedAt: Date.now(), tripOrigin, reachedDestAt: null }),
+      // the leg's whole length as it began, so progress has a denominator:
+      // the plan at cast-off for the way out, the first ride-home plan for
+      // the way back (setPlan catches that flip). Replans under way only
+      // ever know what is LEFT.
+      startTrip: (tripOrigin) =>
+        set((s) => ({ tripStartedAt: Date.now(), tripOrigin, reachedDestAt: null, legNm: s.plan?.oneWayNm ?? null })),
       endTrip: () =>
         set({
           tripStartedAt: null,
@@ -180,7 +188,9 @@ export const useRouteStore = create<RouteState>()(
           reachedDestAt: null,
           promisedArriveMs: null,
           promisedHomeMs: null,
+          legNm: null,
         }),
+      legNm: null,
 
       startFrom: 'fix',
       setStartFrom: (startFrom) => set({ startFrom }),
@@ -194,7 +204,16 @@ export const useRouteStore = create<RouteState>()(
       plan: null,
       planError: null,
       planning: false,
-      setPlan: (plan, planError = null) => set({ plan, planError, planning: false }),
+      setPlan: (plan, planError = null) =>
+        set((s) => ({
+          plan,
+          planError,
+          planning: false,
+          legNm:
+            plan && s.tripStartedAt != null && (s.legNm == null || plan.destName !== s.plan?.destName)
+              ? plan.oneWayNm
+              : s.legNm,
+        })),
       setPlanning: (planning) => set({ planning }),
     }),
     {
@@ -229,6 +248,7 @@ export const useRouteStore = create<RouteState>()(
         reachedDestAt: s.reachedDestAt,
         promisedArriveMs: s.promisedArriveMs,
         promisedHomeMs: s.promisedHomeMs,
+        legNm: s.legNm,
       }),
       // the card isn't persisted: it simply shows whenever a trip came back
       merge: (persisted, current) => {

@@ -37,6 +37,10 @@ export interface LegReadout {
   atCruise: boolean
   /** Water still to cover on this leg, from the boat's own position. */
   remainingNm: number
+  /** The leg's whole length as it began; null when it was never captured. */
+  legNm: number | null
+  /** How much of the leg is behind the boat, 0–1. Null without a leg length. */
+  progress: number | null
 }
 
 // don't cry wolf over a wave or two — only call the arrival moved once it has
@@ -81,7 +85,12 @@ export function legReadout(plan: TripPlan | null): LegReadout | null {
       ? null
       : Math.round((homeMs - arriveMs) / 60_000 - (rs.roundTrip ? returnLegMin : 0))
 
-  return { phase, timeLeftMin, arriveMs, driftMin, homeMs, ashoreMin, atCruise, remainingNm }
+  // progress is what's left against what the leg was: a detour that grows
+  // the water ahead honestly pulls the bar back a touch
+  const legNm = rs.legNm != null && rs.legNm > 0 ? rs.legNm : null
+  const progress = legNm == null ? null : Math.min(1, Math.max(0, 1 - remainingNm / legNm))
+
+  return { phase, timeLeftMin, arriveMs, driftMin, homeMs, ashoreMin, atCruise, remainingNm, legNm, progress }
 }
 
 /**
