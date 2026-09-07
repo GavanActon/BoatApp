@@ -426,7 +426,10 @@ function watchHelmPadding() {
     const p = helmPadding(map)
     if (p.bottom === last) return
     last = p.bottom
-    map.easeTo({ padding: p, duration: 400 })
+    // an easeTo replaces whatever ease is running — at cast-off that was the
+    // helm's own pitch, which this cut off 40 ms in and left the chart flat.
+    // Carry the helm's pitch and scale along so nothing is lost to the swap.
+    map.easeTo({ padding: p, pitch: HELM_PITCH, zoom: Math.max(map.getZoom(), HELM_MIN_ZOOM), duration: 400 })
     // the next fix must not stop this half-way: a jumpTo ends any running ease
     if (map.isEasing()) cameraHoldUntil = Date.now() + 500
   })

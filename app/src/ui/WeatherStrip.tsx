@@ -54,6 +54,8 @@ const DAY_FROM_H = 8 // where a future day's row opens (scrolled, not clipped)
 // fewer, the row stops short of the strip's edge and the leftover width reads
 // as missing hours, which is exactly what it is.
 const HOURS_IN_HAND = 10
+/** At the helm: now and the next three hours, and nothing else. */
+const NEAR_HOURS = 4
 const REFRESH_MS = 30 * 60_000
 
 function hourLabel(d: Date): string {
@@ -99,6 +101,9 @@ export default function WeatherStrip() {
   const startPoint = useRouteStore((s) => s.startPoint)
   const tripStartedAt = useRouteStore((s) => s.tripStartedAt)
   const plan = useRouteStore((s) => s.plan)
+  // at the helm the strip is the near term only: no days, the next few hours,
+  // big enough to read at the wheel (Gavan, 2026-09-07)
+  const near = useAppStore((s) => s.helm)
 
   const [forecast, setForecast] = useState<PointForecast | null>(null)
   const [stale, setStale] = useState(false)
@@ -244,13 +249,19 @@ export default function WeatherStrip() {
   // neither does leaving.
   const rows: HourRow[] = useMemo(() => {
     if (!forecast) return []
+    // at the helm: only the near term — now and the next few hours, today
+    if (near) {
+      const today = dayHours(forecast, todayMs, new Date().getHours(), 23)
+      const deficit = NEAR_HOURS - today.length
+      return (deficit > 0 ? [...today, ...dayHours(forecast, todayMs + 24 * 3600_000, 0, deficit - 1)] : today).slice(0, NEAR_HOURS)
+    }
     if (selDayMs !== todayMs) return dayHours(forecast, selDayMs, 0, 23)
     const today = dayHours(forecast, todayMs, new Date().getHours(), 23)
     const deficit = HOURS_IN_HAND - today.length
     return deficit > 0
       ? [...today, ...dayHours(forecast, todayMs + 24 * 3600_000, 0, deficit - 1)]
       : today
-  }, [forecast, selDayMs, todayMs])
+  }, [forecast, selDayMs, todayMs, near])
 
   // with a trip planned (and the strip on the boat, not a focused leg) each
   // hour cell is rated as a DEPARTURE: "what if we left then"
@@ -333,7 +344,7 @@ export default function WeatherStrip() {
   }
 
   return (
-    <div className="wxstrip glass" role="group" aria-label="7-day weather outlook">
+    <div className={`wxstrip glass${near ? ' wxstrip-near' : ''}`} role="group" aria-label={near ? 'The next few hours' : '7-day weather outlook'}>
       {focusPoint && (
         <button
           className="wxstrip-focus"
@@ -369,6 +380,7 @@ export default function WeatherStrip() {
         </button>
       )}
 
+      {!near && (
       <div className="wxstrip-days" role="tablist" aria-label="Pick a day">
         {days.map((d) => {
           const sel = d.dayStartMs === selDayMs
@@ -411,6 +423,7 @@ export default function WeatherStrip() {
           )
         })}
       </div>
+      )}
 
       {rows.length > 0 ? (
         <div
@@ -458,6 +471,8 @@ export default function WeatherStrip() {
                 className={`wxcell${active ? ' wx-active' : ''}${isBack ? ' wx-back' : ''}${inWindow ? ' wx-window' : ''}${armable ? ' wx-armable' : ''}`}
                 style={{ borderTopColor: seaColor(r.waveM, seaScale) }}
                 onClick={() => {
+                  // at the helm the cells are a readout, not a keypad
+                  if (near) return
                   // any accepted time-tap moves the app from exploring to
                   // planning — including "Now", which is a choice, not a default
                   setPlanPicked(true)

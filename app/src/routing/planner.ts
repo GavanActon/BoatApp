@@ -2,7 +2,7 @@ import { HOME, REGION_BBOX } from '../config'
 import { onFirstIdle, withMap } from '../map/mapController'
 import { homeCenter, usePlacesStore } from '../state/placesStore'
 import { useAppStore } from '../state/appStore'
-import { startRecording, stopRecording } from '../tracking/gpsService'
+import { enterHelmView, exitHelmView, startRecording, stopRecording } from '../tracking/gpsService'
 import { resetSogAverage, useGpsStore } from '../tracking/gpsStore'
 import { boatSogKn, isThere } from './arrival'
 import { capturePromise } from './legReadout'
@@ -248,8 +248,10 @@ export function startTrip() {
   capturePromise() // before the window is cleared — it IS the promise
   useAppStore.getState().setPlanTime(null) // casting off happens now, whatever was planned
   useRouteStore.getState().startTrip(origin)
-  // cast off at the helm: the course goes to the top by default
-  if (useAppStore.getState().helm) useAppStore.getState().setHeadingUp(true)
+  // casting off IS going to the helm: GPS on, following, the course at the
+  // top, the chart pitched to the water ahead, the strip down to the next
+  // few hours (Gavan, 2026-09-07). The FAB still flattens it for a look.
+  enterHelmView()
   // every trip records for the log, unless Settings › Log says not to
   if (useAppStore.getState().recordTrips && !useGpsStore.getState().recording) void startRecording()
   void replan()
@@ -265,6 +267,8 @@ export function endTrip() {
   useAppStore.getState().setDetent('rest')
   resetSogAverage()
   void stopRecording()
+  // back on the trailer: the chart lies flat again, the week comes back
+  if (useAppStore.getState().helm) exitHelmView()
   void replan()
 }
 
@@ -302,6 +306,9 @@ export function initRoutePlanner() {
   if (resumed.tripStartedAt != null && !useGpsStore.getState().recording) {
     void startRecording()
   }
+  // a trip that came back from a reload comes back at the helm too — the
+  // kitchen-table rule (helm never persists) is for a boat that isn't out
+  if (resumed.tripStartedAt != null) enterHelmView()
 
   // starring (or moving) the home base changes where trips depart from —
   // replan, which also clears the "where from?" ask the moment it's answered
