@@ -11,6 +11,7 @@ import {
 } from '../../state/appStore'
 import { knToUnit, SPEED_UNITS, speedUnitLabel, unitToKn } from '../../units'
 import { formatDepth } from '../../map/depthGrid'
+import { phoneTextStop } from '../textScale'
 import { IconMinus, IconPlus } from '../icons'
 import SeaRamp from '../SeaRamp'
 import OfflinePanel from './OfflinePanel'
@@ -141,6 +142,11 @@ export default function LayersPanel() {
   const setRecordTrips = useAppStore((s) => s.setRecordTrips)
   const shallowM = useAppStore((s) => s.shallowM)
   const setShallowM = useAppStore((s) => s.setShallowM)
+  const textSize = useAppStore((s) => s.textSize)
+  const setTextSize = useAppStore((s) => s.setTextSize)
+  const wavePeriodLine = useAppStore((s) => s.wavePeriodLine)
+  const setWavePeriodLine = useAppStore((s) => s.setWavePeriodLine)
+  const phoneStop = phoneTextStop()
   const usageStats = useAppStore((s) => s.usageStats)
   const setUsageStats = useAppStore((s) => s.setUsageStats)
   const askSeaFelt = useAppStore((s) => s.askSeaFelt)
@@ -205,6 +211,45 @@ export default function LayersPanel() {
 
   return (
     <div className="panel">
+      <div className="panel-section">Display</div>
+
+      {/* one dial for the chrome's type; Auto follows the phone (§ textScale) */}
+      <div className="row">
+        <div className="row-text">
+          <span className="row-title">Text size</span>
+          <span className="row-desc">
+            {textSize === 'auto' ? `Follows the phone · ${phoneStop} now` : 'The strip, the card, the dock'}
+          </span>
+        </div>
+        <div className="seg text-seg" role="radiogroup" aria-label="Text size">
+          {(['auto', 'standard', 'large', 'larger'] as const).map((t) => (
+            <button
+              key={t}
+              className={textSize === t ? 'seg-on' : ''}
+              role="radio"
+              aria-checked={textSize === t}
+              aria-label={t === 'auto' ? 'Auto' : t}
+              onClick={() => setTextSize(t)}
+            >
+              {t === 'auto' ? 'Auto' : <span className={`text-a text-a-${t}`}>A</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <label className="row">
+        <div className="row-text">
+          <span className="row-title">Wave period on its own line</span>
+          <span className="row-desc">Under the height, not beside it</span>
+        </div>
+        <input
+          type="checkbox"
+          className="switch"
+          checked={wavePeriodLine}
+          onChange={(e) => setWavePeriodLine(e.target.checked)}
+        />
+      </label>
+
       <div className="panel-section">Boat</div>
 
       <div className={`row${target === 'cruise' ? ' dv-target' : ''}`} ref={cruiseRef}>

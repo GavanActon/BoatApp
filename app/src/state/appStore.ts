@@ -118,6 +118,14 @@ interface AppState {
   lowPower: boolean
   /** Every trip records a track for the log (cast-off to home). */
   recordTrips: boolean
+  // Text size for the chrome — the strip, the card's big number, the dock
+  // labels. 'auto' follows the phone's own text size (iOS tells a page
+  // through its system font); the three stops override it for this app.
+  textSize: 'auto' | 'standard' | 'large' | 'larger'
+  setTextSize: (v: 'auto' | 'standard' | 'large' | 'larger') => void
+  /** The wave period on its own line under the height, rather than beside it. */
+  wavePeriodLine: boolean
+  setWavePeriodLine: (v: boolean) => void
   setLowPower: (v: boolean) => void
   setRecordTrips: (v: boolean) => void
   // Usage stats: what gets used and how the app performs, counted under a
@@ -273,6 +281,8 @@ type PersistedPrefs = Pick<
   | 'flowTuning'
   | 'lowPower'
   | 'recordTrips'
+  | 'textSize'
+  | 'wavePeriodLine'
   | 'usageStats'
   | 'askSeaFelt'
   | 'onboarded'
@@ -335,6 +345,10 @@ export const useAppStore = create<AppState>()(
       setLowPower: (v) => set({ lowPower: v }),
       recordTrips: true,
       setRecordTrips: (v) => set({ recordTrips: v }),
+      textSize: 'auto',
+      setTextSize: (textSize) => set({ textSize }),
+      wavePeriodLine: false,
+      setWavePeriodLine: (wavePeriodLine) => set({ wavePeriodLine }),
       usageStats: true,
       setUsageStats: (v) => set({ usageStats: v }),
       askSeaFelt: false,
@@ -460,6 +474,8 @@ export const useAppStore = create<AppState>()(
         flowTuning: s.flowTuning,
         lowPower: s.lowPower,
         recordTrips: s.recordTrips,
+        textSize: s.textSize,
+        wavePeriodLine: s.wavePeriodLine,
         usageStats: s.usageStats,
         askSeaFelt: s.askSeaFelt,
         onboarded: s.onboarded,

@@ -18,6 +18,7 @@ import { initCircle } from './circle/sync'
 import { initCircleLayer } from './circle/circleLayer'
 import { crewChanged, useCircleStore } from './circle/store'
 import { initStats } from './stats/hooks'
+import { initTextScale } from './ui/textScale'
 import { useRouteStore } from './routing/routeStore'
 import { initMeasureLayer } from './measure/measureLayer'
 import { useMeasureStore } from './measure/measureStore'
@@ -405,6 +406,7 @@ export default function App() {
     initSeaFlow()
     initForecastWatch()
     void initDiscover()
+    initTextScale() // the phone's text size, before the first frame settles
     initStats() // last: the stores it watches all exist
 
     // the HTML shell's splash has done its job: React has drawn

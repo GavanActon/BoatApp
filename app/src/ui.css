@@ -892,6 +892,28 @@
   color: var(--c-accent);
 }
 
+/* the text-size dial: three A's that show their size */
+.text-seg button {
+  padding: 5px 11px;
+  line-height: 1;
+}
+
+.text-a {
+  font-weight: 700;
+}
+
+.text-a-standard {
+  font-size: 12px;
+}
+
+.text-a-large {
+  font-size: 15px;
+}
+
+.text-a-larger {
+  font-size: 18px;
+}
+
 .icon-btn {
   width: 38px;
   height: 38px;
@@ -3265,3 +3287,94 @@
 
 /* Settings: the dev log's small row of links under its buttons */
 .devlog-actions { padding: 4px 4px 8px; flex-wrap: wrap; row-gap: 4px; }
+
+/* ---------- text size: one dial, three stops (ui/textScale.ts) ----------
+   --ui-scale is 1 · 1.3 · 1.6 on <html>; the strip also shows fewer hours
+   across (10 · 8 · 6) and, at the top stop, five day chips with the rest a
+   swipe away, so the numbers stay whole instead of shrinking to fit. */
+:root {
+  --ui-scale: 1;
+}
+
+.wxcell {
+  font-size: calc(10px * var(--ui-scale));
+}
+
+.wxcell b {
+  font-size: calc(12.5px * var(--ui-scale));
+}
+
+.wxcell svg {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
+.wxcell-h {
+  font-size: calc(9px * var(--ui-scale));
+}
+
+.wxcell-wave {
+  font-size: calc(9.5px * var(--ui-scale));
+}
+
+.wxcell-wave em {
+  font-size: calc(8.5px * var(--ui-scale));
+}
+
+/* the period on its own line under the height (Settings › Display) */
+.wxcell-per {
+  font-size: calc(9px * var(--ui-scale));
+  color: var(--c-text-faint);
+  margin-top: -1px;
+}
+
+.wxday {
+  font-size: calc(9.5px * var(--ui-scale));
+}
+
+.wxday-wx b {
+  font-size: calc(11px * var(--ui-scale));
+}
+
+.wxday-wx svg {
+  width: calc(11px * var(--ui-scale));
+  height: calc(11px * var(--ui-scale));
+}
+
+.ui-large .wxcell {
+  flex-basis: calc((100% - 21px) / 8);
+  padding: 6px 0 7px;
+}
+
+.ui-larger .wxcell {
+  flex-basis: calc((100% - 15px) / 6);
+  padding: 8px 0 9px;
+  gap: 3px;
+}
+
+.ui-larger .wxday {
+  flex: 0 0 calc((100% - 12px) / 5);
+  padding: 5px 0 6px;
+}
+
+.ui-larger .wxstrip-days {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ui-larger .wxstrip-days::-webkit-scrollbar {
+  display: none;
+}
+
+/* the live card's one number, and the doors' names */
+.leg-big {
+  font-size: calc(34px * var(--ui-scale));
+}
+
+.leg-fold-time {
+  font-size: calc(15px * var(--ui-scale));
+}
+
+.tab {
+  font-size: calc(10px * var(--ui-scale));
+}

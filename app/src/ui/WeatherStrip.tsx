@@ -88,6 +88,7 @@ export default function WeatherStrip() {
   const armedEnd = useAppStore((s) => s.armedEnd)
   const setArmedEnd = useAppStore((s) => s.setArmedEnd)
   const showPeriod = useAppStore((s) => s.wavePeriod)
+  const periodLine = useAppStore((s) => s.wavePeriodLine)
   const windUnit = useAppStore((s) => s.windUnit)
   const online = useAppStore((s) => s.online)
   const seaScale = useAppStore((s) => s.seaScaleM)
@@ -527,8 +528,9 @@ export default function WeatherStrip() {
                 <b className="numeral">{windSpeed(windUnit, r.windKn)}</b>
                 <span className="wxcell-wave numeral">
                   {r.waveM != null ? r.waveM.toFixed(1) : '–'}
-                  {period && <em>{period}</em>}
+                  {period && !periodLine && <em>{period}</em>}
                 </span>
+                {period && periodLine && <span className="wxcell-per numeral">{period}</span>}
               </button>
             )
           })}
