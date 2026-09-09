@@ -166,7 +166,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         // Chart data files are huge and managed by the in-app Offline Manager (OPFS),
         // never by the service worker precache.
-        globIgnores: ['data/**', 'fonts/**', 'sprites/**'],
+        // launch images: iOS fetches the one it needs itself; eleven in the
+        // precache would be 280 KB nobody's phone uses more than one of
+        globIgnores: ['data/**', 'fonts/**', 'sprites/**', 'launch/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
